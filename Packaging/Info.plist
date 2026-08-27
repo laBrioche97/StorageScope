@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>fr</string>
+    <key>CFBundleDisplayName</key>
+    <string>StorageScope</string>
+    <key>CFBundleExecutable</key>
+    <string>StorageScope</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.labrioche.StorageScope</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>StorageScope</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>2.0.1</string>
+    <key>CFBundleVersion</key>
+    <string>4</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>StorageScope analyse les fichiers du Bureau uniquement pour mesurer l’espace disque qu’ils occupent.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>StorageScope analyse les documents uniquement pour mesurer l’espace disque qu’ils occupent.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>StorageScope analyse les téléchargements pour mesurer leur espace disque et suggérer les anciens installateurs à examiner.</string>
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>StorageScope analyse un volume réseau uniquement lorsque vous le sélectionnez explicitement.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>StorageScope analyse un volume externe uniquement lorsque vous le sélectionnez explicitement.</string>
+</dict>
+</plist>

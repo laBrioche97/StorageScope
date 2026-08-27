@@ -1,0 +1,31 @@
+.build/
+.build-app/
+dist/
+.swiftpm/
+xcuserdata/
+DerivedData/
+.DS_Store
+*.xcuserstate
+
+# Secrets et identités de signature ne doivent jamais être versionnés.
+.env
+.env.*
+!.env.example
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+*.pem
+*.key
+
+# Artefacts générés et archives de distribution.
+*.app
+*.dSYM
+*.zip
+*.pkg
+
+# État local Xcode.
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcscmblueprint
+*.xccheckout

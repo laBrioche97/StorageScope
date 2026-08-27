@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Swift 6 strict build and tests
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Lint packaging metadata
+        run: |
+          plutil -lint Packaging/Info.plist
+          plutil -lint Packaging/PrivacyInfo.xcprivacy
+          zsh -n scripts/build-app.sh
+          zsh -n scripts/install-app.sh
+          zsh -n scripts/install-release.sh
+
+      - name: Build all targets with warnings as errors
+        run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
+
+      - name: Run StorageCore validations
+        run: |
+          TEST_BINARY="$(swift build --disable-sandbox --product StorageCoreTests --show-bin-path)/StorageCoreTests"
+          "$TEST_BINARY"
