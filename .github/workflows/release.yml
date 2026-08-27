@@ -14,6 +14,9 @@ on:
 permissions:
   contents: write
 
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
@@ -33,7 +36,7 @@ jobs:
 
     steps:
       - name: Check out tagged source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
