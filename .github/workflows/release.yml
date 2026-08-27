@@ -150,7 +150,7 @@ jobs:
         run: shasum -a 256 StorageScope-universal.zip > StorageScope-universal.zip.sha256
 
       - name: Preserve workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: StorageScope-${{ env.RELEASE_VERSION }}-universal
           path: |
