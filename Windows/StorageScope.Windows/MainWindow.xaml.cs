@@ -140,7 +140,6 @@ public partial class MainWindow : Window
         if (DrivePicker.SelectedItem is not DriveChoice drive) return;
         try
         {
-            drive.Refresh();
             SpaceStatusText.Text = $"{SizeFormatter.Format(drive.AvailableBytes)} disponibles" + (_recoverableBytes > 0 ? $" · {SizeFormatter.Format(_recoverableBytes)} récupérables après vidage de la Corbeille" : "");
         }
         catch { SpaceStatusText.Text = "Espace disponible inconnu"; }
@@ -264,5 +263,4 @@ public sealed class DriveChoice
     public long AvailableBytes => _drive.AvailableFreeSpace;
     public string VolumeLabel => string.IsNullOrWhiteSpace(_drive.VolumeLabel) ? $"Disque local ({Root.TrimEnd('\\')})" : $"{_drive.VolumeLabel} ({Root.TrimEnd('\\')})";
     public string FreeLabel => $"{SizeFormatter.Format(_drive.AvailableFreeSpace)} libres";
-    public void Refresh() => _drive.Refresh();
 }
