@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>StorageScope</AssemblyName>
     <RootNamespace>StorageScope.Windows</RootNamespace>
-    <Version>2.1.0</Version>
+    <Version>2.1.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
