@@ -66,3 +66,22 @@ jobs:
 
       - name: Validate self-contained x64 publication
         run: dotnet publish Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release --runtime win-x64 --self-contained true --output dist/windows-x64 -p:TreatWarningsAsErrors=true
+
+      - name: Verify the Windows application stays open
+        shell: pwsh
+        run: |
+          $application = Join-Path $PWD "dist/windows-x64/StorageScope.exe"
+          $process = Start-Process -FilePath $application -PassThru
+          Start-Sleep -Seconds 5
+          if ($process.HasExited) {
+            throw "StorageScope exited during startup with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+
+      - name: Preserve the smoke-tested Windows executable
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v5
+        with:
+          name: StorageScope-windows-x64-smoke
+          path: dist/windows-x64/StorageScope.exe
+          if-no-files-found: error

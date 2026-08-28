@@ -24,7 +24,7 @@
         <ComboBox x:Name="DrivePicker" Width="260" SelectionChanged="DrivePicker_SelectionChanged">
           <ComboBox.ItemTemplate>
             <DataTemplate>
-              <TextBlock><Run Text="{Binding VolumeLabel}"/><Run Text="  "/><Run Text="{Binding FreeLabel}" Foreground="#707887"/></TextBlock>
+              <TextBlock><Run Text="{Binding VolumeLabel, Mode=OneWay}"/><Run Text="  "/><Run Text="{Binding FreeLabel, Mode=OneWay}" Foreground="#707887"/></TextBlock>
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
