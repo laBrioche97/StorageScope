@@ -72,7 +72,7 @@ jobs:
           New-Item -ItemType Directory -Path release-assets -Force | Out-Null
           Compress-Archive -Path "dist/${{ matrix.runtime }}/*" -DestinationPath "release-assets/$asset"
           $hash = (Get-FileHash "release-assets/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $asset" | Set-Content "release-assets/$asset.sha256" -Encoding ascii
+          Set-Content "release-assets/$asset.sha256" -Value "$hash  $asset" -Encoding ascii -NoNewline
 
       - name: Preserve workflow artifact
         uses: actions/upload-artifact@v5
