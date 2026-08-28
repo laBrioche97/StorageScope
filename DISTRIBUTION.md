@@ -1,13 +1,14 @@
 # Distribution de StorageScope sur GitHub
 
-Ce dépôt est prévu pour être publié sous le nom `laBrioche97/StorageScope`. Deux workflows GitHub Actions assurent la distribution :
+Ce dépôt est prévu pour être publié sous le nom `laBrioche97/StorageScope`. Les workflows GitHub Actions assurent la distribution :
 
-- `.github/workflows/ci.yml` compile le projet en Swift strict et exécute les validations à chaque push sur `main` et chaque pull request ;
+- `.github/workflows/ci.yml` compile le projet Swift et la cible Windows .NET 8 avec les avertissements traités comme erreurs, puis exécute les validations à chaque push sur `main` et chaque pull request ;
 - `.github/workflows/release.yml` répond à un tag `vX.Y.Z`, vérifie que le tag correspond au `CFBundleShortVersionString`, construit un bundle universel `arm64` + `x86_64`, exécute les tests, vérifie la signature et publie l’application, sa somme SHA-256 et son dSYM.
+- `.github/workflows/release-windows.yml` construit sur le même tag les exécutables Windows autonomes x64 et ARM64, puis les ajoute avec leurs sommes SHA-256 à la même release publique.
 
 ## Publier une nouvelle version
 
-1. Mettre à jour les deux valeurs de `Packaging/Info.plist` :
+1. Mettre à jour les deux valeurs de `Packaging/Info.plist` ainsi que `<Version>` dans `Windows/StorageScope.Windows/StorageScope.Windows.csproj` :
    - `CFBundleShortVersionString` pour la version publique, par exemple `2.1.0` ;
    - `CFBundleVersion` pour un numéro de build entier strictement croissant.
 2. Compiler et tester localement :

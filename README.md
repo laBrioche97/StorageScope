@@ -1,8 +1,28 @@
 # StorageScope
 
-StorageScope est une application macOS native, locale et sans télémétrie qui répond à une question simple : **qu’est-ce qui occupe réellement le stockage de ce Mac ?**
+StorageScope est une application native pour **macOS et Windows**, locale et sans télémétrie, qui répond à une question simple : **qu’est-ce qui occupe réellement le stockage de cet ordinateur ?**
 
-La version 2.0.1 est une application SwiftUI complète. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration visuelle exhaustive et ne modifie que les éléments explicitement confirmés.
+La version 2.1.0 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
+
+## Installer sur Windows
+
+Les releases proposent des exécutables autonomes pour **Windows 10/11 x64 et ARM64**. Aucun environnement .NET séparé n’est nécessaire.
+
+1. Ouvrir la page [Releases](https://github.com/laBrioche97/StorageScope/releases).
+2. Télécharger `StorageScope-Windows-x64.zip` pour la majorité des PC, ou `StorageScope-Windows-arm64.zip` pour un PC Windows ARM.
+3. Décompresser l’archive et lancer `StorageScope.exe`.
+
+Installation de la dernière version dans le profil utilisateur, avec vérification SHA-256 et raccourci dans le menu Démarrer :
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/laBrioche97/StorageScope/main/scripts/install-release.ps1 -OutFile StorageScope-install.ps1
+Get-Content .\StorageScope-install.ps1
+powershell -ExecutionPolicy Bypass -File .\StorageScope-install.ps1 -Version latest
+```
+
+L’application Windows analyse les disques en parallèle, affiche une progression fondée sur les octets identifiés, permet la navigation complète dans les dossiers, classe les données, suggère des nettoyages prudents, utilise la Corbeille Windows et lance uniquement le désinstalleur officiel déclaré par une application.
+
+## Installer sur macOS
 
 ## Installer une version publiée
 
@@ -19,7 +39,7 @@ less StorageScope-install.zsh
 Installation d’une version précise :
 
 ```sh
-/bin/zsh StorageScope-install.zsh 2.0.1
+/bin/zsh StorageScope-install.zsh 2.1.0
 ```
 
 L’installeur télécharge uniquement la release officielle, vérifie sa somme SHA-256, son identifiant de bundle, sa signature et la présence des deux architectures avant de remplacer l’application. Il conserve temporairement la version précédente dans `/tmp` et ne ferme jamais de force une instance en cours d’exécution.
@@ -84,7 +104,7 @@ Activez StorageScope, quittez-la complètement avec `⌘Q`, puis relancez-la. Le
 
 Le toolchain Command Line Tools utilisé pendant le développement est une version Swift 6.4 préliminaire dont le moteur `swiftbuild` échoue à initialiser un manifeste. La validation locale a donc utilisé temporairement `--build-system native`; ce contournement n’est normalement pas nécessaire avec Xcode.
 
-## Fonctions du MVP
+## Fonctions de la version macOS
 
 - scan asynchrone et annulable, sans blocage de l’interface ;
 - résultats progressifs publiés par lots ;
@@ -234,6 +254,7 @@ Sources/
     ├── EmptyTrashView.swift
     └── PermissionView.swift
 Tests/StorageCoreTests/main.swift   validations autonomes
+Windows/StorageScope.Windows/       application native Windows WPF/.NET 8
 ```
 
 Le scanner tourne dans une tâche `userInitiated`, respecte `Task` cancellation et communique par `AsyncStream`. Les événements légers de progression sont isolés dans `ScanStatus`, afin de ne pas invalider la Table SwiftUI. L’état applicatif ne change que depuis `AppModel`, isolé sur `MainActor`. Le flux conserve au plus cinq événements récents.

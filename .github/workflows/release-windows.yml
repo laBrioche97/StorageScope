@@ -1,0 +1,98 @@
+name: Release Windows application
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish (for example v2.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-windows:
+    name: Build Windows ${{ matrix.runtime }}
+    runs-on: windows-2025
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [win-x64, win-arm64]
+    env:
+      REQUESTED_TAG: ${{ github.event.inputs.tag }}
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Validate version
+        shell: pwsh
+        run: |
+          $tag = if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch") { $env:REQUESTED_TAG } else { $env:GITHUB_REF_NAME }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+([+-][0-9A-Za-z.-]+)?$') { throw "Invalid release tag: $tag" }
+          git rev-parse --verify "refs/tags/$tag^{commit}"
+          $project = [xml](Get-Content Windows/StorageScope.Windows/StorageScope.Windows.csproj)
+          $version = $project.Project.PropertyGroup.Version
+          if ($version -ne $tag.TrimStart('v')) { throw "Tag $tag does not match Windows version $version" }
+          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Build self-contained executable
+        shell: pwsh
+        run: |
+          dotnet publish Windows/StorageScope.Windows/StorageScope.Windows.csproj `
+            --configuration Release `
+            --runtime ${{ matrix.runtime }} `
+            --self-contained true `
+            --output "dist/${{ matrix.runtime }}" `
+            -p:TreatWarningsAsErrors=true
+
+      - name: Create archive and checksum
+        shell: pwsh
+        run: |
+          $architecture = "${{ matrix.runtime }}".Replace("win-", "")
+          $asset = "StorageScope-Windows-$architecture.zip"
+          New-Item -ItemType Directory -Path release-assets -Force | Out-Null
+          Compress-Archive -Path "dist/${{ matrix.runtime }}/*" -DestinationPath "release-assets/$asset"
+          $hash = (Get-FileHash "release-assets/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content "release-assets/$asset.sha256" -Encoding ascii
+
+      - name: Preserve workflow artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: StorageScope-${{ env.RELEASE_VERSION }}-${{ matrix.runtime }}
+          path: release-assets/*
+          if-no-files-found: error
+
+      - name: Create release if necessary and upload Windows files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --verify-tag --generate-notes --title "StorageScope $env:RELEASE_VERSION"
+            if ($LASTEXITCODE -ne 0) {
+              Start-Sleep -Seconds 5
+              gh release view $tag
+            }
+          }
+          gh release upload $tag release-assets/* --clobber

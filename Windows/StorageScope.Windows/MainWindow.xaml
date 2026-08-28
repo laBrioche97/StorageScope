@@ -1,0 +1,154 @@
+<Window x:Class="StorageScope.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="StorageScope" Width="1280" Height="820" MinWidth="980" MinHeight="650"
+        Loaded="Window_Loaded">
+  <Grid Margin="18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Grid Grid.Row="0" Margin="0,0,0,14">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock Text="StorageScope" FontSize="28" FontWeight="SemiBold"/>
+        <TextBlock x:Name="VolumeTitle" Text="Vue d’ensemble — choisissez un volume" Foreground="{StaticResource MutedBrush}" FontSize="14"/>
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+        <ComboBox x:Name="DrivePicker" Width="260" SelectionChanged="DrivePicker_SelectionChanged">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock><Run Text="{Binding VolumeLabel}"/><Run Text="  "/><Run Text="{Binding FreeLabel}" Foreground="#707887"/></TextBlock>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Button x:Name="ScanButton" Content="Analyser" Click="ScanButton_Click" Background="{StaticResource AccentBrush}"/>
+        <Button x:Name="CancelButton" Content="Annuler" Click="CancelButton_Click" IsEnabled="False"/>
+        <Button Content="Actualiser" Click="RefreshButton_Click"/>
+      </StackPanel>
+    </Grid>
+
+    <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="10" Padding="12" Margin="0,0,0,12">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <ProgressBar x:Name="ScanProgressBar" Height="6" Minimum="0" Maximum="100" Value="0" Foreground="{StaticResource AccentBrush}"/>
+        <Grid Grid.Row="1" Margin="0,8,0,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock x:Name="ScanStatusText" Text="Prêt" TextTrimming="CharacterEllipsis" Foreground="{StaticResource MutedBrush}"/>
+          <TextBlock x:Name="SpaceStatusText" Grid.Column="1" Foreground="{StaticResource MutedBrush}"/>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <TabControl Grid.Row="2" x:Name="MainTabs" Background="{StaticResource PageBrush}" Foreground="{StaticResource TextBrush}" BorderBrush="#343A45">
+      <TabItem Header="Vue d’ensemble">
+        <Grid Margin="12">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+          <UniformGrid Rows="1" Columns="4" Margin="0,0,0,12">
+            <GroupBox Header="Espace identifié"><TextBlock x:Name="IdentifiedText" Text="—" FontSize="24" FontWeight="SemiBold"/></GroupBox>
+            <GroupBox Header="Fichiers"><TextBlock x:Name="FilesText" Text="—" FontSize="24" FontWeight="SemiBold"/></GroupBox>
+            <GroupBox Header="Dossiers"><TextBlock x:Name="DirectoriesText" Text="—" FontSize="24" FontWeight="SemiBold"/></GroupBox>
+            <GroupBox Header="Refus d’accès"><TextBlock x:Name="ErrorsText" Text="—" FontSize="24" FontWeight="SemiBold"/></GroupBox>
+          </UniformGrid>
+          <GroupBox Grid.Row="1" Header="Fichiers les plus volumineux">
+            <DataGrid x:Name="LargestFilesGrid" ItemsSource="{Binding LargestFiles}" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" Background="#15181D" Foreground="White" RowBackground="#191C22" AlternatingRowBackground="#1E2229" BorderThickness="0">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="2*"/>
+                <DataGridTextColumn Header="Taille" Binding="{Binding DisplaySize}" Width="120"/>
+                <DataGridTextColumn Header="Catégorie" Binding="{Binding Type}" Width="180"/>
+                <DataGridTextColumn Header="Emplacement" Binding="{Binding Path}" Width="3*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </GroupBox>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="Explorateur">
+        <Grid Margin="12">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="240"/></Grid.ColumnDefinitions>
+            <Button Content="← Parent" Click="ParentButton_Click"/>
+            <TextBox x:Name="ExplorerPathBox" Grid.Column="1" Margin="6,4" KeyDown="ExplorerPathBox_KeyDown"/>
+            <TextBox x:Name="ExplorerSearchBox" Grid.Column="2" Margin="6,4" TextChanged="ExplorerSearchBox_TextChanged" ToolTip="Rechercher dans le dossier"/>
+          </Grid>
+          <DataGrid Grid.Row="1" x:Name="ExplorerGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" MouseDoubleClick="ExplorerGrid_MouseDoubleClick" Background="#15181D" Foreground="White" RowBackground="#191C22" AlternatingRowBackground="#1E2229" BorderThickness="0" Margin="0,8">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Nom" Binding="{Binding Name}" Width="2*"/>
+              <DataGridTextColumn Header="Taille" Binding="{Binding DisplaySize}" Width="120"/>
+              <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="180"/>
+              <DataGridTextColumn Header="Modifié" Binding="{Binding Modified}" Width="170"/>
+              <DataGridTextColumn Header="Chemin" Binding="{Binding Path}" Width="3*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Ouvrir" Click="OpenSelection_Click"/>
+            <Button Content="Afficher dans l’Explorateur" Click="RevealSelection_Click"/>
+            <Button Content="Mettre à la Corbeille…" Click="TrashSelection_Click"/>
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="Catégories">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <ItemsControl x:Name="CategoriesList" Margin="12">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Background="#20242B" BorderBrush="#343A45" BorderThickness="1" CornerRadius="12" Padding="18" Margin="6" MinHeight="126">
+                  <StackPanel>
+                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding DisplaySize}" FontSize="25" FontWeight="Bold" Margin="0,12,0,4" Foreground="#FF69A9"/>
+                    <TextBlock Text="{Binding Details}" Foreground="{StaticResource MutedBrush}"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Nettoyage conseillé">
+        <Grid Margin="12">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="Suggestions prudentes : aucun élément n’est sélectionné ou supprimé automatiquement." Foreground="{StaticResource MutedBrush}" Margin="4,4,4,10"/>
+          <DataGrid Grid.Row="1" x:Name="CleanupGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" Background="#15181D" Foreground="White" RowBackground="#191C22" AlternatingRowBackground="#1E2229" BorderThickness="0">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Élément" Binding="{Binding Name}" Width="2*"/>
+              <DataGridTextColumn Header="Taille" Binding="{Binding DisplaySize}" Width="120"/>
+              <DataGridTextColumn Header="Raison" Binding="{Binding Reason}" Width="2*"/>
+              <DataGridTextColumn Header="Chemin" Binding="{Binding Path}" Width="3*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Examiner dans l’Explorateur" Click="RevealCleanup_Click"/>
+            <Button Content="Mettre la sélection à la Corbeille…" Click="TrashCleanup_Click"/>
+          </StackPanel>
+        </Grid>
+      </TabItem>
+
+      <TabItem Header="Applications">
+        <Grid Margin="12">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <TextBlock Text="StorageScope utilise exclusivement le désinstalleur officiel déclaré par chaque application." Foreground="{StaticResource MutedBrush}" Margin="4,4,4,10"/>
+          <DataGrid Grid.Row="1" x:Name="ApplicationsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" Background="#15181D" Foreground="White" RowBackground="#191C22" AlternatingRowBackground="#1E2229" BorderThickness="0">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Application" Binding="{Binding Name}" Width="2*"/>
+              <DataGridTextColumn Header="Éditeur et version" Binding="{Binding Details}" Width="2*"/>
+              <DataGridTextColumn Header="Emplacement" Binding="{Binding InstallLocation}" Width="3*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <Button Grid.Row="2" Content="Lancer la désinstallation officielle…" HorizontalAlignment="Right" Click="UninstallApplication_Click"/>
+        </Grid>
+      </TabItem>
+    </TabControl>
+
+    <TextBlock Grid.Row="3" Margin="4,10,4,0" Text="Analyse locale · aucune télémétrie · les liens symboliques et points de jonction ne sont jamais suivis" Foreground="#707887"/>
+  </Grid>
+</Window>

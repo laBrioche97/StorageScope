@@ -46,3 +46,23 @@ jobs:
         run: |
           TEST_BINARY="$(swift build --disable-sandbox --product StorageCoreTests --show-bin-path)/StorageCoreTests"
           "$TEST_BINARY"
+
+  windows-build:
+    name: Windows .NET 8 build
+    runs-on: windows-2025
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build Windows application with warnings as errors
+        run: dotnet build Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release -p:TreatWarningsAsErrors=true
+
+      - name: Validate self-contained x64 publication
+        run: dotnet publish Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release --runtime win-x64 --self-contained true --output dist/windows-x64 -p:TreatWarningsAsErrors=true
