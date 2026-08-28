@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using Microsoft.VisualBasic.FileIO;
 using System.Diagnostics;
+using System.IO;
 
 namespace StorageScope.Windows;
 

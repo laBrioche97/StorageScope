@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace StorageScope.Windows;
 
 public static class CategoryClassifier
