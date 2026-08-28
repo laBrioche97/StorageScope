@@ -79,7 +79,7 @@ jobs:
           Stop-Process -Id $process.Id -Force
 
       - name: Preserve the smoke-tested Windows executable
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'codex/')
         uses: actions/upload-artifact@v5
         with:
           name: StorageScope-windows-x64-smoke
