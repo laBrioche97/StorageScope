@@ -2,57 +2,28 @@
 
 StorageScope est une application native pour **macOS et Windows**, locale et sans télémétrie, qui répond à une question simple : **qu’est-ce qui occupe réellement le stockage de cet ordinateur ?**
 
-La version 2.1.0 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
+La version 3.0 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
 
-## Installer sur Windows
+## Installer StorageScope 3
 
-Les releases proposent des exécutables autonomes pour **Windows 10/11 x64 et ARM64**. Aucun environnement .NET séparé n’est nécessaire.
+Ouvrir [Téléchargements](https://labrioche.tech/telechargements) depuis un ordinateur compatible, puis cliquer sur **Télécharger StorageScope**. Le site ne propose aucun fichier si la plateforme n'est pas prise en charge ou si son installateur n'est pas publié.
 
-1. Ouvrir la page [Releases](https://github.com/laBrioche97/StorageScope/releases).
-2. Télécharger `StorageScope-Windows-x64.zip` pour la majorité des PC, ou `StorageScope-Windows-arm64.zip` pour un PC Windows ARM.
-3. Décompresser l’archive et lancer `StorageScope.exe`.
+- **Windows 10 version 2004 ou ultérieur / Windows 11, x64 ou ARM64** : ouvrir `StorageScope-Windows-Setup.exe`. L'installateur choisit le processeur natif, installe le logiciel dans le profil utilisateur et crée son raccourci. .NET est inclus ; aucun téléchargement de runtime n'est nécessaire.
+- **macOS 14 ou ultérieur, Intel ou Apple Silicon** : ouvrir `StorageScope-macOS-universal.pkg`. Le paquet universel installe le logiciel dans Applications. L'Accès complet au disque reste une permission explicite dans les réglages macOS.
 
-Installation de la dernière version dans le profil utilisateur, avec vérification SHA-256 et raccourci dans le menu Démarrer :
+Le premier passage depuis une ancienne version ZIP se fait par cet installateur. Les versions 3 signées proposent ensuite leurs mises à jour dans l'application : nouveautés, acceptation, téléchargement vérifié, installation et redémarrage. **Plus tard** laisse la version actuelle utilisable. Le démarrage, l'analyse et le nettoyage n'exigent ni réseau ni compte.
 
-```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/laBrioche97/StorageScope/main/scripts/install-release.ps1 -OutFile StorageScope-install.ps1
-Get-Content .\StorageScope-install.ps1
-powershell -ExecutionPolicy Bypass -File .\StorageScope-install.ps1 -Version latest
-```
+## Nettoyer et désinstaller
 
-L’application Windows analyse les disques en parallèle, affiche une progression fondée sur les octets identifiés, permet la navigation complète dans les dossiers, classe les données, suggère des nettoyages prudents, utilise la Corbeille Windows et lance uniquement le désinstalleur officiel déclaré par une application.
+Le parcours est **Analyser → Choisir → Vérifier → Nettoyer**. Les fichiers personnels restent décochés. Les caches reconnus sont expliqués ; une confirmation précède leur mise à la Corbeille. Le bilan distingue les réussites, les éléments bloqués et l'espace récupérable après vidage.
 
-## Installer sur macOS
+Les bibliothèques Steam/Epic et les désinstalleurs enregistrés de GOG, EA, Ubisoft et Battle.net sont inventoriés localement sous Windows ; les paquets Xbox/Microsoft Store utilisent l'API Windows. Sur Mac, Steam, Epic et les installations Battle.net reconnues complètent les bundles d'applications ordinaires. Une action externe obligatoire est annoncée ; aucune suppression directe de dossier ne remplace un moteur officiel indisponible.
 
-## Installer une version publiée
+StorageScope ne retire pas les sauvegardes par défaut. Les options du désinstalleur officiel doivent aussi être vérifiées. Après une désinstallation Steam confirmée, les caches de shaders portant l'identifiant exact du jeu peuvent être proposés séparément ; les sauvegardes, mods et Workshop restent conservés. Les résidus sans attribution fiable ne sont pas supprimés.
 
-Les releases GitHub contiennent une application **universelle Apple Silicon + Intel**, compatible avec macOS 14 et les versions ultérieures. La page [Releases](https://github.com/laBrioche97/StorageScope/releases) permet de choisir précisément la version à installer.
+Les chemins système, données sensibles, liens/jonctions et emplacements cloud sont protégés. L'identité est revérifiée avant l'action ; l'historique reste local dans `LocalAppData/StorageScope/History` sur Windows et `~/Library/Application Support/StorageScope/History` sur Mac.
 
-Installation de la dernière version publiée, avec vérification SHA-256. Téléchargez et examinez d’abord le petit script d’installation :
-
-```sh
-curl -fsSLo StorageScope-install.zsh https://raw.githubusercontent.com/laBrioche97/StorageScope/main/scripts/install-release.sh
-less StorageScope-install.zsh
-/bin/zsh StorageScope-install.zsh latest
-```
-
-Installation d’une version précise :
-
-```sh
-/bin/zsh StorageScope-install.zsh 2.1.0
-```
-
-L’installeur télécharge uniquement la release officielle, vérifie sa somme SHA-256, son identifiant de bundle, sa signature et la présence des deux architectures avant de remplacer l’application. Il conserve temporairement la version précédente dans `/tmp` et ne ferme jamais de force une instance en cours d’exécution.
-
-Pour une installation manuelle, téléchargez `StorageScope-universal.zip` et `StorageScope-universal.zip.sha256` depuis la release choisie, placez-les dans le même dossier, puis exécutez :
-
-```sh
-shasum -a 256 -c StorageScope-universal.zip.sha256
-```
-
-Décompressez ensuite l’archive et déplacez `StorageScope.app` dans `/Applications`. Une release ad hoc non notariée doit être ouverte une première fois avec **clic droit → Ouvrir**. L’installeur ne retire pas l’attribut de quarantaine ; il l’ajoute même lorsque `curl` ne l’a pas transmis à une release refusée par Gatekeeper. Les releases signées Developer ID et notariées s’ouvrent normalement. Dans les deux cas, ajoutez ensuite StorageScope dans **Réglages Système → Confidentialité et sécurité → Accès complet au disque**.
-
-La procédure de publication, les secrets facultatifs de signature et la restauration d’une ancienne version sont documentés dans [DISTRIBUTION.md](DISTRIBUTION.md).
+La publication publique nécessite les signatures Windows et Apple, la notarisation et les clés de mise à jour décrites dans [DISTRIBUTION.md](DISTRIBUTION.md). Une build de développement n'est pas une distribution signée et ne propose pas de mise à jour automatique.
 
 ## Ouvrir et lancer dans Xcode
 
@@ -254,7 +225,7 @@ Sources/
     ├── EmptyTrashView.swift
     └── PermissionView.swift
 Tests/StorageCoreTests/main.swift   validations autonomes
-Windows/StorageScope.Windows/       application native Windows WPF/.NET 8
+Windows/StorageScope.Windows/       application native Windows WPF/.NET 10
 ```
 
 Le scanner tourne dans une tâche `userInitiated`, respecte `Task` cancellation et communique par `AsyncStream`. Les événements légers de progression sont isolés dans `ScanStatus`, afin de ne pas invalider la Table SwiftUI. L’état applicatif ne change que depuis `AppModel`, isolé sur `MainActor`. Le flux conserve au plus cinq événements récents.

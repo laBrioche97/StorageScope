@@ -116,7 +116,20 @@ else
     /bin/chmod 755 "$STAGING_APPLICATION/Contents/MacOS/StorageScope"
 fi
 /bin/cp "$PROJECT_DIRECTORY/Packaging/Info.plist" "$STAGING_APPLICATION/Contents/Info.plist"
+/bin/cp "$PROJECT_DIRECTORY/Packaging/Branding/StorageScope.icns" "$STAGING_APPLICATION/Contents/Resources/StorageScope.icns"
 /bin/cp "$PROJECT_DIRECTORY/Packaging/PrivacyInfo.xcprivacy" "$STAGING_APPLICATION/Contents/Resources/PrivacyInfo.xcprivacy"
+
+# Sparkle is embedded locally: launching and using the app never downloads a runtime.
+SPARKLE_FRAMEWORK=$(/usr/bin/find "$SWIFTPM_BUILD_DIRECTORY" -type d -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' -print -quit)
+if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
+    echo "Sparkle.framework is missing from the resolved SwiftPM artifacts." >&2
+    exit 1
+fi
+/bin/mkdir -p "$STAGING_APPLICATION/Contents/Frameworks"
+/usr/bin/ditto "$SPARKLE_FRAMEWORK" "$STAGING_APPLICATION/Contents/Frameworks/Sparkle.framework"
+if [[ -n "${STORAGESCOPE_SPARKLE_PUBLIC_KEY:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $STORAGESCOPE_SPARKLE_PUBLIC_KEY" "$STAGING_APPLICATION/Contents/Info.plist"
+fi
 
 FINAL_ARCHITECTURES=$(/usr/bin/lipo -archs "$STAGING_APPLICATION/Contents/MacOS/StorageScope")
 for ARCHITECTURE in "${ARCHITECTURES[@]}"; do
@@ -136,14 +149,27 @@ fi
 /usr/bin/plutil -lint "$STAGING_APPLICATION/Contents/Resources/PrivacyInfo.xcprivacy"
 /usr/bin/xattr -cr "$STAGING_APPLICATION"
 typeset -a TIMESTAMP_ARGUMENTS
+typeset -a RUNTIME_ARGUMENTS
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
     TIMESTAMP_ARGUMENTS=(--timestamp=none)
+    RUNTIME_ARGUMENTS=()
 else
     TIMESTAMP_ARGUMENTS=(--timestamp)
+    RUNTIME_ARGUMENTS=(--options runtime)
 fi
+# Sign every nested Mach-O and helper before the enclosing framework and app.
+while IFS= read -r SPARKLE_BINARY; do
+    if /usr/bin/file "$SPARKLE_BINARY" | /usr/bin/grep -q 'Mach-O'; then
+        /usr/bin/codesign --force "${RUNTIME_ARGUMENTS[@]}" "${TIMESTAMP_ARGUMENTS[@]}" --sign "$SIGNING_IDENTITY" "$SPARKLE_BINARY"
+    fi
+done < <(/usr/bin/find "$STAGING_APPLICATION/Contents/Frameworks/Sparkle.framework" -type f -perm -111)
+while IFS= read -r SPARKLE_HELPER; do
+    /usr/bin/codesign --force "${RUNTIME_ARGUMENTS[@]}" "${TIMESTAMP_ARGUMENTS[@]}" --sign "$SIGNING_IDENTITY" "$SPARKLE_HELPER"
+done < <(/usr/bin/find "$STAGING_APPLICATION/Contents/Frameworks/Sparkle.framework" -depth -type d \( -name '*.xpc' -o -name '*.app' \))
+/usr/bin/codesign --force "${RUNTIME_ARGUMENTS[@]}" "${TIMESTAMP_ARGUMENTS[@]}" --sign "$SIGNING_IDENTITY" "$STAGING_APPLICATION/Contents/Frameworks/Sparkle.framework"
 /usr/bin/codesign \
     --force \
-    --options runtime \
+    "${RUNTIME_ARGUMENTS[@]}" \
     "${TIMESTAMP_ARGUMENTS[@]}" \
     --sign "$SIGNING_IDENTITY" \
     "$STAGING_APPLICATION"
@@ -156,7 +182,7 @@ fi
 /usr/bin/xattr -cr "$APPLICATION_PATH"
 /usr/bin/codesign \
     --force \
-    --options runtime \
+    "${RUNTIME_ARGUMENTS[@]}" \
     "${TIMESTAMP_ARGUMENTS[@]}" \
     --sign "$SIGNING_IDENTITY" \
     "$APPLICATION_PATH"

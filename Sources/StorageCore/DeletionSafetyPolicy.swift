@@ -56,6 +56,7 @@ public enum DeletionSafetyPolicy {
 
     private static func isProtectedPath(_ path: String, isDirectory: Bool, homePath: String) -> Bool {
         if isSystemTree(path) { return true }
+        if isManagedGamePath(path) || isCloudPath(path) { return true }
         guard let home = homeRoot(containing: path, preferredHomePath: homePath) else {
             return path == "/Users" || path == "/Applications" || path == "/Volumes"
         }
@@ -105,6 +106,7 @@ public enum DeletionSafetyPolicy {
         guard BundleIdentifierValidator.isValid(bundleIdentifier),
               !bundleIdentifier.lowercased().hasPrefix("com.apple.") else { return false }
         let path = url.standardizedFileURL.path
+        guard !isManagedGamePath(path), !isCloudPath(path) else { return false }
         guard !isSystemTree(path) else { return false }
 
         if url.pathExtension.lowercased() == "app", isDirectory,
@@ -134,6 +136,19 @@ public enum DeletionSafetyPolicy {
         return parent == byHost
             && (name == bundleIdentifier + ".plist" || name.hasPrefix(bundleIdentifier + "."))
             && name.hasSuffix(".plist")
+    }
+
+    public static func isManagedGamePath(_ path: String) -> Bool {
+        let components = path.lowercased().split(separator: "/")
+        return components.contains("steamapps") || components.contains("epic games")
+            || components.contains("battle.net") || components.contains("gog galaxy")
+    }
+
+    public static func isCloudPath(_ path: String) -> Bool {
+        let components = path.lowercased().split(separator: "/")
+        return components.contains("cloudstorage") || components.contains("mobile documents")
+            || components.contains("dropbox") || components.contains("iclouddrive")
+            || components.contains(where: { $0 == "onedrive" || $0.hasPrefix("onedrive - ") || $0 == "google drive" })
     }
 
     private static func isSystemTree(_ path: String) -> Bool {

@@ -98,6 +98,11 @@ final class ScanStatus: ObservableObject {
 
 @MainActor
 final class AppModel: ObservableObject {
+    @Published var trashIsWorking = false
+    @Published var gameUninstallIsWorking = false
+    var operationsAreBusy: Bool {
+        isScanning || cleanupIsAnalyzing || duplicateIsAnalyzing || uninstallIsWorking || trashIsWorking || gameUninstallIsWorking || emptyTrashStep == .running
+    }
     @Published var sidebar: SidebarSection? = .overview
     @Published var volumes: [StorageVolume]
     @Published var selectedVolumeID: String
@@ -768,11 +773,13 @@ final class AppModel: ObservableObject {
     func confirmTrash() {
         let preflights = requestedTrashPreflights
         let items = preflights.map(\.item)
-        guard !preflights.isEmpty else { return }
+        guard !preflights.isEmpty, !trashIsWorking else { return }
+        trashIsWorking = true
         showingTrashConfirmation = false
         requestedTrashPreflights = []
         trashRequestGeneration = UUID()
         Task {
+            defer { trashIsWorking = false }
             let results = await trashService.trashWithResults(preflights)
             let trashedPaths = Set(results.filter { $0.status == .trashed }.map { $0.originalURL.standardizedFileURL.path })
             let succeeded = items.filter { trashedPaths.contains($0.url.standardizedFileURL.path) }
@@ -796,9 +803,7 @@ final class AppModel: ObservableObject {
                 }
             }
             let failures = results.filter { $0.status == .failed }
-            if !failures.isEmpty {
-                alertMessage = "\(succeeded.count) élément(s) déplacé(s), \(failures.count) échec(s).\n" + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
-            }
+            alertMessage = "\(succeeded.count) élément(s) dans la Corbeille, \(failures.count) échec(s). L’espace sera libéré après vidage de la Corbeille.\n" + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
         }
     }
 

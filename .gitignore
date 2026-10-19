@@ -17,6 +17,11 @@ DerivedData/
 *.provisionprofile
 *.pem
 *.key
+!Packaging/windows-update-public-key.pem
+**/bin/
+**/obj/
+release-assets/
+.test-data/
 
 # Artefacts générés et archives de distribution.
 *.app

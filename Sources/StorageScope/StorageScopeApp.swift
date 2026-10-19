@@ -3,15 +3,22 @@ import SwiftUI
 @main
 struct StorageScopeApp: App {
     @StateObject private var model = AppModel()
+    @StateObject private var updates = SoftwareUpdates()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 1_050, minHeight: 680)
+                .environmentObject(updates)
+                .frame(minWidth: 780, minHeight: 560)
+                .onChange(of: model.operationsAreBusy) { _, busy in updates.activityChanged(busy) }
                 .task { await model.restoreLastScan() }
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Rechercher des mises à jour…") { updates.check() }
+                    .disabled(model.operationsAreBusy)
+            }
             CommandGroup(after: .newItem) {
                 Button("Nouvelle analyse") { model.startScan() }
                     .keyboardShortcut("r", modifiers: .command)

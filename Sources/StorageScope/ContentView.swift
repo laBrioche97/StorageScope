@@ -114,6 +114,11 @@ struct ContentView: View {
 
             Button("Corbeille", systemImage: "trash") { model.prepareEmptyTrash() }
                 .help("Inventorier ou vider définitivement la Corbeille")
+            Button("Historique", systemImage: "clock.arrow.circlepath") {
+                let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/StorageScope/History", isDirectory: true)
+                do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true); NSWorkspace.shared.open(directory) }
+                catch { model.alertMessage = error.localizedDescription }
+            }
 
             if model.isScanning {
                 Button("Arrêter", systemImage: "stop.fill") { model.stopScan() }
@@ -130,6 +135,8 @@ private struct StorageResultsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            Text("1. Analyser  →  2. Choisir  →  3. Vérifier  →  4. Nettoyer")
+                .font(.callout).foregroundStyle(.secondary).padding(12)
             if let volume = model.selectedVolume {
                 VolumeCard(
                     volume: volume,

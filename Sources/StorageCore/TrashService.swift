@@ -277,13 +277,16 @@ public actor TrashService {
             do {
                 try validateTrashable(item, authorization: value.authorization)
                 guard try identity(at: item.url) == expectedIdentity else { throw TrashError.identityChanged(item.url.path) }
+                try OperationJournal.append(operation: "corbeille", path: item.url.path, status: "préparé")
                 var resultURL: NSURL?
                 try FileManager.default.trashItem(at: item.url, resultingItemURL: &resultURL)
+                try? OperationJournal.append(operation: "corbeille", path: item.url.path, status: "corbeille")
                 return TrashOperationResult(
                     originalURL: item.url, resultingURL: resultURL as URL?, expectedIdentity: expectedIdentity,
                     status: .trashed, allocatedBytesUpperBound: item.allocatedSize
                 )
             } catch {
+                try? OperationJournal.append(operation: "corbeille", path: item.url.path, status: "échec", message: error.localizedDescription)
                 return TrashOperationResult(
                     originalURL: item.url, expectedIdentity: expectedIdentity, status: .failed,
                     allocatedBytesUpperBound: item.allocatedSize, errorDescription: error.localizedDescription
@@ -398,6 +401,13 @@ public actor TrashService {
 
     private func validateTrashable(_ item: FileSystemItem, authorization: TrashAuthorization) throws {
         let path = item.url.standardizedFileURL.path
+        guard !DeletionSafetyPolicy.isCloudPath(path), !DeletionSafetyPolicy.isManagedGamePath(path) else { throw TrashError.protectedItem(path) }
+        var ancestor = item.url.standardizedFileURL
+        while ancestor.path != "/" {
+            let values = try ancestor.resourceValues(forKeys: [.isSymbolicLinkKey, .isUbiquitousItemKey])
+            if values.isSymbolicLink == true || values.isUbiquitousItem == true { throw TrashError.protectedItem(path) }
+            ancestor.deleteLastPathComponent()
+        }
         switch authorization {
         case .userSelection:
             guard item.isTrashable,

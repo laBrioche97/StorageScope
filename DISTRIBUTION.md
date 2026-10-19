@@ -1,101 +1,68 @@
-# Distribution de StorageScope sur GitHub
+# Distribution signée de StorageScope 3
 
-Ce dépôt est prévu pour être publié sous le nom `laBrioche97/StorageScope`. Les workflows GitHub Actions assurent la distribution :
+## Construire et vérifier
 
-- `.github/workflows/ci.yml` compile le projet Swift et la cible Windows .NET 8 avec les avertissements traités comme erreurs, puis exécute les validations à chaque push sur `main` et chaque pull request ;
-- `.github/workflows/release.yml` répond à un tag `vX.Y.Z`, vérifie que le tag correspond au `CFBundleShortVersionString`, construit un bundle universel `arm64` + `x86_64`, exécute les tests, vérifie la signature et publie l’application, sa somme SHA-256 et son dSYM.
-- `.github/workflows/release-windows.yml` construit sur le même tag les exécutables Windows autonomes x64 et ARM64, puis les ajoute avec leurs sommes SHA-256 à la même release publique.
+Windows utilise .NET 10 LTS, WPF et Inno Setup 7.1.0. macOS utilise Swift 6 / macOS 14+, SwiftUI et Sparkle 2.9.6. Tous les composants nécessaires à l’exécution sont embarqués ; seul l’outil de développement doit résoudre ses dépendances pendant la compilation.
 
-## Publier une nouvelle version
+```powershell
+dotnet run --project Windows/StorageScope.Windows.Tests -c Release
+./scripts/build-windows-release.ps1 -Tag v3.0.0 -Development
+```
 
-1. Mettre à jour les deux valeurs de `Packaging/Info.plist` ainsi que `<Version>` dans `Windows/StorageScope.Windows/StorageScope.Windows.csproj` :
-   - `CFBundleShortVersionString` pour la version publique, par exemple `2.1.0` ;
-   - `CFBundleVersion` pour un numéro de build entier strictement croissant.
-2. Compiler et tester localement :
+```sh
+swift build --disable-sandbox -Xswiftc -warnings-as-errors
+swift run --disable-sandbox StorageCoreTests
+zsh scripts/build-app.sh
+```
 
-   ```sh
-   swift build --disable-sandbox -Xswiftc -warnings-as-errors
-   swift run StorageCoreTests
-   STORAGESCOPE_ARCHITECTURES=universal ./scripts/build-app.sh
-   lipo -archs dist/StorageScope.app/Contents/MacOS/StorageScope
-   ```
+Les builds de développement ne sont pas signées pour une distribution publique. La recherche de mises à jour y reste désactivée sans clé publique et identité d’éditeur. Ne jamais les annoncer comme exemptes de SmartScreen ou Gatekeeper.
 
-3. Commiter la version, créer un tag annoté qui correspond exactement à la version du plist, puis pousser les deux :
+## Configurer les signatures avant la première publication
 
-   ```sh
-   git add Packaging/Info.plist
-   git commit -m "Release 2.1.0"
-   git tag -a v2.1.0 -m "StorageScope 2.1.0"
-   git push origin main
-   git push origin v2.1.0
-   ```
+Une distribution de test non signée peut être publiée séparément sous le nom explicite `StorageScope-Windows-Setup-DEVELOPMENT.exe`. Elle doit annoncer SmartScreen et les mises à jour manuelles ; elle ne contient aucun manifeste de mise à jour signé. Après configuration et validation de tous les certificats, activer la variable GitHub Actions `STORAGESCOPE_SIGNED_RELEASES_ENABLED=true` pour publier automatiquement les tags signés. Le lancement manuel du workflow signé reste possible et exige toujours tous les secrets.
 
-Le push du tag crée ou met à jour la release GitHub. Une exécution manuelle du workflow est également possible pour republier un **tag existant**. Le workflow ne fabrique jamais silencieusement un tag.
+Configurer ces **secrets GitHub Actions**, sans les commiter :
 
-Les assets ont volontairement un nom stable afin que l’installeur fonctionne pour `latest` comme pour une version précise :
-
-- `StorageScope-universal.zip` ;
-- `StorageScope-universal.zip.sha256` ;
-- `StorageScope-dSYM.zip` pour symboliquer les rapports de crash.
-
-GitHub fournit en complément les archives du code source de chaque tag.
-
-## Signature et notarisation
-
-Le workflow fonctionne sans aucun secret : il produit alors une signature ad hoc. Cette variante est installable avec `scripts/install-release.sh`, mais un téléchargement manuel peut déclencher l’avertissement Gatekeeper et l’Accès complet au disque peut devoir être réaccordé après une mise à jour.
-
-Pour une distribution normale sur plusieurs Mac et une identité TCC stable, configurez un certificat **Developer ID Application** et la notarisation Apple. Ajoutez ces secrets dans **Settings → Secrets and variables → Actions** du dépôt GitHub :
-
-| Secret | Contenu |
+| Secret | Usage |
 |---|---|
-| `MACOS_CERTIFICATE_P12_BASE64` | Certificat Developer ID Application exporté en `.p12`, encodé en base64 |
-| `MACOS_CERTIFICATE_PASSWORD` | Mot de passe du fichier `.p12` |
-| `APPLE_API_KEY_P8_BASE64` | Clé App Store Connect `.p8`, encodée en base64 |
-| `APPLE_API_KEY_ID` | Identifiant de la clé App Store Connect |
-| `APPLE_API_ISSUER_ID` | Issuer ID App Store Connect |
+| `WINDOWS_CERTIFICATE_P12_BASE64` | Certificat Authenticode approuvé, avec clé privée, au format PFX/P12 encodé en base64 |
+| `WINDOWS_CERTIFICATE_PASSWORD` | Mot de passe du PFX |
+| `WINDOWS_UPDATE_PRIVATE_KEY_PEM_BASE64` | Clé privée RSA de mise à jour, au moins 3072 bits, PEM encodé en base64 |
+| `MACOS_CERTIFICATE_P12_BASE64`, `MACOS_CERTIFICATE_PASSWORD` | Identité Developer ID Application et mot de passe |
+| `MACOS_INSTALLER_P12_BASE64`, `MACOS_INSTALLER_PASSWORD` | Identité Developer ID Installer et mot de passe |
+| `APPLE_API_KEY_P8_BASE64`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` | Accès à la notarisation Apple |
+| `SPARKLE_PRIVATE_KEY` | Clé privée Ed25519 exportée par les outils Sparkle ; conserver son format base64 original |
 
-Exemple local pour encoder les deux fichiers sans retour à la ligne :
+Configurer également la **variable** GitHub Actions `SPARKLE_PUBLIC_KEY`, fournie par `generate_keys` de Sparkle. Générer les clés dans un environnement de confiance et sauvegarder leurs originaux de manière sécurisée. Les outils de génération des clés ne sont jamais lancés implicitement par la publication.
 
-```sh
-base64 -i DeveloperIDApplication.p12 | tr -d '\n'
-base64 -i AuthKey_ABC123.p8 | tr -d '\n'
-```
+Le script Windows dérive la clé publique RSA depuis la clé privée et l’embarque dans l’exécutable ; il embarque aussi le sujet exact du certificat Authenticode comme identité attendue pour les futures mises à jour. Le fichier PEM public généré ne contient aucun secret. La même identité doit rester stable lors du renouvellement du certificat ; un changement d’identité ou de clé requiert une stratégie de transition via une version encore approuvée, ou une réinstallation manuelle.
 
-Ne commitez jamais le certificat, la clé `.p8`, leurs mots de passe ou leurs valeurs base64. Le workflow importe le certificat dans un trousseau temporaire, signe avec le hardened runtime et un horodatage Apple, soumet l’archive à `notarytool`, agrafe le ticket au bundle, puis supprime le trousseau temporaire même si une étape échoue.
+Le bundle macOS embarque `SUPublicEDKey`. Sparkle vérifie la signature EdDSA avant extraction ; les applications sont signées Developer ID et notariées. Les téléchargements automatiques sans consentement sont désactivés. Un redémarrage demandé par une mise à jour est reporté pendant une opération locale.
 
-La notarisation n’est tentée que lorsque **tous** les secrets nécessaires sont présents. Après publication, vérifiez ponctuellement une release signée sur un autre Mac :
+La signature Authenticode ne garantit pas l’absence immédiate de SmartScreen : la réputation de l’éditeur et des fichiers reste évaluée par Windows. Aucun contournement de SmartScreen, de Gatekeeper ou de la quarantaine n’est ajouté.
 
-```sh
-codesign --verify --deep --strict --verbose=2 /Applications/StorageScope.app
-spctl --assess --type execute --verbose=2 /Applications/StorageScope.app
-```
+## Publier une version complète
 
-## Installer ou revenir à une version
+1. Mettre à jour la version du projet Windows, son manifeste, `Packaging/Info.plist` et `RELEASE_NOTES.md`. Incrémenter également `CFBundleVersion`.
+2. Exécuter les tests Windows et macOS. Vérifier les parcours avec de vraies bibliothèques de jeux de test ; ne pas utiliser les données personnelles comme fixtures.
+3. Créer puis pousser un tag stable `vX.Y.Z` correspondant aux versions. Le workflow `release.yml` construit les deux plateformes et refuse de continuer si une signature ou la notarisation manque.
+4. Le job final attend les deux plateformes, vérifie les fichiers et empreintes, charge tout dans une release brouillon puis rend la release publique. Une version publique existante n’est jamais écrasée.
 
-Dernière release :
+Fichiers publiés :
 
-```sh
-curl -fsSLo StorageScope-install.zsh https://raw.githubusercontent.com/laBrioche97/StorageScope/main/scripts/install-release.sh
-less StorageScope-install.zsh
-/bin/zsh StorageScope-install.zsh latest
-```
+- `StorageScope-Windows-Setup.exe` et `.sha256` : x64 + ARM64 dans un installateur autonome ;
+- `StorageScope-macOS-universal.pkg` et `.sha256` : installation macOS ;
+- `StorageScope-universal.zip` et `.sha256` : archive macOS utilisée par Sparkle ;
+- `windows-update.json` et `.sig` : manifeste signé RSA-PSS/SHA-256, avec version, taille, empreinte et lien immuable ;
+- `appcast.xml` : flux Sparkle avec signature EdDSA de l’archive finale notariée.
 
-Version précise ou retour à une ancienne version :
+Le site ne propose que les installateurs effectivement présents dans la dernière release stable. Tant que les nouveaux installateurs ne sont pas publiés, il n’invente pas de liens vers les anciennes archives ZIP.
 
-```sh
-/bin/zsh StorageScope-install.zsh 2.0.1
-```
+## Garanties et vérifications avant livraison
 
-StorageScope doit être complètement quittée avant l’opération. L’ancienne application est déplacée dans un dossier temporaire `/tmp/StorageScope-previous.*` et son chemin exact est affiché. macOS nettoie généralement `/tmp` au redémarrage ; cette sauvegarde est donc un filet de sécurité immédiat, pas une archive durable.
-
-Dans un fork, l’installeur peut viser un autre dépôt sans modifier le script :
-
-```sh
-STORAGESCOPE_GITHUB_REPOSITORY=proprietaire/depot ./scripts/install-release.sh latest
-```
-
-## Garanties du paquet universel
-
-`scripts/build-app.sh` compile séparément les triples `arm64-apple-macosx14.0` et `x86_64-apple-macosx14.0`, les fusionne avec `lipo`, puis vérifie strictement que le binaire final contient exactement les architectures demandées. Il génère ensuite un dSYM universel et compare l’ensemble de ses UUID à ceux du binaire.
-
-La compatibilité commence à macOS 14. Un bundle universel évite Rosetta sur Apple Silicon tout en restant directement exécutable sur les Mac Intel compatibles.
+- Windows télécharge le paquet uniquement après acceptation et vérifie le manifeste, la version, la taille, le SHA-256, Authenticode et l’identité d’éditeur avant exécution. Un paquet invalide est refusé.
+- L’installateur Windows place chaque version dans son propre dossier. Il vérifie hors ligne le chargement de l’interface avant de déclarer la version active ; un échec rétablit le raccourci précédent. Les anciennes versions ne sont pas effacées automatiquement.
+- Sparkle gère le remplacement de l’application macOS. La première migration depuis une version ancienne sans updater exige une installation manuelle.
+- Tester la première installation et une mise à jour sur Windows x64/ARM64 et Mac Intel/Apple Silicon ; tester aussi annulation, réseau interrompu, signature invalide et maintien de la version précédente.
+- La CI Windows vérifie les frontières de suppression, substitutions de fichiers, liens physiques, doublons, annulation, échecs partiels, signatures et rendus WPF. Les captures utilisent des données de test, pas une désinstallation réelle.
+- Les contrôles d’interface sur des machines Windows et macOS réelles restent nécessaires avant publication publique ; les tests de rendu ne certifient pas à eux seuls tous les réglages d’accessibilité.

@@ -29,6 +29,7 @@ struct ApplicationsView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
+                        ManagedGamesPanel()
                         HStack(alignment: .firstTextBaseline) {
                             VStack(alignment: .leading) {
                                 Text("Applications").font(.largeTitle.bold())
@@ -38,7 +39,7 @@ struct ApplicationsView: View {
                             Spacer()
                             Button("Actualiser", systemImage: "arrow.clockwise") { model.loadApplications() }
                         }
-                        Text("Les caches et réglages certains peuvent être sélectionnés. Les données personnelles, groupes partagés et fichiers administrateur restent séparés.")
+                        Text("Les caches reconnus peuvent être sélectionnés. Les réglages, sauvegardes et autres données personnelles restent décochés ; les composants partagés restent protégés.")
                             .padding(12).background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
                             ForEach(filteredApplications) { application in
@@ -136,7 +137,7 @@ struct UninstallView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     candidateSection(.applicationBundle, title: "Application", explanation: "Le bundle principal est obligatoire et sera déplacé en premier.", plan: plan)
-                    candidateSection(.exactSettingsAndCaches, title: "Réglages et caches", explanation: "Chemins prouvés par l’identifiant exact, sélectionnés par défaut.", plan: plan)
+                    candidateSection(.exactSettingsAndCaches, title: "Réglages et caches", explanation: "Chemins prouvés par l’identifiant exact. Seuls les caches et journaux sont présélectionnés ; les réglages restent conservés.", plan: plan)
                     candidateSection(.applicationData, title: "Données de l’application", explanation: "Peut contenir des documents ou projets personnels : rien n’est présélectionné.", plan: plan)
                     candidateSection(.sharedOrProtected, title: "Partagés ou protégés", explanation: "Affichés pour information, jamais supprimés par StorageScope.", plan: plan)
                 }

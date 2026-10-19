@@ -1,18 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>StorageScope</AssemblyName>
     <RootNamespace>StorageScope.Windows</RootNamespace>
-    <Version>2.1.1</Version>
+    <Version>3.0.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../Packaging/Branding/StorageScope.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <PublishReadyToRun>true</PublishReadyToRun>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="../../Packaging/Branding/StorageScope.ico" Link="Resources/AppIcon.ico" />
+    <Resource Include="../../Packaging/Branding/logo-brioche.png" Link="Resources/Logo.png" />
+    <InternalsVisibleTo Include="StorageScope.Windows.Tests" />
+    <AssemblyMetadata Include="UpdatePublisher" Value="$(StorageScopePublisher)" />
+    <EmbeddedResource Include="../../Packaging/windows-update-public-key.pem" Condition="Exists('../../Packaging/windows-update-public-key.pem')" LogicalName="StorageScope.UpdatePublicKey" />
+  </ItemGroup>
 </Project>

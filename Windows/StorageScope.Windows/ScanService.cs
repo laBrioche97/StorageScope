@@ -18,6 +18,7 @@ public sealed class ScanService
         var categoryCounts = new long[categoryBytes.Length];
         var allDirectorySizes = new ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         var largestFiles = new ConcurrentBag<List<ScanEntry>>();
+        var cleanupAnalysis = new CleanupAnalysis();
         long files = 0, directories = 1, bytes = 0, errors = 0, nextReportTicks = 0;
 
         void ReportOccasionally(string currentPath)
@@ -49,7 +50,9 @@ public sealed class ScanService
             Interlocked.Add(ref bytes, length);
             Interlocked.Add(ref categoryBytes[(int)category], length);
             Interlocked.Increment(ref categoryCounts[(int)category]);
-            localLargest.Add(new ScanEntry(info.FullName, info.Name, length, false, SafeModified(info), category));
+            var entry = new ScanEntry(info.FullName, info.Name, length, false, SafeModified(info), category);
+            cleanupAnalysis.Observe(entry);
+            localLargest.Add(entry);
             if (localLargest.Count > LargestFileLimit * 2)
             {
                 localLargest.Sort((a, b) => b.Size.CompareTo(a.Size));
@@ -60,15 +63,15 @@ public sealed class ScanService
 
         var options = new EnumerationOptions
         {
-            IgnoreInaccessible = true,
+            IgnoreInaccessible = false,
             RecurseSubdirectories = false,
             ReturnSpecialDirectories = false,
-            AttributesToSkip = FileAttributes.ReparsePoint
+            AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.Offline | (FileAttributes)0x00400000 | (FileAttributes)0x00040000
         };
 
         var rootLargest = new List<ScanEntry>();
         IEnumerable<FileInfo> rootFiles;
-        try { rootFiles = new DirectoryInfo(root).EnumerateFiles("*", options); }
+        try { rootFiles = new DirectoryInfo(root).EnumerateFiles("*", options).ToList(); }
         catch (Exception error) when (error is UnauthorizedAccessException or IOException) { rootFiles = []; Interlocked.Increment(ref errors); }
         foreach (var file in rootFiles) AccountFile(file, rootLargest);
         largestFiles.Add(rootLargest);
@@ -97,7 +100,7 @@ public sealed class ScanService
             .OrderByDescending(item => item.Bytes)
             .ToList();
         var topFiles = largestFiles.SelectMany(item => item).OrderByDescending(item => item.Size).Take(LargestFileLimit).ToList();
-        var cleanup = CleanupAnalyzer.Analyze(root, allDirectorySizes, topFiles);
+        var cleanup = cleanupAnalysis.Results();
         progress.Report(new ScanProgress(files, directories, bytes, errors, root, 1));
         return new ScanResult
         {
@@ -109,7 +112,8 @@ public sealed class ScanService
             IdentifiedBytes = bytes,
             FilesScanned = files,
             DirectoriesScanned = directories,
-            AccessErrors = errors
+            AccessErrors = errors,
+            CleanupTruncated = cleanupAnalysis.IsTruncated
         };
     }
 
@@ -163,33 +167,4 @@ public sealed class ScanService
 
     private static long AddSafe(long left, long right) => left > long.MaxValue - right ? long.MaxValue : left + right;
     private static DateTime? SafeModified(FileInfo info) { try { return info.LastWriteTime; } catch { return null; } }
-}
-
-public static class CleanupAnalyzer
-{
-    public static IReadOnlyList<CleanupCandidate> Analyze(string root, IReadOnlyDictionary<string, long> directories, IReadOnlyList<ScanEntry> largestFiles)
-    {
-        var candidates = new Dictionary<string, CleanupCandidate>(StringComparer.OrdinalIgnoreCase);
-        var old = DateTime.Now.AddDays(-30);
-        foreach (var file in largestFiles)
-        {
-            var extension = Path.GetExtension(file.Path);
-            var downloads = file.Path.Contains("\\Downloads\\", StringComparison.OrdinalIgnoreCase);
-            if (downloads && file.Modified < old && extension is ".msi" or ".msix" or ".iso" or ".zip" or ".exe")
-                candidates[file.Path] = new CleanupCandidate(file.Path, "Ancien installateur ou archive dans Téléchargements", file.Size, false);
-            else if (extension.Equals(".dmp", StringComparison.OrdinalIgnoreCase) || extension.Equals(".tmp", StringComparison.OrdinalIgnoreCase))
-                candidates[file.Path] = new CleanupCandidate(file.Path, "Diagnostic ou fichier temporaire", file.Size, false);
-        }
-
-        string[] recognizedNames = ["node_modules", ".gradle", ".nuget", "npm-cache", "pip\\cache", "Temp", "CrashDumps"];
-        foreach (var pair in directories)
-        {
-            if (pair.Value < 100 * 1024 * 1024) continue;
-            var normalized = pair.Key.Replace('/', '\\');
-            var match = recognizedNames.FirstOrDefault(name => normalized.EndsWith("\\" + name, StringComparison.OrdinalIgnoreCase) || normalized.Contains("\\" + name + "\\", StringComparison.OrdinalIgnoreCase));
-            if (match is null) continue;
-            candidates[pair.Key] = new CleanupCandidate(pair.Key, $"Cache ou dépendances reconnus ({match}) — à examiner", pair.Value, true);
-        }
-        return candidates.Values.OrderByDescending(item => item.Size).Take(1_000).ToList();
-    }
 }

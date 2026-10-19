@@ -47,15 +47,21 @@ public sealed record CategoryTile(CategoryResult Result, double Percent)
     public string Details => $"{Percent:N1} % · {Result.FileCount:N0} fichiers";
 }
 
-public sealed record CleanupCandidate(string Path, string Reason, long Size, bool IsDirectory)
+public sealed record CleanupCandidate(string Path, string Reason, long Size, bool IsDirectory,
+    string Group = "À examiner", string Consequence = "Vérifiez le contenu avant de le déplacer vers la Corbeille.",
+    bool Recommended = false, string? DuplicateKeeper = null, FileSnapshot? Snapshot = null,
+    FileSnapshot? KeeperSnapshot = null, GameCacheAuthorization? GameCache = null)
 {
     public string Name => System.IO.Path.GetFileName(Path.TrimEnd('\\'));
     public string DisplaySize => SizeFormatter.Format(Size);
 }
 
-public sealed record InstalledApplication(string Name, string? Publisher, string? Version, string? InstallLocation, string? UninstallCommand)
+public sealed record InstalledApplication(string Name, string? Publisher, string? Version, string? InstallLocation, string? UninstallCommand,
+    string Provider = "Application", string? ProductId = null, string? RegistrationPath = null, string? PackageFullName = null,
+    string? ManifestPath = null, FileSnapshot? ManifestSnapshot = null)
 {
     public string Details => string.Join(" · ", new[] { Publisher, Version }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    public string Source => Provider;
 }
 
 public sealed class ScanResult
@@ -69,6 +75,7 @@ public sealed class ScanResult
     public required long FilesScanned { get; init; }
     public required long DirectoriesScanned { get; init; }
     public required long AccessErrors { get; init; }
+    public bool CleanupTruncated { get; init; }
 }
 
 public sealed record ScanProgress(long Files, long Directories, long Bytes, long Errors, string CurrentPath, double Fraction);

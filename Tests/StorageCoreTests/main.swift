@@ -546,6 +546,8 @@ func testBundleIdentifierAndExplorerApplicationIdentity() async throws {
         let associations = await AppAssociationFinder(homeURL: fakeHome).candidates(for: discovered)
         try expect(associations.contains { $0.url.standardizedFileURL.path == exactPreference.path },
             "La préférence portant l’identifiant exact doit être associée")
+        try expect(associations.first { $0.url.standardizedFileURL.path == exactPreference.path }?.isSelectedByDefault == false,
+            "Les réglages personnels doivent rester conservés par défaut")
         try expect(!associations.contains { $0.url.standardizedFileURL.path == neighboringPreference.path },
             "Un identifiant voisin ne doit jamais être capturé")
 
@@ -566,6 +568,8 @@ struct StorageCoreTests {
             ("Agrégation", { try testAggregation() }),
             ("Agrégation consommatrice", { try testConsumingAggregationMatchesSnapshot() }),
             ("Classification et sécurité", { try testClassificationAndSafety() }),
+            ("Cloud et bibliothèques de jeux", { try testCloudAndGameBoundaries() }),
+            ("Bibliothèques Steam locales", { try await testManagedGameLibrary() }),
             ("Classification des refus d’accès", { try testAccessIssueClassification() }),
             ("Scanner, fichiers cachés et symlinks", { try await testScanner() }),
             ("Cache local", { try await testCache() }),
@@ -596,4 +600,32 @@ struct StorageCoreTests {
         if failures > 0 { exit(EXIT_FAILURE) }
         print("\n\(tests.count) tests réussis")
     }
+}
+
+func testCloudAndGameBoundaries() throws {
+    for path in ["/Users/me/Dropbox/document.txt", "/Users/me/Library/CloudStorage/OneDrive/file", "/Volumes/Games/steamapps/common/Game/Game.app", "/Users/Shared/Epic Games/Game"] {
+        try expect(DeletionSafetyPolicy.isProtectedForUserSelection(URL(fileURLWithPath: path), isDirectory: true), "Chemin géré ou synchronisé autorisé : \(path)")
+    }
+    try expect(!DeletionSafetyPolicy.isManagedGamePath("/Users/me/Documents/steamapps-not-a-library/file"), "Les frontières de composants doivent être respectées")
+}
+
+func testManagedGameLibrary() async throws {
+    let home = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".StorageScopeGameFixture-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let apps = home.appendingPathComponent("Library/Application Support/Steam/steamapps", isDirectory: true)
+    try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+    let manifest = apps.appendingPathComponent("appmanifest_123.acf")
+    try Data("\"AppState\" { \"appid\" \"123\" \"name\" \"Test Game\" \"installdir\" \"Test Game\" }".utf8).write(to: manifest)
+    let adapter = LocalGameLibraryAdapter(home: home)
+    let games = await adapter.detect()
+    let fixtureGames = games.filter { $0.manifestURL == manifest }
+    try expect(fixtureGames.count == 1 && fixtureGames[0].uninstallURL?.absoluteString == "steam://uninstall/123", "Le jeu Steam doit être identifié sans réseau")
+    guard let game = fixtureGames.first else { return }
+    let prepared = await adapter.prepare(game)
+    try expect(prepared, "Le plan doit reconnaître l’installation locale exacte")
+    let before = await adapter.verify(game)
+    try expect(!before, "Ouvrir un launcher ne prouve jamais la désinstallation")
+    try FileManager.default.removeItem(at: manifest)
+    let after = await adapter.verify(game)
+    try expect(after, "La disparition du manifeste doit pouvoir être vérifiée localement")
 }

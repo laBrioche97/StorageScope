@@ -215,6 +215,7 @@ public actor ApplicationDiscoveryService {
 
     private static func protectionReason(url: URL, identifier: String?, displayName: String) -> String? {
         let path = url.standardizedFileURL.path
+        if DeletionSafetyPolicy.isManagedGamePath(path) { return "Jeu géré par un launcher : utilisez la section Jeux et bibliothèques." }
         let identifierLower = identifier?.lowercased()
         if path == "/System" || path.hasPrefix("/System/") { return "Application système protégée." }
         if identifierLower?.hasPrefix("com.apple.") == true { return "Application Apple protégée." }
@@ -268,14 +269,15 @@ public actor AppAssociationFinder {
         for (components, reason) in exact {
             guard let candidateURL = safeDescendant(of: library, components: components) else { continue }
             appendIfPresent(candidateURL, group: .exactSettingsAndCaches,
-                reason: reason, removable: true, selected: true, to: &candidates)
+                reason: reason, removable: true,
+                selected: components.first == "Caches" || components.first == "Logs", to: &candidates)
         }
 
         appendNamespacedFiles(
             in: library.appendingPathComponent("Preferences/ByHost", isDirectory: true),
             bundleID: bundleID, group: .exactSettingsAndCaches,
             reason: "Préférences ByHost dans l’espace de noms exact du bundle.",
-            removable: true, selected: true, to: &candidates
+            removable: true, selected: false, to: &candidates
         )
 
         let dataPaths: [([String], String)] = [

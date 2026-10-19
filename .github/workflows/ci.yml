@@ -48,7 +48,7 @@ jobs:
           "$TEST_BINARY"
 
   windows-build:
-    name: Windows .NET 8 build
+    name: Windows .NET 10 safety and offline startup
     runs-on: windows-2025
     timeout-minutes: 20
 
@@ -59,10 +59,13 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Build Windows application with warnings as errors
         run: dotnet build Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release -p:TreatWarningsAsErrors=true
+
+      - name: Test deletion boundaries, duplicates, updates and responsive rendering
+        run: dotnet run --project Windows/StorageScope.Windows.Tests --configuration Release -- "$env:RUNNER_TEMP/storagescope-qa"
 
       - name: Validate self-contained x64 publication
         run: dotnet publish Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release --runtime win-x64 --self-contained true --output dist/windows-x64 -p:TreatWarningsAsErrors=true
@@ -71,12 +74,21 @@ jobs:
         shell: pwsh
         run: |
           $application = Join-Path $PWD "dist/windows-x64/StorageScope.exe"
-          $process = Start-Process -FilePath $application -PassThru
+          $process = Start-Process -FilePath $application -WindowStyle Hidden -PassThru
           Start-Sleep -Seconds 5
           if ($process.HasExited) {
             throw "StorageScope exited during startup with code $($process.ExitCode)."
           }
           Stop-Process -Id $process.Id -Force
+
+      - name: Verify offline installer health check
+        shell: pwsh
+        run: |
+          $application = Join-Path $PWD "dist/windows-x64/StorageScope.exe"
+          $env:HTTP_PROXY = 'http://127.0.0.1:9'
+          $env:HTTPS_PROXY = 'http://127.0.0.1:9'
+          $process = Start-Process -FilePath $application -ArgumentList '--verify-installation' -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw 'Offline startup verification failed.' }
 
       - name: Preserve the smoke-tested Windows executable
         if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'codex/')
