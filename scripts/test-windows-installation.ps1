@@ -36,7 +36,9 @@ Write-Output 'PASS failed replacement preserves old version; successful replacem
 New-Item -ItemType Directory -Path $old -Force | Out-Null
 Copy-Item -Path 'dist/win-x64/*' -Destination $old -Recurse
 Set-ItemProperty -LiteralPath $current -Name CurrentVersion -Value '3.1.0'
-$updated = Start-Process $installer -ArgumentList ($arguments + @('/UPDATE=1')) -WindowStyle Hidden -PassThru -Wait
+$updated = Start-Process $installer -ArgumentList ($arguments + @('/UPDATE=1')) -WindowStyle Hidden -PassThru
+# Start-Process -Wait includes descendants: it would wait forever for the restarted GUI.
+if (-not $updated.WaitForExit(120000)) { throw 'Managed installer did not finish within two minutes.' }
 if ($updated.ExitCode -ne 0) { throw 'Managed update failed.' }
 $deadline = [DateTime]::UtcNow.AddSeconds(20)
 $restarted = $null
