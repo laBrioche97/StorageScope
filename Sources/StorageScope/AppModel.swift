@@ -1051,7 +1051,7 @@ extension AppModel {
         bubbleTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let partial = isScanning || (snapshot?.progress.permissionErrors ?? 0) > 0
+                let partial = isScanning || snapshot?.completedAt == nil || (snapshot?.progress.permissionErrors ?? 0) > 0
                 let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial)
                 guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volumeID else { return }
                 bubbleFrame = frame

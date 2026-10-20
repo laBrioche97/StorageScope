@@ -321,8 +321,8 @@ public actor TrashService {
 
         for root in approvedTrashRoots(volumes: volumes) {
             if Task.isCancelled { wasCancelled = true; break }
-            guard FileManager.default.fileExists(atPath: root.path) else { continue }
             do {
+                _ = try identity(at: root)
                 guard trashRootIsSafe(root) else { throw TrashError.protectedItem(root.path) }
                 let children = try FileManager.default.contentsOfDirectory(
                     at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: []
@@ -341,6 +341,8 @@ public actor TrashService {
                         issues.append(TrashInventoryIssue(path: child.path, message: error.localizedDescription))
                     }
                 }
+            } catch TrashError.missingItem(_) {
+                continue
             } catch {
                 issues.append(TrashInventoryIssue(path: root.path, message: error.localizedDescription))
             }
@@ -359,8 +361,13 @@ public actor TrashService {
         volumes: [StorageVolume] = StorageService.mountedVolumes()
     ) async -> EmptyTrashResult {
         let accepted = authorization.inventoryID == inventory.id
-        let measuredVolumeIDs = Set(volumes.map(\.id))
-        let before = importantAvailableBytes(for: volumes, restrictedTo: measuredVolumeIDs)
+        let measuredVolumeIDs = Set(inventory.items.compactMap { item in
+            volumes.filter { volume in
+                let root = volume.url.standardizedFileURL.path
+                return item.trashRoot.path == root || item.trashRoot.path.hasPrefix(root == "/" ? "/" : root + "/")
+            }.max(by: { $0.url.path.count < $1.url.path.count })?.id
+        })
+        let before = importantAvailableBytes(for: StorageService.mountedVolumes(), restrictedTo: measuredVolumeIDs)
         guard accepted else {
             return EmptyTrashResult(itemResults: [], confirmationAccepted: false,
                 availableBytesBefore: before, availableBytesAfter: before)

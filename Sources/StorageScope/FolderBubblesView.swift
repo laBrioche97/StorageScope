@@ -39,9 +39,14 @@ struct FolderBubblesView: View {
                             let matched = !query.isEmpty && node.name.localizedCaseInsensitiveContains(query)
                             context.stroke(path, with: .color(.primary.opacity(differentiateWithoutColor || matched ? 1 : 0.5)), lineWidth: matched ? 3 : 1)
                             if rect.width > 70 {
-                                let label = Text(node.name + "\n" + ByteCountFormatter.storage.string(fromByteCount: node.bytes))
+                                let hasChildren = nodes.contains { $0.depth == node.depth + 1 && $0.path.hasPrefix(node.path + "/") }
+                                let name = Text(hasChildren ? node.name : node.name + "\n" + ByteCountFormatter.storage.string(fromByteCount: node.bytes))
                                     .font(.system(size: min(13, rect.width / 10))).foregroundColor(.white)
-                                context.draw(label, in: rect.insetBy(dx: rect.width * 0.18, dy: rect.height * 0.33))
+                                let labelRect = hasChildren ? CGRect(x: rect.minX + rect.width * 0.15, y: rect.minY + rect.height * 0.06, width: rect.width * 0.7, height: rect.height * 0.18) : rect.insetBy(dx: rect.width * 0.18, dy: rect.height * 0.33)
+                                context.draw(name, in: labelRect)
+                                if hasChildren {
+                                    context.draw(Text(ByteCountFormatter.storage.string(fromByteCount: node.bytes)).font(.system(size: min(12, rect.width / 12))).foregroundColor(.white), at: CGPoint(x: rect.midX, y: rect.maxY - rect.height * 0.1))
+                                }
                             }
                         }
                     }.accessibilityHidden(true)

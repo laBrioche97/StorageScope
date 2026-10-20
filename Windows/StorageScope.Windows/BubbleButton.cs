@@ -11,6 +11,9 @@ internal sealed class BubbleButton : Button
 {
     internal required FolderCircle Circle { get; init; }
     internal bool Highlighted { get; init; }
+    internal bool HasChildren { get; init; }
+    protected override void OnGotKeyboardFocus(System.Windows.Input.KeyboardFocusChangedEventArgs e) { base.OnGotKeyboardFocus(e); InvalidateVisual(); }
+    protected override void OnLostKeyboardFocus(System.Windows.Input.KeyboardFocusChangedEventArgs e) { base.OnLostKeyboardFocus(e); InvalidateVisual(); }
     protected override HitTestResult? HitTestCore(PointHitTestParameters hitTestParameters)
     {
         var point = hitTestParameters.HitPoint;
@@ -21,10 +24,17 @@ internal sealed class BubbleButton : Button
         var r = ActualWidth / 2;
         var color = Circle.Aggregate ? Color.FromRgb(95, 103, 120) : (Circle.Depth % 3) switch
         { 0 => Color.FromRgb(131, 40, 99), 1 => Color.FromRgb(45, 91, 134), _ => Color.FromRgb(36, 111, 105) };
-        dc.DrawEllipse(new SolidColorBrush(color), new Pen(Highlighted || IsKeyboardFocused ? Brushes.White : new SolidColorBrush(Color.FromArgb(170, 220, 225, 235)), Highlighted || IsKeyboardFocused ? 3 : 1), new(r, r), Math.Max(0, r - 2), Math.Max(0, r - 2));
+        var contrast = SystemParameters.HighContrast;
+        dc.DrawEllipse(contrast ? SystemColors.WindowBrush : new SolidColorBrush(color), new Pen(contrast ? SystemColors.WindowTextBrush : Highlighted || IsKeyboardFocused ? Brushes.White : new SolidColorBrush(Color.FromArgb(170, 220, 225, 235)), Highlighted || IsKeyboardFocused ? 3 : 1), new(r, r), Math.Max(0, r - 2), Math.Max(0, r - 2));
         if (r < 32) return;
-        var text = new FormattedText(Circle.Name + "\n" + SizeFormatter.Format(Circle.Bytes), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), Math.Min(14, r / 4), Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+        var ink = contrast ? SystemColors.WindowTextBrush : Brushes.White;
+        var text = new FormattedText(HasChildren ? Circle.Name : Circle.Name + "\n" + SizeFormatter.Format(Circle.Bytes), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), Math.Min(14, r / 4), ink, VisualTreeHelper.GetDpi(this).PixelsPerDip)
         { MaxTextWidth = r * 1.45, MaxTextHeight = Math.Min(r * .7, 52), Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center };
-        dc.DrawText(text, new Point(r - text.MaxTextWidth / 2, r - text.Height / 2));
+        dc.DrawText(text, new Point(r - text.MaxTextWidth / 2, HasChildren ? r * .12 : r - text.Height / 2));
+        if (HasChildren)
+        {
+            var size = new FormattedText(SizeFormatter.Format(Circle.Bytes), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), Math.Min(12, r / 5), ink, VisualTreeHelper.GetDpi(this).PixelsPerDip) { TextAlignment = TextAlignment.Center };
+            dc.DrawText(size, new Point(r, 2 * r - size.Height - r * .10));
+        }
     }
 }

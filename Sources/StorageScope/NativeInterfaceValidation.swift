@@ -25,7 +25,6 @@ enum NativeInterfaceValidation {
             for scale in [1.0, 2.0] {
                 let view = FolderBubblesView().environmentObject(model)
                     .environment(\.colorScheme, dark ? .dark : .light)
-                    .environment(\.accessibilityDifferentiateWithoutColor, true)
                     .frame(width: 740, height: 560)
                 let hosting = NSHostingView(rootView: view)
                 let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 560), styleMask: [.titled], backing: .buffered, defer: false)

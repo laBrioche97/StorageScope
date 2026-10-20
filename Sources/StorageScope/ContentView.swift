@@ -265,7 +265,7 @@ private struct VolumeCard: View {
     }
 }
 
-private struct ScanProgressView: View {
+struct ScanProgressView: View {
     @ObservedObject var status: ScanStatus
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
