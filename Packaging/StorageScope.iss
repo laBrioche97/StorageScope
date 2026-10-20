@@ -111,6 +111,25 @@ begin
   end;
 end;
 
+procedure RegisterExtraCloseApplicationsResources;
+var Entry: TFindRec; Root: String; Candidate: String;
+begin
+  Root := AddBackslash(ExpandFileName(ExpandConstant('{app}\versions')));
+  if not DirExists(Root) then exit;
+  if not SafeTree(ExpandConstant('{app}')) then exit;
+  if FindFirst(Root + '*', Entry) then begin
+    try
+      repeat
+        if VersionName(Entry.Name) and ((Entry.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0) then begin
+          Candidate := ExpandFileName(Root + Entry.Name + '\StorageScope.exe');
+          if (Pos(Lowercase(Root), Lowercase(Candidate)) = 1) and FileExists(Candidate) then
+            RegisterExtraCloseApplicationsResource(Candidate);
+        end;
+      until not FindNext(Entry);
+    finally FindClose(Entry); end;
+  end;
+end;
+
 function IsNativeArm64: Boolean;
 begin
   Result := ProcessorArchitecture = paArm64;
@@ -124,6 +143,11 @@ end;
 function RestartAfterUpdate: Boolean;
 begin
   Result := Healthy and (ExpandConstant('{param:UPDATE|0}') = '1');
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if Healthy then Result := 0 else Result := 1;
 end;
 
 function InitializeSetup: Boolean;
@@ -149,7 +173,11 @@ begin
       DelTree(ExpandConstant('{app}\versions\{#AppVersion}'), True, True, True);
     OldTarget := ExpandConstant('{app}\versions\') + PreviousVersion + '\StorageScope.exe';
     if (PreviousVersion <> '') and FileExists(OldTarget) then
-      CreateShellLink(ExpandConstant('{userprograms}\StorageScope.lnk'), 'StorageScope', OldTarget, '', ExtractFileDir(OldTarget), OldTarget, 0, SW_SHOWNORMAL)
+    begin
+      CreateShellLink(ExpandConstant('{userprograms}\StorageScope.lnk'), 'StorageScope', OldTarget, '', ExtractFileDir(OldTarget), OldTarget, 0, SW_SHOWNORMAL);
+      RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A81A6E79-891C-4B17-AE21-51A679265149}_is1', 'DisplayVersion', PreviousVersion);
+      RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A81A6E79-891C-4B17-AE21-51A679265149}_is1', 'DisplayIcon', OldTarget);
+    end
     else
       DeleteFile(ExpandConstant('{userprograms}\StorageScope.lnk'));
     RaiseException('La nouvelle version ne peut pas démarrer. La version précédente a été conservée.');

@@ -81,6 +81,7 @@ public partial class MainWindow
         if (dialog.ShowDialog(this) != true) return;
         try
         {
+            if (DeletionSafetyPolicy.IsWithin(dialog.FileName, Diagnostics.DirectoryPath)) throw new IOException("Choisissez un autre dossier pour conserver les journaux d’origine.");
             Diagnostics.Write("export-diagnostics");
             using var output = new StreamWriter(dialog.FileName);
             foreach (var file in Enumerable.Range(1, 5).Reverse().Select(i => Diagnostics.LogPath + "." + i).Append(Diagnostics.LogPath).Where(File.Exists))

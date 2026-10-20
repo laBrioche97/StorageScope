@@ -10,10 +10,10 @@ Copy-Item -Path 'dist/win-x64/*' -Destination $old -Recurse
 New-Item -Path $current -Force | Out-Null
 New-ItemProperty -LiteralPath $current -Name CurrentVersion -Value '3.1.0' -Force | Out-Null
 $installer = Join-Path $PWD 'release-assets/StorageScope-Windows-Setup-DEVELOPMENT.exe'
-$arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',('/DIR="'+$root+'"'))
+$arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$root+'"'))
 $env:STORAGESCOPE_TEST_HEALTH_FAILURE = '1'
 $failed = Start-Process $installer -ArgumentList $arguments -WindowStyle Hidden -PassThru -Wait
-if ($failed.ExitCode -eq 0) { throw 'Injected replacement failure was accepted.' }
+if ($failed.ExitCode -eq 0) { throw ('Injected replacement failure was accepted. CurrentVersion=' + (Get-ItemProperty -LiteralPath $current).CurrentVersion) }
 if (-not (Test-Path -LiteralPath (Join-Path $old 'StorageScope.exe'))) { throw 'Previous version lost after failure.' }
 if ((Get-ItemProperty -LiteralPath $current).CurrentVersion -ne '3.1.0') { throw 'Failed version became current.' }
 Remove-Item Env:/STORAGESCOPE_TEST_HEALTH_FAILURE
