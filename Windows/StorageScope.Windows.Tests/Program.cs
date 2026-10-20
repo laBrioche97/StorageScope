@@ -271,6 +271,15 @@ internal static class Program
                 var unknown = ApplicationEnrichment.Measure(new InstalledApplication("Unknown", null, null, null, null), default);
                 Check(!unknown.HasKnownSize && unknown.DisplaySize == "Indisponible");
             });
+            Test("recycle worker protocol excludes visual objects and preserves identity", () =>
+            {
+                var path = Fixture("worker-contract.txt", "Disposable protocol fixture");
+                var request = Select(path);
+                var json = JsonSerializer.Serialize(request);
+                Check(!json.Contains("IconBrush") && !json.Contains("IconGlyph"));
+                var decoded = JsonSerializer.Deserialize<CleanupSelection>(json)!;
+                Check(decoded.Entry.Path == path && decoded.Identity == request.Identity);
+            });
             if (args.Contains("--shell-integration")) Test("real isolated recycle worker and shell restoration", () =>
             {
                 var path = Fixture("recycle-integration-" + Guid.NewGuid().ToString("N") + ".txt", "Disposable StorageScope test fixture");

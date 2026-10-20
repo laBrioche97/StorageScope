@@ -12,6 +12,8 @@ struct EnhancedCleanupView: View {
                 analysisView
             } else if let report = model.displayedCleanupReport {
                 reportView(report)
+            } else if model.duplicateIsAnalyzing || model.duplicateReport != nil || model.duplicateError != nil {
+                ScrollView { DuplicateAnalysisPanel().padding(24) }
             } else if model.isScanning {
                 analysisWaitingView
             } else {
@@ -22,6 +24,7 @@ struct EnhancedCleanupView: View {
                 } actions: {
                     Button("Calculer le nettoyage") { model.calculateCleanup() }
                         .buttonStyle(.borderedProminent).controlSize(.large)
+                    Button("Rechercher des doublons…") { model.chooseDuplicateDirectory() }
                 }
             }
         }
@@ -208,6 +211,7 @@ private struct DuplicateAnalysisPanel: View {
 }
 
 struct DuplicateResultsInlineView: View {
+    @State private var visibleGroupLimit = 30
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -251,7 +255,11 @@ struct DuplicateResultsInlineView: View {
                 if report.groups.isEmpty {
                     Label("Aucun doublon confirmé au-dessus du seuil.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 }
-                ForEach(report.groups.prefix(30)) { group in
+                if report.groups.count > visibleGroupLimit {
+                    Text("\(visibleGroupLimit) groupes affichés sur \(report.groups.count)").font(.caption).foregroundStyle(.secondary)
+                    Button("Afficher 30 groupes supplémentaires") { visibleGroupLimit += 30 }
+                }
+                ForEach(report.groups.prefix(visibleGroupLimit)) { group in
                     DisclosureGroup {
                         ForEach(group.files) { file in
                             HStack {

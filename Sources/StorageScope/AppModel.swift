@@ -158,6 +158,7 @@ final class AppModel: ObservableObject {
     @Published var emptyTrashConfirmation = ""
     @Published var emptyTrashResult: EmptyTrashResult?
     @Published var trashInventoryIsLoading = false
+    @Published var applicationProtectionFilter = 0
     @Published var applications: [InstalledApplication] = []
     @Published var applicationsAreLoading = false
     @Published var showingUninstall = false
@@ -375,6 +376,8 @@ final class AppModel: ObservableObject {
         let generation = UUID()
         scanGeneration = generation
         selectedVolumeID = id
+        explorerHistory = []; explorerHistoryPosition = -1
+        cleanupSelectedIDs.removeAll(); cleanupActionMessage = ""
         selectedIDs.removeAll()
         currentDirectory = nil
         browseTask?.cancel()

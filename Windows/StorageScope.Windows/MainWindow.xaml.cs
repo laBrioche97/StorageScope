@@ -244,6 +244,7 @@ public partial class MainWindow : Window
         if (!IsLoaded || DrivePicker.SelectedItem is not DriveChoice drive) return;
         _scanCancellation?.Cancel();
         if (string.Equals(_result?.Root, drive.Root, StringComparison.OrdinalIgnoreCase) || string.Equals(_currentDirectory, drive.Root, StringComparison.OrdinalIgnoreCase)) { UpdateVolumeHeader(); return; }
+        _browseHistory.Clear(); _historyPosition = -1;
         ClearResults();
         UpdateVolumeHeader();
         await BrowseAsync(drive.Root);
@@ -323,7 +324,11 @@ public partial class MainWindow : Window
 
     private async void ExplorerPathBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && Directory.Exists(ExplorerPathBox.Text)) await BrowseAsync(ExplorerPathBox.Text);
+        if (e.Key != Key.Enter) return;
+        try {
+            if (DrivePicker.SelectedItem is not DriveChoice drive || !DeletionSafetyPolicy.IsWithin(ExplorerPathBox.Text, drive.Root)) { BubbleStatus.Text = "Choisissez le disque correspondant avant d’ouvrir ce dossier."; return; }
+            await BrowseAsync(Path.GetFullPath(ExplorerPathBox.Text));
+        } catch (Exception error) { BubbleStatus.Text = "Chemin non valide : " + error.Message; }
     }
 
     private void ExplorerSearchBox_TextChanged(object sender, TextChangedEventArgs e) { ApplyExplorerFilter(); RenderBubbles(); }

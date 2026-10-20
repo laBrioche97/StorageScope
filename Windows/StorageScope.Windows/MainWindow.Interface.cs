@@ -99,7 +99,11 @@ public partial class MainWindow
     }
     private void HighlightExplorer(string? path)
     {
+        var old = _allExplorerItems.FirstOrDefault(item => item.Path == _highlightedExplorerPath);
+        if (old is not null && ExplorerGrid.ItemContainerGenerator.ContainerFromItem(old) is DataGridRow previous) previous.ClearValue(Control.BackgroundProperty);
         _highlightedExplorerPath = path;
+        var highlighted = _allExplorerItems.FirstOrDefault(item => item.Path == path);
+        if (highlighted is not null && ExplorerGrid.ItemContainerGenerator.ContainerFromItem(highlighted) is DataGridRow row) row.SetResourceReference(Control.BackgroundProperty, "PanelBrush");
         foreach (var button in BubbleCanvas.Children.OfType<BubbleButton>())
         {
             button.Highlighted = button.Circle.Path == path || !string.IsNullOrWhiteSpace(ListSearch.Text) && button.Circle.Name.Contains(ListSearch.Text, StringComparison.CurrentCultureIgnoreCase);

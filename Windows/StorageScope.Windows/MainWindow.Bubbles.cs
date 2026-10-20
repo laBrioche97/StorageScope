@@ -30,9 +30,7 @@ public partial class MainWindow
     private void UpdateBubbleFilters()
     {
         if (!_viewsReady) return;
-        var bubbles = CurrentSection == Section.Explorer && _bubbleMode;
-        ResultSort.Visibility = FilterToggleButton.Visibility = bubbles ? Visibility.Collapsed : Visibility.Visible;
-        if (bubbles) ExtraFilters.Visibility = Visibility.Collapsed;
+        ResultSort.Visibility = FilterToggleButton.Visibility = Visibility.Visible;
     }
     private void ShowBubbles_Click(object sender, RoutedEventArgs e)
     {
@@ -132,7 +130,8 @@ public partial class MainWindow
                 Add("Mettre à la corbeille…", async (_, _) => await TrashEntriesAsync([new(circle.Path, circle.Name, circle.Bytes, circle.IsDirectory, null, StorageCategory.Other)]));
                 button.ContextMenu = menu;
             }
-            button.MouseEnter += (_, _) => { HighlightExplorer(circle.Path); if (!circle.Aggregate) { var entry = _allExplorerItems.FirstOrDefault(item => item.Path == circle.Path); if (entry is not null) { ExplorerGrid.SelectedItem = entry; ExplorerGrid.ScrollIntoView(entry); } } };
+            button.MouseEnter += (_, _) => { if (!circle.Aggregate) { var entry = _allExplorerItems.FirstOrDefault(item => item.Path == circle.Path); if (entry is not null) ExplorerGrid.ScrollIntoView(entry); } HighlightExplorer(circle.Path); };
+            button.MouseLeave += (_, _) => HighlightExplorer((ExplorerGrid.SelectedItem as ScanEntry)?.Path);
             button.GotKeyboardFocus += (_, _) => HighlightExplorer(circle.Path);
             BubbleCanvas.Children.Add(button);
         }

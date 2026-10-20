@@ -31,8 +31,11 @@ public sealed record ScanEntry(
     StorageCategory Category)
 {
     public bool HasKnownSize { get; init; } = true;
+    public override string ToString() => Name;
     public string DisplaySize => HasKnownSize ? SizeFormatter.Format(Size) : "Taille inconnue";
+    [System.Text.Json.Serialization.JsonIgnore]
     public string IconGlyph => IsDirectory ? "\uE8B7" : CategoryVisuals.Glyph(Category);
+    [System.Text.Json.Serialization.JsonIgnore]
     public Brush IconBrush => CategoryVisuals.Ink(Category);
     public string Type => IsDirectory ? "Dossier" : CategoryLabels.Name(Category);
     public string CategoryName => CategoryLabels.Name(Category);
@@ -40,7 +43,10 @@ public sealed record ScanEntry(
 
 public sealed record CategoryResult(StorageCategory Category, long Bytes, long FileCount)
 {
+    public override string ToString() => Name;
+    [System.Text.Json.Serialization.JsonIgnore]
     public string IconGlyph => CategoryVisuals.Glyph(Category);
+    [System.Text.Json.Serialization.JsonIgnore]
     public Brush IconBrush => CategoryVisuals.Ink(Category);
     public string Name => CategoryLabels.Name(Category);
     public string DisplaySize => SizeFormatter.Format(Bytes);
@@ -59,8 +65,11 @@ public sealed record CleanupCandidate(string Path, string Reason, long Size, boo
     bool Recommended = false, string? DuplicateKeeper = null, FileSnapshot? Snapshot = null,
     FileSnapshot? KeeperSnapshot = null, GameCacheAuthorization? GameCache = null)
 {
+    public override string ToString() => Name;
     private StorageCategory IconCategory => Group.Contains("Cache", StringComparison.OrdinalIgnoreCase) || Group.Contains("temporaire", StringComparison.OrdinalIgnoreCase) ? StorageCategory.CachesLogs : CategoryClassifier.Classify(Path);
+    [System.Text.Json.Serialization.JsonIgnore]
     public string IconGlyph => CategoryVisuals.Glyph(IconCategory);
+    [System.Text.Json.Serialization.JsonIgnore]
     public Brush IconBrush => CategoryVisuals.Ink(IconCategory);
     public string Name => System.IO.Path.GetFileName(Path.TrimEnd('\\'));
     public string DisplaySize => SizeFormatter.Format(Size);
