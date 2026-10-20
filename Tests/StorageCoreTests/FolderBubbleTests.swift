@@ -43,6 +43,9 @@ func testFolderBubbles() async throws {
     let mixedFrame = try ExplorerBubbleLayout.frame(path: fixture.path, items: mixed, total: 500, partial: false)
     try expect(mixedFrame.folders.count == 2 && mixedFrame.folders.contains { !$0.isDirectory }, "Fichiers et dossiers du niveau courant")
     try expect(mixedFrame.isPartial && mixedFrame.directFileBytes == 100, "Les tailles inconnues restent distinctes de zéro")
+    let manyFiles = (0..<100).map { FileSystemItem(url: fixture.appendingPathComponent("file-\($0)"), logicalSize: 100, allocatedSize: 100, isDirectory: false) }
+    let compact = try ExplorerBubbleLayout.frame(path: fixture.path, items: manyFiles, total: 10_000, partial: false, availableDiameter: 200)
+    try expect(compact.folders.count < 24 && compact.folders.reduce(0) { $0 + $1.bytes } == 10_000 && compact.folders.last?.isAggregate == true, "Regrouper pour préserver la lisibilité sans perdre d’octets")
     let encoded = try JSONEncoder().encode(mixed[0])
     var legacy = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
     legacy.removeValue(forKey: "sizeIsKnown")

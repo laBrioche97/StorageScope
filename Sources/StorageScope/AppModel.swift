@@ -188,6 +188,7 @@ final class AppModel: ObservableObject {
     @Published var cleanupSelectedIDs: Set<String> = []
     @Published var cleanupActionMessage = ""
     private var maximumBubbles = 24
+    private var bubbleAvailableDiameter = Double.infinity
     private var explorerHistory: [URL] = []
     private var explorerHistoryPosition = -1
     private var navigatingHistory = false
@@ -772,7 +773,7 @@ final class AppModel: ObservableObject {
         explorerCategoryContext = nil
         selectedIDs.removeAll()
         explorerShowsSmallItems = false
-        if !navigatingHistory && explorerHistory.last != directory.standardizedFileURL {
+        if !navigatingHistory && (explorerHistoryPosition < 0 || explorerHistory[explorerHistoryPosition] != directory.standardizedFileURL) {
             explorerHistory = Array(explorerHistory.prefix(explorerHistoryPosition + 1))
             explorerHistory.append(directory.standardizedFileURL); explorerHistoryPosition = explorerHistory.count - 1
         }
@@ -1081,13 +1082,14 @@ extension AppModel {
         let volumeID = selectedVolumeID
         let items = explorerIsLoading ? nil : explorerItems
         let maximum = maximumBubbles
+        let diameter = bubbleAvailableDiameter
         bubbleIsLoading = true
         bubbleTask = Task { [weak self] in
             guard let self else { return }
             defer { if bubbleGeneration == generation { bubbleIsLoading = false } }
             do {
                 let partial = isScanning || snapshot?.completedAt == nil || (snapshot?.progress.permissionErrors ?? 0) > 0
-                let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial, items: items, maximumVisible: maximum)
+                let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial, items: items, maximumVisible: maximum, availableDiameter: diameter)
                 guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volumeID, currentDirectory?.path == directory.path else { return }
                 bubbleFrame = frame
                 if frame.totalBytes == nil {
@@ -1103,7 +1105,9 @@ extension AppModel {
 
     func resizeBubbleLayout(width: Double, height: Double) {
         let maximum = min(24, max(4, Int(max(200, width) * max(200, height) / 18000)))
-        guard maximum != maximumBubbles else { return }
+        let diameter = max(100, min(width, height) - 12)
+        guard maximum != maximumBubbles || abs(diameter - bubbleAvailableDiameter) > 20 else { return }
+        bubbleAvailableDiameter = diameter
         maximumBubbles = maximum
         if let directory = currentDirectory, let store = directoryIndexStore { loadBubbleFrame(directory, store: store) }
     }

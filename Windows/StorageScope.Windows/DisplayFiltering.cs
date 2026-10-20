@@ -4,7 +4,7 @@ namespace StorageScope.Windows;
 
 public enum ResultOrder { Largest, Smallest, Name }
 public enum EntryKind { All, Files, Directories }
-public sealed record CategoryChoice(string Label, StorageCategory? Category) { public string IconGlyph => Category is StorageCategory category ? CategoryVisuals.Glyph(category) : "\uE80A"; public override string ToString() => Label; }
+public sealed record CategoryChoice(string Label, StorageCategory? Category) { public System.Windows.Media.Brush IconBrush => CategoryVisuals.Ink(Category ?? StorageCategory.Other); public string IconGlyph => Category is StorageCategory category ? CategoryVisuals.Glyph(category) : "\uE80A"; public override string ToString() => Label; }
 public sealed record SizeChoice(string Label, long Bytes) { public override string ToString() => Label; }
 public sealed record SortChoice(string Label, ResultOrder Order) { public override string ToString() => Label; }
 public sealed record KindChoice(string Label, EntryKind Kind) { public override string ToString() => Label; }

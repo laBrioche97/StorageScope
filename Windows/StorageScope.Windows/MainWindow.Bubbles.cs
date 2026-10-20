@@ -61,11 +61,12 @@ public partial class MainWindow
         var cancellation = new CancellationTokenSource(); _bubbleCancellation = cancellation;
         var generation = ++_bubbleGeneration; var index = _folderIndex;
         var entries = _allExplorerItems.ToArray();
+        var availableDiameter = Math.Max(100, Math.Min(BubbleCanvas.ActualWidth, BubbleCanvas.ActualHeight) - 12);
         var maximum = Math.Clamp((int)(Math.Max(200, BubbleCanvas.ActualWidth) * Math.Max(200, BubbleCanvas.ActualHeight) / 18000), 4, 24);
         SetExplorerLoading(true, _scanning && index is null ? "Analyse du disque… Les tailles se précisent en arrière-plan." : "Préparation du graphique…");
         try
         {
-            var frame = await Task.Run(() => index is not null ? index.Frame(path, entries, maximum, cancellation.Token) : FolderIndex.BuildFrame(path, entries, null, true, maximum, cancellation.Token), cancellation.Token);
+            var frame = await Task.Run(() => index is not null ? index.Frame(path, entries, maximum, cancellation.Token, availableDiameter) : FolderIndex.BuildFrame(path, entries, null, true, maximum, cancellation.Token, availableDiameter), cancellation.Token);
             if (_closing || generation != _bubbleGeneration || _currentDirectory != path || !ReferenceEquals(index, _folderIndex)) return;
             _folderFrame = frame;
             BubbleStatus.Text = $"{path} · {(frame.Total is long total ? SizeFormatter.Format(total) + (frame.Partial ? " identifiés · analyse partielle" : " identifiés") : "Taille inconnue")}" + (frame.Circles.Count == 0 ? " · Aucun élément mesuré. Les tailles inconnues restent dans la liste." : " · Dossiers et fichiers de ce niveau · cliquez sur un dossier pour l’ouvrir.");
@@ -98,7 +99,7 @@ public partial class MainWindow
         foreach (var circle in _folderFrame.Circles.OrderBy(c => c.Depth))
         {
             var button = new BubbleButton { Circle = circle, HasChildren = false, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
-            var total = circle.ParentBytes > 0 ? circle.ParentBytes : _folderFrame.Total;
+            var total = _folderFrame.Total;
             button.ToolTip = $"{circle.Name}\n{circle.Path}\n{SizeFormatter.Format(circle.Bytes)}" + (total > 0 ? $" · {circle.Bytes * 100d / total:N1} % du dossier parent" : "") + (_folderFrame.Partial ? "\nAnalyse partielle" : "");
             AutomationProperties.SetName(button, circle.Name + " · " + SizeFormatter.Format(circle.Bytes));
             AutomationProperties.SetHelpText(button, button.ToolTip.ToString());

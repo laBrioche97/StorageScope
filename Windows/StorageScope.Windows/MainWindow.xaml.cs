@@ -193,6 +193,7 @@ public partial class MainWindow : Window
     private void UpdateResponsiveColumns()
     {
         if (LargestFilesGrid is null) return;
+        ((Grid)Content).Margin = new Thickness(ActualHeight < 650 ? 12 : 18);
         CheckUpdateButton.Visibility = HistoryButton.Visibility = Visibility.Collapsed;
         UpdateNavigationLayout(); LayoutExplorer();
         OptionsButton.Visibility = Visibility.Visible;
@@ -203,9 +204,12 @@ public partial class MainWindow : Window
         CancelButton.Visibility = _busy || _scanning ? Visibility.Visible : Visibility.Collapsed;
         PrivacyFooter.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = ActualHeight >= 760 && (!graphicalExplorer || _scanning) ? Visibility.Visible : Visibility.Collapsed;
-        CompactStatus.Visibility = ActualHeight < 760 ? Visibility.Visible : Visibility.Collapsed;
+        CompactStatus.Visibility = ActualHeight < 760 && (_scanning || _busy) ? Visibility.Visible : Visibility.Collapsed;
         CleanupIntro.Visibility = ActualHeight >= 760 ? Visibility.Visible : Visibility.Collapsed;
         CleanupDetails.Visibility = ActualHeight >= 650 ? Visibility.Visible : Visibility.Collapsed;
+        CleanupLayout.Margin = new Thickness(ActualHeight < 650 ? 6 : 12);
+        CleanupActionStatus.TextWrapping = ActualHeight < 650 ? TextWrapping.NoWrap : TextWrapping.Wrap;
+        CleanupActionStatus.TextTrimming = TextTrimming.CharacterEllipsis;
         SectionSummary.Visibility = ActualHeight >= 650 ? Visibility.Visible : Visibility.Collapsed;
         SelectRecommendedButton.Content = ActualWidth < 950 ? "Choisir les temporaires" : "Sélectionner les temporaires reconnus";
         SelectRecommendedButton.ToolTip = "Sélectionner uniquement les temporaires reconnus admissibles";
@@ -214,9 +218,9 @@ public partial class MainWindow : Window
         DisplayFilterPanel.Visibility = Visibility.Visible;
         void Show(DataGrid grid, int column, bool visible) { grid.Columns[column].Visibility = visible ? Visibility.Visible : Visibility.Collapsed; }
         Show(LargestFilesGrid, 3, ActualWidth >= 1000);
-        Show(ExplorerGrid, 4, ActualWidth >= 1100);
-        Show(ExplorerGrid, 3, ActualWidth >= 1000);
-        Show(ExplorerGrid, 2, ActualWidth >= 850);
+        Show(ExplorerGrid, 4, !_bubbleMode && ActualWidth >= 1100);
+        Show(ExplorerGrid, 3, !_bubbleMode && ActualWidth >= 1000);
+        Show(ExplorerGrid, 2, !_bubbleMode && ActualWidth >= 850);
         Show(CleanupGrid, 3, ActualWidth >= 1000);
         Show(CleanupGrid, 4, ActualWidth >= 1250);
         Show(ApplicationsGrid, 4, ActualWidth >= 1150);
@@ -264,14 +268,17 @@ public partial class MainWindow : Window
         catch { SpaceStatusText.Text = "Espace disponible inconnu"; }
     }
 
-    private async Task BrowseAsync(string path)
+    private async Task BrowseAsync(string path, bool addHistory = true)
     {
         _browseCancellation?.Cancel();
         _browseCancellation = new CancellationTokenSource();
         var cancellation = _browseCancellation;
         var generation = ++_browseGeneration;
-        RecordBrowse(path);
+        if (addHistory) RecordBrowse(path);
         SetExplorerLoading(true);
+        if (!string.Equals(_currentDirectory, path, StringComparison.OrdinalIgnoreCase)) {
+            _allExplorerItems.Clear(); _explorer.Clear(); _folderFrame = null; BubbleCanvas.Children.Clear();
+        }
         _currentDirectory = path;
         ExplorerPathBox.Text = path;
         ExplorerBreadcrumbs.Children.Clear();
@@ -547,6 +554,8 @@ public partial class MainWindow : Window
             ApplyDisplayFilters();
             var first = duplicates.FirstOrDefault(); if (first is not null) { CleanupGrid.SelectedItem = first; CleanupGrid.ScrollIntoView(first); CleanupGrid.SelectedItems.Clear(); }
             CleanupActionStatus.Text = duplicates.Count == 0 ? "Recherche terminée : aucun doublon vérifié parmi les fichiers accessibles. Les emplacements protégés et cloud sont exclus." : $"{duplicates.Count:N0} copie(s) identique(s) vérifiée(s) · groupe Doublons vérifiés. Un exemplaire est conservé ; rien n’a été supprimé. Les filtres ont été réinitialisés.";
+            if (duplicates.Unreadable > 0) CleanupActionStatus.Text += $" Analyse partielle : {duplicates.Unreadable:N0} élément(s) inaccessible(s).";
+            if (duplicates.Excluded > 0) CleanupActionStatus.Text += $" {duplicates.Excluded:N0} emplacement(s) exclu(s) par les protections.";
         }
         catch (OperationCanceledException) { CleanupActionStatus.Text = "Recherche annulée. Aucun fichier modifié ; les précédents résultats sont conservés."; }
         catch (Exception error) { Diagnostics.Write("recherche-doublons", error); CleanupActionStatus.Text = "Recherche impossible : " + error.Message; }

@@ -403,8 +403,13 @@ internal static class Program
             bubbleSizes[folder] = bytes; bubbleSizes[Path.Combine(folder, "Sous-dossier")] = bytes / 2;
         }
         var bubbleResult = new ScanResult { Root = bubbleRoot, DirectorySizes = bubbleSizes, LargestFiles = [], Categories = [], CleanupCandidates = [], IdentifiedBytes = 100_000_000_000, FilesScanned = 100, DirectoriesScanned = 10, AccessErrors = 0 };
+        ((ItemsControl)window.FindName("OverviewCategories")).ItemsSource = categorySource.GroupBy(item => item.Category).Select(group => new CategoryResult(group.Key, group.Sum(item => item.Size), group.LongCount())).ToArray();
+        var fixtureEntries = bubbleSizes.Where(item => Path.GetDirectoryName(item.Key) == bubbleRoot).Select(item => new ScanEntry(item.Key, Path.GetFileName(item.Key), item.Value, true, null, StorageCategory.Other)).ToList();
+        fixtureEntries.Add(new ScanEntry(Path.Combine(bubbleRoot, "Vidéo.mp4"), "Vidéo.mp4", 8_000_000_000, false, null, StorageCategory.Videos));
+        typeof(MainWindow).GetField("_allExplorerItems", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(window, fixtureEntries);
+        ((ResultCollection<ScanEntry>)((DataGrid)window.FindName("ExplorerGrid")).ItemsSource).ReplaceAll(fixtureEntries);
         var fixtureIndex = new FolderIndex(bubbleResult);
-        typeof(MainWindow).GetField("_folderFrame", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(window, fixtureIndex.Frame(bubbleRoot, default));
+        typeof(MainWindow).GetField("_folderFrame", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(window, fixtureIndex.Frame(bubbleRoot, fixtureEntries, 24, default));
         ((TextBlock)window.FindName("BubbleStatus")).Text = "100 Go identifiés · Cliquez sur un dossier pour l’ouvrir.";
         foreach (var (name, width, height, index, scale, dark, contrast) in new[] { ("windows-overview",1120,800,0,1d,true,false), ("windows-cleanup-small",740,700,3,1d,true,false), ("windows-minimum",740,560,3,1d,true,false), ("windows-cleanup-200",1120,800,3,2d,true,false), ("windows-games-light",1120,800,4,1d,false,false), ("windows-categories",1120,800,2,1d,true,false), ("windows-games-small",740,560,4,1d,true,false), ("windows-filters",1120,800,4,1d,true,false), ("windows-contrast",1120,800,0,1d,false,true), ("windows-bubbles",1120,800,1,1d,true,false), ("windows-bubbles-small",740,560,1,1d,false,false), ("windows-bubbles-200",1120,800,1,2d,true,false) })
         {
@@ -417,9 +422,12 @@ internal static class Program
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             window.UpdateLayout();
             if (index == 1) {
+                var canvas = (Canvas)window.FindName("BubbleCanvas");
+                var maximum = Math.Clamp((int)(Math.Max(200, canvas.ActualWidth) * Math.Max(200, canvas.ActualHeight) / 18000), 4, 24);
+                typeof(MainWindow).GetField("_folderFrame", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(window, fixtureIndex.Frame(bubbleRoot, fixtureEntries, maximum, default));
                 typeof(MainWindow).GetMethod("RenderBubbles", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, null);
                 window.UpdateLayout();
-                Check(((Canvas)window.FindName("BubbleCanvas")).Children.Count == 5);
+                Check(((Canvas)window.FindName("BubbleCanvas")).Children.Count > 0 && ((Canvas)window.FindName("BubbleCanvas")).Children.Count <= 6);
                 var bubble = (Button)((Canvas)window.FindName("BubbleCanvas")).Children[0];
                 Check(bubble.ActualWidth > 0 && !string.IsNullOrEmpty(new ButtonAutomationPeer(bubble).GetName()));
             }

@@ -11,7 +11,6 @@ public partial class MainWindow
     private string? _highlightedExplorerPath;
     private readonly List<string> _browseHistory = [];
     private int _historyPosition = -1;
-    private bool _historyNavigation;
     internal Func<string?>? DuplicateDirectoryPicker { get; set; }
     private void InitializeInterface()
     {
@@ -84,13 +83,11 @@ public partial class MainWindow
     {
         var position = _historyPosition + direction;
         if (position < 0 || position >= _browseHistory.Count) return;
-        _historyPosition = position; _historyNavigation = true;
-        try { await BrowseAsync(_browseHistory[position]); }
-        finally { _historyNavigation = false; }
+        _historyPosition = position; await BrowseAsync(_browseHistory[position], false);
     }
     private void RecordBrowse(string path)
     {
-        if (_historyNavigation || _historyPosition >= 0 && string.Equals(_browseHistory[_historyPosition], path, StringComparison.OrdinalIgnoreCase)) return;
+        if (_historyPosition >= 0 && string.Equals(_browseHistory[_historyPosition], path, StringComparison.OrdinalIgnoreCase)) return;
         _browseHistory.RemoveRange(_historyPosition + 1, _browseHistory.Count - _historyPosition - 1);
         _browseHistory.Add(path); _historyPosition = _browseHistory.Count - 1;
     }
@@ -120,6 +117,9 @@ public partial class MainWindow
     {
         if (ExplorerSplit is null) return;
         var stacked = ActualWidth < 1100 && _bubbleMode;
+        ExplorerGrid.Columns[2].Visibility = _bubbleMode ? Visibility.Collapsed : Visibility.Visible;
+        ExplorerGrid.Columns[3].Visibility = !_bubbleMode && ActualWidth >= 1000 ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerGrid.Columns[4].Visibility = !_bubbleMode && ActualWidth >= 1100 ? Visibility.Visible : Visibility.Collapsed;
         ExplorerSplit.ColumnDefinitions[1].Width = new GridLength(_bubbleMode && !stacked ? 1.2 : 0, GridUnitType.Star);
         ExplorerSplit.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
         ExplorerSplit.RowDefinitions[1].Height = new GridLength(stacked ? 1 : 0, GridUnitType.Star);

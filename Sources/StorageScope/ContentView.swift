@@ -3,6 +3,7 @@ import StorageCore
 import SwiftUI
 
 struct ContentView: View {
+    @State private var navigationVisibility: NavigationSplitViewVisibility = .all
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var updates: SoftwareUpdates
@@ -31,11 +32,12 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
+                Button("Afficher la navigation", systemImage: "sidebar.left") { navigationVisibility = navigationVisibility == .detailOnly ? .all : .detailOnly }.labelStyle(.iconOnly)
                 BriocheMark().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)).frame(width: 32, height: 32).accessibilityHidden(true)
                 Text(AppIdentity.title).font(.title3.bold()).lineLimit(1)
                 Spacer()
             }.padding(.horizontal, 16).padding(.vertical, 8)
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $navigationVisibility) {
             List([SidebarSection.applications, .overview, .explorer, .categories, .cleanup], selection: sidebarSelection) { section in
                 Label(section.rawValue, systemImage: section.icon)
                     .tag(section)
@@ -68,6 +70,12 @@ struct ContentView: View {
             }
             .navigationTitle(detailTitle)
         }
+        }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.onAppear { if proxy.size.width < 950 { navigationVisibility = .detailOnly } }
+                    .onChange(of: proxy.size.width) { _, width in navigationVisibility = width < 950 ? .detailOnly : .all }
+            }
         }
         .task { model.refreshTrashSummary(force: true) }
 

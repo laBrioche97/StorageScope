@@ -32,6 +32,15 @@ internal static class ExplorerFeatureTests
         Require(siblings.Length == 24 && siblings.Sum(c => c.Bytes) == 100_000 && siblings.Last().Aggregate);
         Require(index.Remainder(root).Count == 69 && frame.DirectFiles == 400_000);
         Require(index.Frame(Path.Combine(root, "unknown"), default).Total is null);
+        var mixed = new[] {
+            new ScanEntry(Path.Combine(root, "folder"), "folder", 400, true, null, StorageCategory.Other),
+            new ScanEntry(Path.Combine(root, "video.mp4"), "video.mp4", 100, false, null, StorageCategory.Videos),
+            new ScanEntry(Path.Combine(root, "unknown"), "unknown", 0, true, null, StorageCategory.Other) { HasKnownSize = false }
+        };
+        var mixedFrame = index.Frame(root, mixed, 24, default, 200);
+        Require(mixedFrame.Circles.Count == 2 && mixedFrame.Circles.Any(circle => !circle.IsDirectory) && mixedFrame.Partial && mixedFrame.DirectFiles == 100);
+        var compact = FolderIndex.BuildFrame(root, Enumerable.Range(0, 100).Select(i => new ScanEntry(Path.Combine(root, "file" + i), "file" + i, 100, false, null, StorageCategory.Other)).ToArray(), 10_000, false, 24, default, 200);
+        Require(compact.Circles.Count < 24 && compact.Circles.Sum(circle => circle.Bytes) == 10_000 && compact.Circles.Last().Aggregate);
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
         try { index.Frame(root, cancellation.Token); throw new Exception("Cancelled layout completed."); } catch (OperationCanceledException) { }
 

@@ -14,6 +14,18 @@ public static class AppIdentity
 
 public static class CategoryVisuals
 {
+    private static readonly IReadOnlyDictionary<StorageCategory, Brush> Colors = Enum.GetValues<StorageCategory>().ToDictionary(category => category, category =>
+    {
+        var color = category switch {
+            StorageCategory.Applications => "#B38AF2", StorageCategory.ApplicationData => "#8CA6F2",
+            StorageCategory.Images => "#EF89BE", StorageCategory.Videos => "#F0A466", StorageCategory.Audio => "#E98E92",
+            StorageCategory.Documents => "#70B5EF", StorageCategory.ArchivesInstallers => "#C8A585",
+            StorageCategory.Development => "#78D4B5", StorageCategory.VirtualMachines => "#79C8D6", StorageCategory.Backups => "#75C7BD",
+            StorageCategory.MailMessages => "#98C786", StorageCategory.CachesLogs => "#D6C377", _ => "#A6B0BF"
+        };
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color)); brush.Freeze(); return (Brush)brush;
+    });
+    public static Brush Ink(StorageCategory category) => SystemParameters.HighContrast ? SystemColors.WindowTextBrush : Colors[category];
     // Segoe MDL2 Assets is a vector system font available on supported Windows versions.
     public static string Glyph(StorageCategory category) => category switch
     {

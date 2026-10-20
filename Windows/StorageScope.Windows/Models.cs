@@ -33,6 +33,7 @@ public sealed record ScanEntry(
     public bool HasKnownSize { get; init; } = true;
     public string DisplaySize => HasKnownSize ? SizeFormatter.Format(Size) : "Taille inconnue";
     public string IconGlyph => IsDirectory ? "\uE8B7" : CategoryVisuals.Glyph(Category);
+    public Brush IconBrush => CategoryVisuals.Ink(Category);
     public string Type => IsDirectory ? "Dossier" : CategoryLabels.Name(Category);
     public string CategoryName => CategoryLabels.Name(Category);
 }
@@ -40,6 +41,7 @@ public sealed record ScanEntry(
 public sealed record CategoryResult(StorageCategory Category, long Bytes, long FileCount)
 {
     public string IconGlyph => CategoryVisuals.Glyph(Category);
+    public Brush IconBrush => CategoryVisuals.Ink(Category);
     public string Name => CategoryLabels.Name(Category);
     public string DisplaySize => SizeFormatter.Format(Bytes);
     public string Details => $"{FileCount:N0} fichiers";
@@ -57,6 +59,9 @@ public sealed record CleanupCandidate(string Path, string Reason, long Size, boo
     bool Recommended = false, string? DuplicateKeeper = null, FileSnapshot? Snapshot = null,
     FileSnapshot? KeeperSnapshot = null, GameCacheAuthorization? GameCache = null)
 {
+    private StorageCategory IconCategory => Group.Contains("Cache", StringComparison.OrdinalIgnoreCase) || Group.Contains("temporaire", StringComparison.OrdinalIgnoreCase) ? StorageCategory.CachesLogs : CategoryClassifier.Classify(Path);
+    public string IconGlyph => CategoryVisuals.Glyph(IconCategory);
+    public Brush IconBrush => CategoryVisuals.Ink(IconCategory);
     public string Name => System.IO.Path.GetFileName(Path.TrimEnd('\\'));
     public string DisplaySize => SizeFormatter.Format(Size);
 }

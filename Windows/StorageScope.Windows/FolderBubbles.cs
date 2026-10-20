@@ -31,22 +31,31 @@ internal sealed class FolderIndex
         return frame with { DirectFiles = frame.Total is long total ? Math.Max(0, total - Children(path).Sum(item => item.Bytes)) : null };
     }
 
-    internal FolderFrame Frame(string path, IReadOnlyList<ScanEntry> entries, int maximum, CancellationToken token)
+    internal FolderFrame Frame(string path, IReadOnlyList<ScanEntry> entries, int maximum, CancellationToken token, double availableDiameter = double.PositiveInfinity)
     {
         token.ThrowIfCancellationRequested();
         var known = entries.Where(entry => entry.HasKnownSize && entry.Size > 0).OrderByDescending(entry => entry.Size).ThenBy(entry => entry.Path, StringComparer.OrdinalIgnoreCase).ToArray();
         var total = _sizes.TryGetValue(path, out var bytes) || _sizes.TryGetValue(path.TrimEnd('\\'), out bytes) ? (long?)bytes : null;
-        return BuildFrame(path, known, total, entries.Any(entry => !entry.HasKnownSize) || _partial, maximum, token);
+        return BuildFrame(path, known, total, entries.Any(entry => !entry.HasKnownSize) || _partial, maximum, token, availableDiameter);
     }
-    internal static FolderFrame BuildFrame(string path, IReadOnlyList<ScanEntry> entries, long? total, bool partial, int maximum, CancellationToken token)
+    internal static FolderFrame BuildFrame(string path, IReadOnlyList<ScanEntry> entries, long? total, bool partial, int maximum, CancellationToken token, double availableDiameter = double.PositiveInfinity)
     {
         var known = entries.Where(entry => entry.HasKnownSize && entry.Size > 0).OrderByDescending(entry => entry.Size).ThenBy(entry => entry.Path, StringComparer.OrdinalIgnoreCase).ToArray();
         maximum = Math.Clamp(maximum, 2, 24);
-        var take = known.Length > maximum ? maximum - 1 : known.Length;
-        var visible = known.Take(take).Select(entry => (Entry: entry, Aggregate: false)).ToList();
+        IReadOnlyList<CirclePacking.Circle> layout = [];
+        List<(ScanEntry Entry, bool Aggregate)> visible;
+        int take;
+        do {
+        token.ThrowIfCancellationRequested();
+        take = known.Length > maximum ? maximum - 1 : known.Length;
+        visible = known.Take(take).Select(entry => (Entry: entry, Aggregate: false)).ToList();
         if (known.Length > take) visible.Add((new ScanEntry(path, $"Autres éléments ({known.Length - take})", known.Skip(take).Sum(entry => entry.Size), true, null, StorageCategory.Other), true));
         token.ThrowIfCancellationRequested();
-        var circles = CirclePacking.Pack(visible.Select(item => (double)item.Entry.Size).ToArray());
+        layout = CirclePacking.Pack(visible.Select(item => (double)item.Entry.Size).ToArray());
+        if (maximum <= 2 || layout.All(circle => circle.Radius * availableDiameter * .97 >= 80)) break;
+        maximum--;
+        } while (true);
+        var circles = layout;
         var output = visible.Select((item, i) => new FolderCircle(item.Entry.Path, item.Entry.Name, item.Entry.Size, circles[i].X * .97, circles[i].Y * .97, circles[i].Radius * .97, 0, item.Aggregate, take, total ?? known.Sum(entry => entry.Size)) { IsDirectory = item.Entry.IsDirectory }).ToArray();
         return new(output, total, known.Where(entry => !entry.IsDirectory).Sum(entry => entry.Size), partial);
     }

@@ -35,9 +35,17 @@ public sealed class CleanupAnalysis
     public IReadOnlyList<CleanupCandidate> Results() => _candidates.Values.OrderBy(item => item.Group).ThenByDescending(item => item.Size).ToList();
 }
 
+public sealed record DuplicateSearchResult(IReadOnlyList<CleanupCandidate> Candidates, int Excluded, int Unreadable) : IReadOnlyList<CleanupCandidate>
+{
+    public int Count => Candidates.Count;
+    public CleanupCandidate this[int index] => Candidates[index];
+    public IEnumerator<CleanupCandidate> GetEnumerator() => Candidates.GetEnumerator();
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
 public static class DuplicateAnalysis
 {
-    public static Task<IReadOnlyList<CleanupCandidate>> AnalyzeAsync(string root, IProgress<string> progress, CancellationToken token) => Task.Run<IReadOnlyList<CleanupCandidate>>(() =>
+    public static Task<DuplicateSearchResult> AnalyzeAsync(string root, IProgress<string> progress, CancellationToken token) => Task.Run(() =>
     {
         if (DeletionSafetyPolicy.BlockReason(root) is not null) throw new IOException("Choisissez un dossier personnel accessible hors des emplacements protégés et du cloud.");
         var bySize = new Dictionary<long, List<(string Path, FileSnapshot Snapshot)>>();
@@ -46,6 +54,7 @@ public static class DuplicateAnalysis
         var count = 0;
         var lastProgress = System.Diagnostics.Stopwatch.StartNew();
         var skipped = 0;
+        var unreadable = 0;
         progress.Report("Recherche des fichiers…");
         while (directories.TryPop(out var directory))
         {
@@ -57,7 +66,9 @@ public static class DuplicateAnalysis
                     token.ThrowIfCancellationRequested();
                     if (DeletionSafetyPolicy.BlockReason(path) is not null) { skipped++; continue; }
                     if (lastProgress.ElapsedMilliseconds >= 200) { progress.Report($"Recherche : {count:N0} fichiers examinés · {skipped:N0} exclusions"); lastProgress.Restart(); }
-                    var info = DeletionSafetyPolicy.ReadIdentity(path);
+                    FileSnapshot info;
+                    try { info = DeletionSafetyPolicy.ReadIdentity(path); }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException) { unreadable++; continue; }
                     if (info.IsDirectory) { directories.Push(path); continue; }
                     if (++count > 100_000) throw new InvalidOperationException("Ce dossier contient plus de 100 000 fichiers. Choisissez un sous-dossier pour une vérification complète.");
                     if (info.Length == 0) continue;
@@ -65,7 +76,7 @@ public static class DuplicateAnalysis
                     group.Add((path, info));
                 }
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { unreadable++; }
         }
         var results = new List<CleanupCandidate>();
         foreach (var sizeGroup in bySize.Values.Where(group => group.Count > 1))
@@ -82,7 +93,7 @@ public static class DuplicateAnalysis
                     if (!hashes.TryGetValue(hash, out var group)) hashes[hash] = group = [];
                     group.Add(item);
                 }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { unreadable++; }
             }
             foreach (var group in hashes.Values.Where(group => group.Count > 1))
             {
@@ -93,7 +104,7 @@ public static class DuplicateAnalysis
                         "Doublons vérifiés", "Exemplaire conservé : " + keeper.Path, false, keeper.Path, copy.Snapshot, keeper.Snapshot));
             }
         }
-        return results;
+        return new DuplicateSearchResult(results, skipped, unreadable);
     }, token);
 
     public static string Hash(string path, CancellationToken token)

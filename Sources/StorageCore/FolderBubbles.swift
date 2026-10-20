@@ -66,20 +66,28 @@ public struct FolderBubbleFrame: Sendable {
 }
 
 public enum ExplorerBubbleLayout {
-    public static func frame(path: String, items: [FileSystemItem], total: Int64?, partial: Bool, maximum: Int = 24, updatedAt: Date? = nil) throws -> FolderBubbleFrame {
+    public static func frame(path: String, items: [FileSystemItem], total: Int64?, partial: Bool, maximum: Int = 24, updatedAt: Date? = nil, availableDiameter: Double = .infinity) throws -> FolderBubbleFrame {
         try Task.checkCancellation()
         let known = items.filter { $0.hasKnownSize && $0.allocatedSize > 0 && !$0.isSymbolicLink }.sorted {
             $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize
         }
-        let limit = min(24, max(2, maximum))
-        let take = known.count > limit ? limit - 1 : known.count
-        var visible = Array(known.prefix(take)).map { (item: $0, aggregate: false) }
+        var limit = min(24, max(2, maximum))
+        var visible: [(item: FileSystemItem, aggregate: Bool)] = []
+        var circles: [PackedCircle] = []
+        var take = 0
+        repeat {
+        try Task.checkCancellation()
+        take = known.count > limit ? limit - 1 : known.count
+        visible = Array(known.prefix(take)).map { (item: $0, aggregate: false) }
         if known.count > take {
             let bytes = known.dropFirst(take).reduce(Int64(0)) { SaturatingArithmetic.addNonnegative($0, $1.allocatedSize) }
             let other = FileSystemItem(url: URL(fileURLWithPath: path), name: "Autres éléments (\(known.count - take))", logicalSize: bytes, allocatedSize: bytes, isDirectory: true, sizeIsKnown: true)
             visible.append((other, true))
         }
-        let circles = CirclePacking.pack(visible.map { Double($0.item.allocatedSize) })
+        circles = CirclePacking.pack(visible.map { Double($0.item.allocatedSize) })
+        if limit <= 2 || circles.allSatisfy({ $0.radius * availableDiameter * 0.97 >= 80 }) { break }
+        limit -= 1
+        } while true
         let nodes = zip(visible, circles).map { entry, circle in
             FolderBubble(path: entry.item.id, name: entry.item.name, bytes: entry.item.allocatedSize,
                          circle: PackedCircle(x: circle.x * 0.97, y: circle.y * 0.97, radius: circle.radius * 0.97), depth: 0,
@@ -92,7 +100,7 @@ public enum ExplorerBubbleLayout {
 }
 
 extension DirectoryIndexStore {
-    public func bubbleFrame(forPath path: String, partial: Bool, items: [FileSystemItem]? = nil, maximumVisible: Int = 24) throws -> FolderBubbleFrame {
+    public func bubbleFrame(forPath path: String, partial: Bool, items: [FileSystemItem]? = nil, maximumVisible: Int = 24, availableDiameter: Double = .infinity) throws -> FolderBubbleFrame {
         let rootSummary = try summary(forPath: path)
         let entries: [FileSystemItem]
         if let items { entries = items }
@@ -103,7 +111,7 @@ extension DirectoryIndexStore {
             }
         }
         let frame = try ExplorerBubbleLayout.frame(path: path, items: entries, total: rootSummary?.allocatedSize,
-                                                   partial: partial, maximum: maximumVisible, updatedAt: try metadata().updatedAt)
+                                                   partial: partial, maximum: maximumVisible, updatedAt: try metadata().updatedAt, availableDiameter: availableDiameter)
         // Without a directory listing, only the index can estimate direct-file bytes.
         guard items == nil else { return frame }
         let childBytes = try bubbleChildTotals(of: path).bytes

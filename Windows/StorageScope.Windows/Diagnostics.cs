@@ -79,7 +79,7 @@ internal static class Diagnostics
                     File.Move(LogPath, LogPath + ".1", true);
                 }
                 var message = error?.ToString().Replace(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "%USERPROFILE%", StringComparison.OrdinalIgnoreCase);
-                File.AppendAllText(LogPath, JsonSerializer.Serialize(new { at = DateTimeOffset.UtcNow, version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion, os = Environment.OSVersion.VersionString, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), session = Session, action, currentAction = Action, error = message }) + Environment.NewLine);
+                File.AppendAllText(LogPath, JsonSerializer.Serialize(new { at = DateTimeOffset.UtcNow, version = AppIdentity.Version, os = Environment.OSVersion.VersionString, architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(), session = Session, action, currentAction = Action, error = message }) + Environment.NewLine);
             }
             finally { if (acquired) mutex.ReleaseMutex(); }
         }
