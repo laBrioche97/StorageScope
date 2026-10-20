@@ -17,7 +17,7 @@ internal static class GuidedInterfaceTests
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         void Click(string name) => ((Button)window.FindName(name)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         test("version remains visible and sidebar opens stable sections", () => {
-            Require(window.Title == AppIdentity.Title && AppIdentity.Version == "3.4.0");
+            Require(window.Title == AppIdentity.Title && AppIdentity.Version == "3.4.1");
             var navigation = (ListBox)window.FindName("SectionNavigation");
             navigation.SelectedIndex = 4; Require(((TabItem)tabs.SelectedItem).Name == "CleanupTab");
             navigation.SelectedIndex = 0; Require(((TabItem)tabs.SelectedItem).Name == "ApplicationsTab");

@@ -21,6 +21,14 @@ public static class DeletionSafetyPolicy
         || Path.GetFullPath(path).StartsWith(Path.GetFullPath(root).TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
 
     public static string? BlockReason(string path, bool inspectAncestors = true, GameCacheAuthorization? gameCache = null)
+        => InspectPath(path, inspectAncestors, gameCache, false);
+
+    // Read-only traversal may enter a personal container; destructive preflight
+    // always uses BlockReason and still refuses the container itself.
+    public static string? ReadOnlyTraversalBlockReason(string path)
+        => InspectPath(path, true, null, true);
+
+    private static string? InspectPath(string path, bool inspectAncestors, GameCacheAuthorization? gameCache, bool allowPersonalContainer)
     {
         try
         {
@@ -39,8 +47,8 @@ public static class DeletionSafetyPolicy
             };
             if (protectedRoots.Where(root => !string.IsNullOrWhiteSpace(root)).Any(root => IsWithin(full, root)
                 && !(verifiedGameCache && (root == Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) || root == Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86))))) return "Les programmes et composants système doivent passer par leur désinstalleur.";
-            if (string.Equals(full.TrimEnd('\\'), Home.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
-                || PersonalRoots.Any(name => string.Equals(full.TrimEnd('\\'), Path.Combine(Home, name), StringComparison.OrdinalIgnoreCase))) return "Le dossier personnel principal est protégé ; sélectionnez son contenu.";
+            if (!allowPersonalContainer && (string.Equals(full.TrimEnd('\\'), Home.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
+                || PersonalRoots.Any(name => string.Equals(full.TrimEnd('\\'), Path.Combine(Home, name), StringComparison.OrdinalIgnoreCase)))) return "Le dossier personnel principal est protégé ; sélectionnez son contenu.";
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             if (!verifiedGameCache && (IsWithin(full, appData) || IsWithin(full, localData)) && !IsRecognizedCache(full)) return "Données d’application : une association vérifiée est nécessaire.";

@@ -1,5 +1,6 @@
-# StorageScope 3.4.0
+# StorageScope 3.4.1
 
+- Correctif : recherche de doublons autorisée dans les dossiers personnels principaux, qui restent protégés contre la suppression.
 - Interface native simplifiée : navigation latérale, version visible à côté du nom, recherche et filtres propres à chaque section.
 - Explorateur avec liste et bulles synchronisées, fichiers et dossiers du niveau courant, navigation précédente/suivante et regroupement adapté à la fenêtre.
 - Animation de chargement Brioche, progression et annulation explicites ; prise en compte de la réduction des animations.

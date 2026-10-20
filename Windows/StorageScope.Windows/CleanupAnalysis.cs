@@ -47,7 +47,7 @@ public static class DuplicateAnalysis
 {
     public static Task<DuplicateSearchResult> AnalyzeAsync(string root, IProgress<string> progress, CancellationToken token) => Task.Run(() =>
     {
-        if (DeletionSafetyPolicy.BlockReason(root) is not null) throw new IOException("Choisissez un dossier personnel accessible hors des emplacements protégés et du cloud.");
+        if (DeletionSafetyPolicy.ReadOnlyTraversalBlockReason(root) is not null) throw new IOException("Choisissez un dossier personnel accessible hors des emplacements protégés et du cloud.");
         var bySize = new Dictionary<long, List<(string Path, FileSnapshot Snapshot)>>();
         var directories = new Stack<string>();
         directories.Push(root);
@@ -64,7 +64,7 @@ public static class DuplicateAnalysis
                 foreach (var path in Directory.EnumerateFileSystemEntries(directory))
                 {
                     token.ThrowIfCancellationRequested();
-                    if (DeletionSafetyPolicy.BlockReason(path) is not null) { skipped++; continue; }
+                    if (DeletionSafetyPolicy.ReadOnlyTraversalBlockReason(path) is not null) { skipped++; continue; }
                     if (lastProgress.ElapsedMilliseconds >= 200) { progress.Report($"Recherche : {count:N0} fichiers examinés · {skipped:N0} exclusions"); lastProgress.Restart(); }
                     FileSnapshot info;
                     try { info = DeletionSafetyPolicy.ReadIdentity(path); }

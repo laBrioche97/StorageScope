@@ -42,6 +42,16 @@ internal static class Program
                 Check(DeletionSafetyPolicy.CacheKind(Path.Combine(local,@"Google\Chrome\User Data\Default\Bookmarks")) is null);
                 Check(DeletionSafetyPolicy.CacheKind(Path.Combine(local,@"Arbitrary\Cache\payload")) is null);
             });
+            Test("personal containers allow read-only search but remain protected against deletion", () =>
+            {
+                var home = DeletionSafetyPolicy.Home;
+                Check(DeletionSafetyPolicy.ReadOnlyTraversalBlockReason(home) is null);
+                Check(DeletionSafetyPolicy.BlockReason(home) is not null);
+                Check(DeletionSafetyPolicy.ReadOnlyTraversalBlockReason(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)) is not null);
+                var previous = Environment.GetEnvironmentVariable("OneDrive");
+                try { Environment.SetEnvironmentVariable("OneDrive", home); Check(DeletionSafetyPolicy.ReadOnlyTraversalBlockReason(home) is not null); }
+                finally { Environment.SetEnvironmentVariable("OneDrive", previous); }
+            });
             Test("cloud locations excluded", () =>
             {
                 var previous = Environment.GetEnvironmentVariable("OneDrive");
