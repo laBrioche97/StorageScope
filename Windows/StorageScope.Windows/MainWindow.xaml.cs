@@ -208,6 +208,9 @@ public partial class MainWindow : Window
         CleanupIntro.Visibility = ActualHeight >= 760 ? Visibility.Visible : Visibility.Collapsed;
         CleanupDetails.Visibility = ActualHeight >= 650 ? Visibility.Visible : Visibility.Collapsed;
         CleanupLayout.Margin = new Thickness(ActualHeight < 650 ? 6 : 12);
+        BubbleLegend.Visibility = ActualHeight < 700 ? Visibility.Collapsed : Visibility.Visible;
+        DirectFilesButton.ToolTip = "Fichiers dans ce dossier — Voir la liste. Les espaces entre bulles ne représentent pas l’espace libre.";
+        if (ActualHeight < 700) DirectFilesButton.Content = "Voir les fichiers";
         CleanupActionStatus.TextWrapping = ActualHeight < 650 ? TextWrapping.NoWrap : TextWrapping.Wrap;
         CleanupActionStatus.TextTrimming = TextTrimming.CharacterEllipsis;
         SectionSummary.Visibility = ActualHeight >= 650 ? Visibility.Visible : Visibility.Collapsed;
@@ -215,7 +218,14 @@ public partial class MainWindow : Window
         SelectRecommendedButton.ToolTip = "Sélectionner uniquement les temporaires reconnus admissibles";
         ClearCleanupButton.Content = ActualWidth < 950 ? "Décocher" : "Tout décocher";
         DuplicateButton.Content = ActualWidth < 950 ? "Doublons…" : "Rechercher des doublons…";
-        DisplayFilterPanel.Visibility = Visibility.Visible;
+        var compactExplorer = CurrentSection == Section.Explorer && ActualHeight < 700;
+        DisplayFilterPanel.Visibility = compactExplorer && !_compactFiltersOpen ? Visibility.Collapsed : Visibility.Visible;
+        ExplorerSearchBox.Visibility = compactExplorer && !_compactFiltersOpen ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerCompactFiltersButton.Visibility = compactExplorer ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerPathBox.Visibility = compactExplorer ? Visibility.Collapsed : Visibility.Visible;
+        ExplorerNavigationBar.ColumnDefinitions[2].Width = new GridLength(compactExplorer ? 80 : 0);
+        BubbleStatus.Visibility = compactExplorer ? Visibility.Collapsed : Visibility.Visible;
+        BubbleCanvas.ToolTip = BubbleStatus.Text;
         void Show(DataGrid grid, int column, bool visible) { grid.Columns[column].Visibility = visible ? Visibility.Visible : Visibility.Collapsed; }
         Show(LargestFilesGrid, 3, ActualWidth >= 1000);
         Show(ExplorerGrid, 4, !_bubbleMode && ActualWidth >= 1100);
@@ -305,8 +315,8 @@ public partial class MainWindow : Window
 
     private void ApplyExplorerFilter()
     {
-        var query = ExplorerSearchBox.Text.Trim();
-        _explorer.ReplaceAll(_allExplorerItems.Where(item => query.Length == 0 || item.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) || item.Path.Contains(query, StringComparison.CurrentCultureIgnoreCase)));
+        _explorer.ReplaceAll(_allExplorerItems);
+        ApplyDisplayFilters();
     }
 
     private async void ExplorerGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -331,7 +341,7 @@ public partial class MainWindow : Window
         } catch (Exception error) { BubbleStatus.Text = "Chemin non valide : " + error.Message; }
     }
 
-    private void ExplorerSearchBox_TextChanged(object sender, TextChangedEventArgs e) { ApplyExplorerFilter(); RenderBubbles(); }
+    private void ExplorerSearchBox_TextChanged(object sender, TextChangedEventArgs e) { ApplyDisplayFilters(); RenderBubbles(); }
 
     private void OpenSelection_Click(object sender, RoutedEventArgs e)
     {

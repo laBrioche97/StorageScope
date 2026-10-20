@@ -93,7 +93,7 @@ public partial class MainWindow
         BubbleCanvas.Children.Clear();
         var diameter = Math.Max(0, Math.Min(BubbleCanvas.ActualWidth, BubbleCanvas.ActualHeight) - 8);
         if (diameter < 1) return;
-        var query = string.Join(' ', new[] { ListSearch.Text.Trim(), ExplorerSearchBox.Text.Trim() }.Where(s => s.Length > 0));
+        var query = ListSearch.Text.Trim();
         foreach (var circle in _folderFrame.Circles.OrderBy(c => c.Depth))
         {
             var button = new BubbleButton { Circle = circle, HasChildren = false, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };

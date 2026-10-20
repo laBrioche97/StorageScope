@@ -120,7 +120,7 @@ public partial class MainWindow
     private void LayoutExplorer()
     {
         if (ExplorerSplit is null) return;
-        var stacked = ActualWidth < 1100 && _bubbleMode;
+        var stacked = ExplorerSplit.ActualWidth is > 0 and < 540 && _bubbleMode;
         ExplorerGrid.Columns[2].Visibility = _bubbleMode ? Visibility.Collapsed : Visibility.Visible;
         ExplorerGrid.Columns[3].Visibility = !_bubbleMode && ActualWidth >= 1000 ? Visibility.Visible : Visibility.Collapsed;
         ExplorerGrid.Columns[4].Visibility = !_bubbleMode && ActualWidth >= 1100 ? Visibility.Visible : Visibility.Collapsed;

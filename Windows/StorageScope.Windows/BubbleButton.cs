@@ -28,6 +28,15 @@ internal sealed class BubbleButton : Button
         dc.DrawEllipse(contrast ? SystemColors.WindowBrush : new SolidColorBrush(color), new Pen(contrast ? SystemColors.WindowTextBrush : Highlighted || IsKeyboardFocused ? Brushes.White : new SolidColorBrush(Color.FromArgb(170, 220, 225, 235)), Highlighted || IsKeyboardFocused ? 3 : 1), new(r, r), Math.Max(0, r - 2), Math.Max(0, r - 2));
         if (r < 32) return;
         var ink = contrast ? SystemColors.WindowTextBrush : Brushes.White;
+        if (!HasChildren) {
+            var name = new FormattedText(Circle.Aggregate ? "Autres éléments" : Circle.Name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), Math.Clamp(r / 4, 12, 14), ink, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            { MaxTextWidth = r * 1.45, MaxLineCount = 1, Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center };
+            var bytes = new FormattedText(SizeFormatter.Format(Circle.Bytes), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), 12, ink, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            { MaxTextWidth = r * 1.45, MaxLineCount = 1, Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center };
+            dc.DrawText(name, new Point(r - name.MaxTextWidth / 2, r - 17));
+            dc.DrawText(bytes, new Point(r - bytes.MaxTextWidth / 2, r + 2));
+            return;
+        }
         var text = new FormattedText(HasChildren ? Circle.Name : Circle.Name + "\n" + SizeFormatter.Format(Circle.Bytes), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), Math.Clamp(r / 4, 12, 14), ink, VisualTreeHelper.GetDpi(this).PixelsPerDip)
         { MaxTextWidth = r * 1.45, MaxTextHeight = Math.Min(r * .7, 52), Trimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center };
         dc.DrawText(text, new Point(r - text.MaxTextWidth / 2, HasChildren ? r * .12 : r - text.Height / 2));

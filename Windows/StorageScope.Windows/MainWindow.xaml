@@ -131,11 +131,12 @@
       <TabItem x:Name="ExplorerTab" Header="Explorateur" Tag="Explorer">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <Grid>
+          <Grid x:Name="ExplorerNavigationBar">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="0"/></Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal"><Button Content="←" Click="ExplorerBack_Click" AutomationProperties.Name="Dossier précédent"/><Button Content="→" Click="ExplorerForward_Click" AutomationProperties.Name="Dossier suivant"/><Button Content="↑ Parent" Click="ParentButton_Click"/><Button Content="Racine" Click="ExplorerRoot_Click"/></StackPanel>
             <TextBox x:Name="ExplorerPathBox" Grid.Column="1" Margin="6,4" KeyDown="ExplorerPathBox_KeyDown"/>
-            <TextBox x:Name="ExplorerSearchBox" Visibility="Collapsed" Grid.Column="2" Margin="6,4" TextChanged="ExplorerSearchBox_TextChanged" ToolTip="Rechercher dans le dossier"/>
+            <TextBox x:Name="ExplorerSearchBox" Visibility="Collapsed" Grid.Column="1" Text="{Binding Text,ElementName=ListSearch,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" Margin="6,4" TextChanged="ExplorerSearchBox_TextChanged" ToolTip="Rechercher dans le dossier" AutomationProperties.Name="Rechercher dans ce dossier"/>
+            <Button x:Name="ExplorerCompactFiltersButton" Grid.Column="2" Content="Filtres" Click="ShowFilters_Click" Visibility="Collapsed" ToolTip="Afficher les filtres et le tri"/>
           </Grid>
           <Grid Grid.Row="1" x:Name="ExplorerSplit">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="1.2*"/></Grid.ColumnDefinitions>
@@ -155,7 +156,7 @@
             </Grid>
             <Border x:Name="ExplorerLoadingPanel" Grid.ColumnSpan="2" Grid.RowSpan="2" Visibility="Collapsed" Background="{DynamicResource PanelBrush}" CornerRadius="12"><StackPanel VerticalAlignment="Center"><local:BriocheLoader x:Name="ExplorerLoader"/><Button Content="Annuler le chargement" Click="CancelExplorer_Click" HorizontalAlignment="Center"/></StackPanel></Border>
           </Grid>
-          <WrapPanel Grid.Row="2"><Button Content="Liste et bulles" Click="ShowBubbles_Click"/><Button Content="Liste seule" Click="ShowExplorerList_Click"/><Button x:Name="DirectFilesButton" Content="Fichiers dans ce dossier — Voir la liste" Click="DirectFiles_Click"/><TextBlock Text="Les espaces entre bulles ne représentent pas l’espace libre." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4"/></WrapPanel>
+          <WrapPanel Grid.Row="2"><Button Content="Liste et bulles" Click="ShowBubbles_Click"/><Button Content="Liste seule" Click="ShowExplorerList_Click"/><Button x:Name="DirectFilesButton" Content="Fichiers dans ce dossier — Voir la liste" Click="DirectFiles_Click"/><TextBlock x:Name="BubbleLegend" Text="Les espaces entre bulles ne représentent pas l’espace libre." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4"/></WrapPanel>
           <StackPanel Grid.Row="2" Visibility="Collapsed" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Ouvrir" Click="OpenSelection_Click"/>
             <Button Content="Afficher dans l’Explorateur" Click="RevealSelection_Click"/>
