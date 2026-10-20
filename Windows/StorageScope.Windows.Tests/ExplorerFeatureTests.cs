@@ -27,9 +27,9 @@ internal static class ExplorerFeatureTests
         }
         var result = new ScanResult { Root = root, DirectorySizes = sizes, LargestFiles = [], Categories = [], CleanupCandidates = [], IdentifiedBytes = 500_000, FilesScanned = 0, DirectoriesScanned = sizes.Count, AccessErrors = 1 };
         var index = new FolderIndex(result); var frame = index.Frame(root, default);
-        Require(frame.Circles.Count <= 200 && frame.Circles.All(c => c.Depth < 3) && frame.Partial);
+        Require(frame.Circles.Count <= 24 && frame.Circles.All(c => c.Depth == 0) && frame.Partial);
         var siblings = frame.Circles.Where(c => c.Depth == 0).ToArray();
-        Require(siblings.Length == 32 && siblings.Sum(c => c.Bytes) == 100_000 && siblings.Last().Aggregate);
+        Require(siblings.Length == 24 && siblings.Sum(c => c.Bytes) == 100_000 && siblings.Last().Aggregate);
         Require(index.Remainder(root).Count == 69 && frame.DirectFiles == 400_000);
         Require(index.Frame(Path.Combine(root, "unknown"), default).Total is null);
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();

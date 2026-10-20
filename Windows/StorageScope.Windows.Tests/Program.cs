@@ -392,6 +392,7 @@ internal static class Program
         drive.ItemsSource = new[] { new DriveChoice(new DriveInfo(Path.GetPathRoot(_root)!)) }; drive.SelectedIndex = 0;
         window.Show();
         window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+        GuidedInterfaceTests.Run(window, _root, Test);
         ScanResponsivenessTests.Run(_root, Test);
         if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
         var bubbleRoot = Path.Combine(_root, "graph-display");
@@ -418,7 +419,7 @@ internal static class Program
             if (index == 1) {
                 typeof(MainWindow).GetMethod("RenderBubbles", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, null);
                 window.UpdateLayout();
-                Check(((Canvas)window.FindName("BubbleCanvas")).Children.Count == 10);
+                Check(((Canvas)window.FindName("BubbleCanvas")).Children.Count == 5);
                 var bubble = (Button)((Canvas)window.FindName("BubbleCanvas")).Children[0];
                 Check(bubble.ActualWidth > 0 && !string.IsNullOrEmpty(new ButtonAutomationPeer(bubble).GetName()));
             }

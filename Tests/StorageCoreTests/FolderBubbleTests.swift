@@ -28,12 +28,26 @@ func testFolderBubbles() async throws {
     }
     try await store.replaceAll(summaries)
     let frame = try await store.bubbleFrame(forPath: fixture.path, partial: true)
-    try expect(frame.folders.count <= 200 && frame.folders.allSatisfy { $0.depth < 3 }, "Le graphique doit rester borné")
+    try expect(frame.folders.count <= 24 && frame.folders.allSatisfy { $0.depth == 0 }, "Le graphique doit rester borné")
     let siblings = frame.folders.filter { $0.depth == 0 }
-    try expect(siblings.count == 32 && siblings.reduce(0) { $0 + $1.bytes } == 100_000, "Regroupement sans perte d’octets")
+    try expect(siblings.count == 24 && siblings.reduce(0) { $0 + $1.bytes } == 100_000, "Regroupement sans perte d’octets")
     try expect(siblings.last?.isAggregate == true && frame.directFileBytes == 400_000 && frame.isPartial, "Autres dossiers et fichiers directs")
     let unknown = try await store.bubbleFrame(forPath: fixture.appendingPathComponent("unknown").path, partial: false)
     try expect(unknown.totalBytes == nil, "Une taille inconnue ne doit pas devenir zéro")
+
+    let mixed = [
+        FileSystemItem(url: fixture.appendingPathComponent("folder"), logicalSize: 400, allocatedSize: 400, isDirectory: true, sizeIsKnown: true),
+        FileSystemItem(url: fixture.appendingPathComponent("movie.mp4"), logicalSize: 100, allocatedSize: 100, isDirectory: false),
+        FileSystemItem(url: fixture.appendingPathComponent("pending"), logicalSize: 0, allocatedSize: 0, isDirectory: true, sizeIsKnown: false)
+    ]
+    let mixedFrame = try ExplorerBubbleLayout.frame(path: fixture.path, items: mixed, total: 500, partial: false)
+    try expect(mixedFrame.folders.count == 2 && mixedFrame.folders.contains { !$0.isDirectory }, "Fichiers et dossiers du niveau courant")
+    try expect(mixedFrame.isPartial && mixedFrame.directFileBytes == 100, "Les tailles inconnues restent distinctes de zéro")
+    let encoded = try JSONEncoder().encode(mixed[0])
+    var legacy = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+    legacy.removeValue(forKey: "sizeIsKnown")
+    let legacyItem = try JSONDecoder().decode(FileSystemItem.self, from: JSONSerialization.data(withJSONObject: legacy))
+    try expect(legacyItem.hasKnownSize, "Les anciens index restent lisibles")
 
     let first = TrashInventory(items: [], issues: [])
     let different = TrashInventory(items: [], issues: [])

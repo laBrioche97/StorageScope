@@ -28,8 +28,7 @@ struct StorageExplorerView: View {
             Divider()
             if model.explorerIsLoading && model.explorerItems.isEmpty {
                 VStack(spacing: 14) {
-                    ProgressView()
-                    Text("Lecture du dossier…").font(.headline)
+                    BriocheLoadingView(message: "Lecture du dossier…", cancel: model.cancelExplorerLoading)
                     if model.isScanning { Text("Les tailles se précisent pendant l’analyse.").foregroundStyle(.secondary) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -58,6 +57,8 @@ struct StorageExplorerView: View {
     private var explorerHeader: some View {
         VStack(spacing: 10) {
             HStack(spacing: 6) {
+                Button("Précédent", systemImage: "chevron.left") { model.browseHistory(-1) }.labelStyle(.iconOnly)
+                Button("Suivant", systemImage: "chevron.right") { model.browseHistory(1) }.labelStyle(.iconOnly)
                 ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 6) {
                 if let volume = model.selectedVolume {
                     Button {
@@ -93,7 +94,7 @@ struct StorageExplorerView: View {
                         Label(mode.rawValue, systemImage: mode == .bubbles ? "circle.hexagongrid.fill" : "list.bullet").tag(mode)
                     }
                 }
-                .pickerStyle(.segmented).frame(width: 180)
+                .pickerStyle(.segmented).frame(width: 245)
                 Button("Recharger", systemImage: "arrow.clockwise") {
                     if model.explorerCategoryContext != nil {
                         model.refreshCategoryExplorer()
@@ -103,7 +104,7 @@ struct StorageExplorerView: View {
                 }
             }
 
-            if model.explorerDisplayMode == .list || model.explorerCategoryContext != nil {
+            if true {
             ResultFilters()
             HStack {
                 if let context = model.explorerCategoryContext {
@@ -346,7 +347,7 @@ private struct ExplorerTreemapTile: View {
                             Image(systemName: icon)
                                 .foregroundStyle(item.isDirectory ? .blue : color)
                         }
-                        Text(item.name)
+                        Text(item.name).onHover { model.explorerHoveredID = $0 ? item.id : nil }
                             .font(minimumDimension > 95 ? .headline : .caption.bold())
                             .lineLimit(height > 90 ? 2 : 1)
                         Spacer(minLength: 0)
@@ -469,14 +470,16 @@ private struct ExplorerSmallItemsTile: View {
     }
 }
 
-private struct ExplorerListTable: View {
+struct ExplorerListTable: View {
     @EnvironmentObject private var model: AppModel
     let items: [FileSystemItem]
 
     var body: some View {
         Table(items, selection: $model.selectedIDs) {
             TableColumn("Nom") { item in
-                Label(item.name, systemImage: item.isDirectory ? (item.isPackage ? "shippingbox.fill" : "folder.fill") : "doc.fill")
+                Label(item.name, systemImage: item.isDirectory ? (item.isPackage ? "shippingbox.fill" : "folder.fill") : item.category.symbol)
+                    .onHover { model.explorerHoveredID = $0 ? item.id : nil }
+                    .listRowBackground(model.explorerHoveredID == item.id ? Color.accentColor.opacity(0.15) : Color.clear)
                     .onTapGesture(count: 2) { item.isPackage ? model.open(item) : model.activate(item) }
                     .contextMenu {
                         if item.isDirectory && !item.isPackage { Button("Explorer") { model.activate(item) } }
@@ -491,8 +494,8 @@ private struct ExplorerListTable: View {
                         }
                     }
             }
-            TableColumn("Sur disque") { Text(ByteCountFormatter.storage.string(fromByteCount: $0.allocatedSize)).monospacedDigit() }.width(110)
-            TableColumn("Catégorie") { Text($0.category.rawValue) }.width(150)
+            TableColumn("Sur disque") { Text($0.hasKnownSize ? ByteCountFormatter.storage.string(fromByteCount: $0.allocatedSize) : "Taille inconnue").monospacedDigit() }.width(110)
+            TableColumn("Catégorie") { Label($0.category.rawValue, systemImage: $0.category.symbol) }.width(150)
             TableColumn("Modification") { Text($0.modificationDate?.formatted(date: .numeric, time: .omitted) ?? "—") }.width(110)
         }
     }

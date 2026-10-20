@@ -32,12 +32,14 @@ public sealed record ScanEntry(
 {
     public bool HasKnownSize { get; init; } = true;
     public string DisplaySize => HasKnownSize ? SizeFormatter.Format(Size) : "Taille inconnue";
+    public string IconGlyph => IsDirectory ? "\uE8B7" : CategoryVisuals.Glyph(Category);
     public string Type => IsDirectory ? "Dossier" : CategoryLabels.Name(Category);
     public string CategoryName => CategoryLabels.Name(Category);
 }
 
 public sealed record CategoryResult(StorageCategory Category, long Bytes, long FileCount)
 {
+    public string IconGlyph => CategoryVisuals.Glyph(Category);
     public string Name => CategoryLabels.Name(Category);
     public string DisplaySize => SizeFormatter.Format(Bytes);
     public string Details => $"{FileCount:N0} fichiers";

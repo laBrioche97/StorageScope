@@ -248,6 +248,7 @@ public struct DirectoryBrowserService: Sendable {
             var enriched = item
             enriched.logicalSize = summary.logicalSize
             enriched.allocatedSize = summary.allocatedSize
+            enriched.sizeIsKnown = true
             return enriched
         }
     }

@@ -44,8 +44,10 @@ public struct FolderBubble: Identifiable, Sendable {
     public let depth: Int
     public let isAggregate: Bool
     public let skipCount: Int
+    public let isDirectory: Bool
     public let parentBytes: Int64
-    public init(path: String, name: String, bytes: Int64, circle: PackedCircle, depth: Int, isAggregate: Bool = false, skipCount: Int = 0, parentBytes: Int64 = 0) {
+    public init(path: String, name: String, bytes: Int64, circle: PackedCircle, depth: Int, isAggregate: Bool = false, skipCount: Int = 0, parentBytes: Int64 = 0, isDirectory: Bool = true) {
+        self.isDirectory = isDirectory
         self.path = path; self.name = name; self.bytes = bytes; self.circle = circle
         self.depth = depth; self.isAggregate = isAggregate; self.skipCount = skipCount; self.parentBytes = parentBytes
     }
@@ -63,37 +65,49 @@ public struct FolderBubbleFrame: Sendable {
     }
 }
 
-extension DirectoryIndexStore {
-    public func bubbleFrame(forPath path: String, partial: Bool) throws -> FolderBubbleFrame {
-        var output: [FolderBubble] = []
-        var budget = 200
-        let rootSummary = try summary(forPath: path)
-        let total = rootSummary?.allocatedSize
-        try add(path, bytes: total ?? 0, x: 0, y: 0, radius: 1, depth: 0)
-        let childTotal = try bubbleChildTotals(of: path).bytes
-        return FolderBubbleFrame(folders: output, totalBytes: total, directFileBytes: total.map { max(0, $0 - childTotal) }, isPartial: partial, updatedAt: try metadata().updatedAt)
+public enum ExplorerBubbleLayout {
+    public static func frame(path: String, items: [FileSystemItem], total: Int64?, partial: Bool, maximum: Int = 24, updatedAt: Date? = nil) throws -> FolderBubbleFrame {
+        try Task.checkCancellation()
+        let known = items.filter { $0.hasKnownSize && $0.allocatedSize > 0 && !$0.isSymbolicLink }.sorted {
+            $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize
+        }
+        let limit = min(24, max(2, maximum))
+        let take = known.count > limit ? limit - 1 : known.count
+        var visible = Array(known.prefix(take)).map { (item: $0, aggregate: false) }
+        if known.count > take {
+            let bytes = known.dropFirst(take).reduce(Int64(0)) { SaturatingArithmetic.addNonnegative($0, $1.allocatedSize) }
+            let other = FileSystemItem(url: URL(fileURLWithPath: path), name: "Autres éléments (\(known.count - take))", logicalSize: bytes, allocatedSize: bytes, isDirectory: true, sizeIsKnown: true)
+            visible.append((other, true))
+        }
+        let circles = CirclePacking.pack(visible.map { Double($0.item.allocatedSize) })
+        let nodes = zip(visible, circles).map { entry, circle in
+            FolderBubble(path: entry.item.id, name: entry.item.name, bytes: entry.item.allocatedSize,
+                         circle: PackedCircle(x: circle.x * 0.97, y: circle.y * 0.97, radius: circle.radius * 0.97), depth: 0,
+                         isAggregate: entry.aggregate, skipCount: take, parentBytes: total ?? 0, isDirectory: entry.item.isDirectory)
+        }
+        let direct = known.filter { !$0.isDirectory }.reduce(Int64(0)) { SaturatingArithmetic.addNonnegative($0, $1.allocatedSize) }
+        return FolderBubbleFrame(folders: nodes, totalBytes: total, directFileBytes: direct,
+                                 isPartial: partial || items.contains { !$0.hasKnownSize }, updatedAt: updatedAt)
+    }
+}
 
-        func add(_ parent: String, bytes: Int64, x: Double, y: Double, radius: Double, depth: Int) throws {
-            try Task.checkCancellation()
-            guard depth < 3, budget > 0 else { return }
-            let totals = try bubbleChildTotals(of: parent)
-            let take = min(32, budget, totals.count)
-            guard take > 0 else { return }
-            let grouped = totals.count > take
-            let children = try children(of: parent, limit: grouped ? take - 1 : take).filter { $0.allocatedSize > 0 }
-            var visible = children.map { (path: $0.path, name: URL(fileURLWithPath: $0.path).lastPathComponent, bytes: $0.allocatedSize, aggregate: false) }
-            if grouped { visible.append((parent, "Autres dossiers (\(totals.count - children.count))", max(0, totals.bytes - children.reduce(0) { $0 + $1.allocatedSize }), true)) }
-            budget -= visible.count
-            let circles = CirclePacking.pack(visible.map { Double($0.bytes) })
-            let fraction = bytes > 0 ? min(1, Double(totals.bytes) / Double(bytes)) : 1
-            let scale = radius * 0.90 * sqrt(fraction)
-            let siblings = zip(visible, circles).map { item, circle in
-                FolderBubble(path: item.path, name: item.name, bytes: item.bytes, circle: PackedCircle(x: x + circle.x * scale, y: y + circle.y * scale, radius: circle.radius * scale), depth: depth, isAggregate: item.aggregate, skipCount: children.count, parentBytes: bytes)
-            }
-            output.append(contentsOf: siblings)
-            for node in siblings where !node.isAggregate {
-                try add(node.path, bytes: node.bytes, x: node.circle.x, y: node.circle.y, radius: node.circle.radius, depth: depth + 1)
+extension DirectoryIndexStore {
+    public func bubbleFrame(forPath path: String, partial: Bool, items: [FileSystemItem]? = nil, maximumVisible: Int = 24) throws -> FolderBubbleFrame {
+        let rootSummary = try summary(forPath: path)
+        let entries: [FileSystemItem]
+        if let items { entries = items }
+        else {
+            entries = try children(of: path, limit: 100_000).map {
+                FileSystemItem(url: URL(fileURLWithPath: $0.path), logicalSize: $0.logicalSize,
+                               allocatedSize: $0.allocatedSize, isDirectory: true, sizeIsKnown: true)
             }
         }
+        let frame = try ExplorerBubbleLayout.frame(path: path, items: entries, total: rootSummary?.allocatedSize,
+                                                   partial: partial, maximum: maximumVisible, updatedAt: try metadata().updatedAt)
+        // Without a directory listing, only the index can estimate direct-file bytes.
+        guard items == nil else { return frame }
+        let childBytes = try bubbleChildTotals(of: path).bytes
+        return FolderBubbleFrame(folders: frame.folders, totalBytes: frame.totalBytes,
+                                 directFileBytes: frame.totalBytes.map { max(0, $0 - childBytes) }, isPartial: frame.isPartial, updatedAt: frame.updatedAt)
     }
 }

@@ -43,6 +43,7 @@ public partial class MainWindow
         if (CurrentSection == Section.Explorer) EnsureBubbleAnalysis();
         UpdateBubbleFilters();
         UpdateResponsiveColumns();
+        RefreshSectionHeading();
     }
 
     private void InitializeDisplayFilters()
@@ -108,6 +109,7 @@ public partial class MainWindow
         Refresh(_cleanup, item => item is CleanupCandidate candidate && cleanupFilter.Matches(candidate), Section.Cleanup);
         var appSource = CurrentSection == Section.Applications ? source : (_sectionFilters.GetValueOrDefault(Section.Applications) ?? new()).Source;
         Refresh(_applications, item => item is InstalledApplication app && applicationFilter.Matches(app) && (appSource is null or "Toutes les sources" || app.Provider == appSource), Section.Applications, true);
+        RefreshSectionHeading();
         var count = CategoryFilesGrid.Items.OfType<ScanEntry>().Count();
         var total = _result?.Categories.Where(category => categoryFilter.Category is null || category.Category == categoryFilter.Category).Sum(category => category.FileCount) ?? 0;
         CategoryStatusText.Text = $"{(categoryFilter.Category is StorageCategory category ? CategoryLabels.Name(category) : "Toutes les catégories")} · {count:N0} affiché(s) / {total:N0} détecté(s) · 500 plus gros fichiers maximum par catégorie." + (count == 0 ? (_result is null ? " Lancez une analyse pour voir les fichiers." : " Aucun résultat : modifiez les filtres.") : "");

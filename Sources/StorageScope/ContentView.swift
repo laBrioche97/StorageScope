@@ -5,6 +5,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var updates: SoftwareUpdates
 
     private var detailTitle: String {
         let section = model.sidebar?.rawValue ?? "Stockage"
@@ -28,15 +29,28 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(SidebarSection.allCases, selection: sidebarSelection) { section in
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                BriocheMark().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)).frame(width: 32, height: 32).accessibilityHidden(true)
+                Text(AppIdentity.title).font(.title3.bold()).lineLimit(1)
+                Spacer()
+            }.padding(.horizontal, 16).padding(.vertical, 8)
+            NavigationSplitView {
+            List([SidebarSection.applications, .overview, .explorer, .categories, .cleanup], selection: sidebarSelection) { section in
                 Label(section.rawValue, systemImage: section.icon)
                     .tag(section)
             }
             .navigationTitle("Stockage")
             .navigationSplitViewColumnWidth(min: 190, ideal: 220)
         } detail: {
-            Group {
+            VStack(spacing: 0) {
+                HStack {
+                    TextField("Rechercher dans cette section", text: $model.searchText).textFieldStyle(.roundedBorder)
+                    if !model.searchText.isEmpty || model.sizeFilter != .all || model.kindFilter != .all || model.categoryFilter != nil {
+                        Button("Effacer les filtres") { model.resetSectionFilters() }
+                    }
+                }.padding(12)
+                Group {
                 if model.sidebar == .volumes {
                     VolumesView()
                 } else if model.sidebar == .explorer {
@@ -51,10 +65,12 @@ struct ContentView: View {
                     StorageResultsView()
                 }
             }
+            }
             .navigationTitle(detailTitle)
         }
+        }
         .task { model.refreshTrashSummary(force: true) }
-        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Nom, extension ou chemin")
+
         .toolbar { toolbar }
         .onChange(of: model.sidebar) { _, section in
             if section == .explorer, model.explorerCategoryContext == nil { model.loadExplorerRoot() }
@@ -100,6 +116,12 @@ struct ContentView: View {
         }
     }
 
+    private func openLocalFolder(_ name: String) {
+        let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/StorageScope/" + name, isDirectory: true)
+        do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true); NSWorkspace.shared.open(directory) }
+        catch { model.alertMessage = error.localizedDescription }
+    }
+
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup {
             Picker("Volume", selection: Binding(
@@ -111,21 +133,24 @@ struct ContentView: View {
             .frame(maxWidth: 190)
             .disabled(model.operationsAreBusy && !model.isScanning)
 
-            Button("Actualiser", systemImage: "arrow.clockwise") { model.refreshVolumes(); model.refreshTrashSummary(force: true); model.loadApplications() }
-                .help("Actualiser l’espace disponible et les volumes montés")
-
             Button(model.trashSummaryLabel, systemImage: "trash") { model.prepareEmptyTrash() }
-                .help("Inventorier ou vider définitivement la Corbeille")
-            Button("Historique", systemImage: "clock.arrow.circlepath") {
-                let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/StorageScope/History", isDirectory: true)
-                do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true); NSWorkspace.shared.open(directory) }
-                catch { model.alertMessage = error.localizedDescription }
+                .help("Voir la taille et vider définitivement la Corbeille")
+            Menu("Plus", systemImage: "ellipsis.circle") {
+                Button("Rechercher des mises à jour…") { updates.check() }.disabled(model.operationsAreBusy)
+                Button("Historique local") { openLocalFolder("History") }
+                Button("Ouvrir les diagnostics") { openLocalFolder("Diagnostics") }
+                Divider()
+                Menu("Autres vues") {
+                    ForEach([SidebarSection.largestFiles, .largestFolders, .volumes, .lastScan]) { section in
+                        Button(section.rawValue) { model.sidebar = section }
+                    }
+                }
             }
 
             if model.isScanning {
                 Button("Arrêter", systemImage: "stop.fill") { model.stopScan() }
             } else {
-                Button("Analyser", systemImage: "play.fill") { model.startScan() }
+                Button("Analyser le disque", systemImage: "play.fill") { model.startScan() }
                     .keyboardShortcut("r", modifiers: .command)
             }
         }
@@ -147,6 +172,7 @@ private struct StorageResultsView: View {
                     recoverableTrashBytes: model.recoverableTrashBytes
                 )
             }
+            if model.sidebar == .overview { CategoryOverview() }
             if model.isScanning { ScanProgressView(status: model.scanStatus) }
             if let snapshot = model.snapshot {
                 if snapshot.progress.permissionErrors > 0 {

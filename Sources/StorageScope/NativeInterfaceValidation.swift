@@ -13,39 +13,43 @@ enum NativeInterfaceValidation {
         let source = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
         let first = model.iconCache.image(for: source)
         precondition(first === model.iconCache.image(for: source), "Session logo cache must reuse decoded images")
-        let weights: [Double] = [40, 25, 15, 10, 5]
-        let circles = CirclePacking.pack(weights)
-        var nodes = circles.enumerated().map { index, circle in
-            FolderBubble(path: "/Volumes/Test/Folder-\(index)", name: ["Applications", "Documents", "Jeux", "Vidéos", "Archives"][index], bytes: Int64(weights[index] * 1_073_741_824), circle: PackedCircle(x: circle.x * 0.9, y: circle.y * 0.9, radius: circle.radius * 0.9), depth: 0)
+        model.searchText = "Applications"; model.sidebar = .explorer
+        precondition(model.searchText.isEmpty)
+        model.searchText = "Dossiers"; model.sidebar = .applications
+        precondition(model.searchText == "Applications")
+        model.sidebar = .explorer; precondition(model.searchText == "Dossiers"); model.resetSectionFilters()
+        let weights: [Int64] = [40, 25, 15, 10, 5]
+        model.explorerItems = weights.enumerated().map { index, bytes in
+            FileSystemItem(url: URL(fileURLWithPath: "/Volumes/Test/Item-\(index)"), name: ["Applications", "Documents", "Jeux", "Vidéo.mp4", "Archives.zip"][index], logicalSize: bytes * 1_073_741_824, allocatedSize: bytes * 1_073_741_824, isDirectory: index < 3, category: index == 3 ? .video : index == 4 ? .archive : .other, sizeIsKnown: true)
         }
-        let parent = nodes[0]
-        let childCircle = PackedCircle(x: parent.circle.x, y: parent.circle.y, radius: parent.circle.radius * 0.63)
-        nodes.append(FolderBubble(path: parent.path + "/Sous-dossier", name: "Sous-dossier", bytes: parent.bytes / 2, circle: childCircle, depth: 1, parentBytes: parent.bytes))
-        model.bubbleFrame = FolderBubbleFrame(folders: nodes, totalBytes: 100 * 1_073_741_824, directFileBytes: 5 * 1_073_741_824, isPartial: false, updatedAt: Date())
-        model.bubbleMessage = "Tailles identifiées · Cliquez sur un dossier pour l’ouvrir."
+        model.bubbleFrame = try ExplorerBubbleLayout.frame(path: "/Volumes/Test", items: model.explorerItems, total: 95 * 1_073_741_824, partial: false)
+        precondition(model.bubbleFrame?.folders.count == 5 && model.bubbleFrame?.folders.allSatisfy { $0.depth == 0 } == true)
+        model.bubbleMessage = "Tailles mesurées · Dossiers et fichiers de ce niveau"
         model.currentDirectory = URL(fileURLWithPath: "/Volumes/Test")
+        for (width, height, suffix) in [(1120.0, 800.0, "large"), (740.0, 560.0, "small")] {
         for dark in [false, true] {
             for scale in [1.0, 2.0] {
-                let view = FolderBubblesView().environmentObject(model)
+                let view = ContentView().environmentObject(model).environmentObject(SoftwareUpdates())
                     .environment(\.colorScheme, dark ? .dark : .light)
-                    .frame(width: 740, height: 560)
+                    .frame(width: width, height: height)
                     .background(Color(nsColor: .windowBackgroundColor))
                     .scaleEffect(scale, anchor: .topLeading)
-                    .frame(width: 740 * scale, height: 560 * scale, alignment: .topLeading)
+                    .frame(width: width * scale, height: height * scale, alignment: .topLeading)
                 let hosting = NSHostingView(rootView: view)
-                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740 * scale, height: 560 * scale), styleMask: [.titled], backing: .buffered, defer: false)
+                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width * scale, height: height * scale), styleMask: [.titled], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false
                 window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 window.contentView = hosting
-                hosting.frame = NSRect(x: 0, y: 0, width: 740 * scale, height: 560 * scale)
+                hosting.frame = NSRect(x: 0, y: 0, width: width * scale, height: height * scale)
                 hosting.layoutSubtreeIfNeeded()
                 try await Task.sleep(for: .milliseconds(100))
                 guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { throw CocoaError(.fileWriteUnknown) }
                 hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
                 guard let data = bitmap.representation(using: .png, properties: [:]), !data.isEmpty else { throw CocoaError(.fileWriteUnknown) }
-                try data.write(to: destination.appendingPathComponent("macos-bubbles-\(dark ? "dark" : "light")-\(Int(scale * 100)).png"))
+                try data.write(to: destination.appendingPathComponent("macos-bubbles-\(suffix)-\(dark ? "dark" : "light")-\(Int(scale * 100)).png"))
                 window.close()
             }
+        }
         }
         print("PASS native macOS bubble rendering at 100/200%, light/dark, cached icons and initial navigation")
     }

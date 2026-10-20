@@ -44,6 +44,9 @@ public static class DuplicateAnalysis
         var directories = new Stack<string>();
         directories.Push(root);
         var count = 0;
+        var lastProgress = System.Diagnostics.Stopwatch.StartNew();
+        var skipped = 0;
+        progress.Report("Recherche des fichiers…");
         while (directories.TryPop(out var directory))
         {
             token.ThrowIfCancellationRequested();
@@ -52,7 +55,8 @@ public static class DuplicateAnalysis
                 foreach (var path in Directory.EnumerateFileSystemEntries(directory))
                 {
                     token.ThrowIfCancellationRequested();
-                    if (DeletionSafetyPolicy.BlockReason(path) is not null) continue;
+                    if (DeletionSafetyPolicy.BlockReason(path) is not null) { skipped++; continue; }
+                    if (lastProgress.ElapsedMilliseconds >= 200) { progress.Report($"Recherche : {count:N0} fichiers examinés · {skipped:N0} exclusions"); lastProgress.Restart(); }
                     var info = DeletionSafetyPolicy.ReadIdentity(path);
                     if (info.IsDirectory) { directories.Push(path); continue; }
                     if (++count > 100_000) throw new InvalidOperationException("Ce dossier contient plus de 100 000 fichiers. Choisissez un sous-dossier pour une vérification complète.");
@@ -70,7 +74,7 @@ public static class DuplicateAnalysis
             foreach (var item in sizeGroup)
             {
                 token.ThrowIfCancellationRequested();
-                progress.Report("Vérification du contenu : " + Path.GetFileName(item.Path));
+                if (lastProgress.ElapsedMilliseconds >= 200) { progress.Report("Vérification du contenu : " + Path.GetFileName(item.Path)); lastProgress.Restart(); }
                 try
                 {
                     var hash = Hash(item.Path, token);

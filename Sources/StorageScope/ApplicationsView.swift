@@ -41,7 +41,7 @@ struct ApplicationsView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Actualiser", systemImage: "arrow.clockwise") { model.loadApplications() }
+                            Button("Actualiser les applications", systemImage: "arrow.clockwise") { model.loadApplications() }
                         }
                         Text("Les caches reconnus peuvent être sélectionnés. Les réglages, sauvegardes et autres données personnelles restent décochés ; les composants partagés restent protégés.")
                             .padding(12).background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))

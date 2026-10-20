@@ -27,7 +27,7 @@ struct ResultFilters: View {
     }
     private var resetButton: some View {
         Button("Réinitialiser") {
-            model.searchText = ""; model.sizeFilter = .all; model.kindFilter = .all; model.categoryFilter = nil; model.sort = .allocated
+            model.resetSectionFilters()
         }
     }
 }

@@ -4,45 +4,44 @@ import SwiftUI
 
 struct FolderBubblesView: View {
     @EnvironmentObject private var model: AppModel
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(model.bubbleMessage).font(.callout).foregroundStyle(.secondary)
-            if model.isScanning {
-                ScanProgressView(status: model.scanStatus)
-                Button("Annuler l’analyse") { model.stopScan(); model.ensureBubbleAnalysis() }
-            }
-            folderHeader
-            FolderBubbleDiagram()
-            Button(directFileLabel) { model.showDirectFiles() }
-            Text("Les surfaces comparent les dossiers frères. Les espaces entre bulles ne représentent pas l’espace libre.")
-                .font(.caption).foregroundStyle(.secondary)
-        }.padding(18)
-        .onAppear { model.ensureBubbleAnalysis() }
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 8) {
+                Text(model.bubbleMessage).font(.callout).foregroundStyle(.secondary)
+                if model.isScanning {
+                    HStack { ProgressView().controlSize(.small); Text("Analyse du disque en cours — tailles partielles"); Button("Annuler") { model.cancelExplorerLoading() } }
+                }
+                HStack {
+                    Text("\(model.explorerVisibleItems.count) éléments affichés").font(.caption)
+                    Spacer()
+                    Button("Dossier parent", systemImage: "arrow.up") { goUp() }
+                }
+                if proxy.size.width >= 720 {
+                    HSplitView {
+                        ExplorerListTable(items: model.explorerVisibleItems).frame(minWidth: 270, idealWidth: 320)
+                        FolderBubbleDiagram().frame(minWidth: 280)
+                    }
+                } else {
+                    VSplitView {
+                        FolderBubbleDiagram().frame(minHeight: 160)
+                        ExplorerListTable(items: model.explorerVisibleItems).frame(minHeight: 130)
+                    }
+                }
+                Text("Surfaces proportionnelles · Les espaces entre bulles ne représentent pas l’espace libre.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(12)
+        }.onAppear { model.ensureBubbleAnalysis() }
     }
-    private var folderHeader: some View {
-        HStack {
-            if let total = model.bubbleFrame?.totalBytes {
-                Text(ByteCountFormatter.storage.string(fromByteCount: total)).font(.headline).monospacedDigit()
-            }
-            if let date = model.bubbleFrame?.updatedAt { Text(date, style: .time).font(.caption).foregroundStyle(.secondary) }
-            Spacer()
-            Button("Dossier parent", systemImage: "arrow.up") {
-                guard let current = model.currentDirectory, let root = model.selectedVolume?.url,
-                      current.standardizedFileURL.path != root.standardizedFileURL.path else { return }
-                model.loadExplorerDirectory(current.deletingLastPathComponent())
-            }
-        }
-    }
-    private var directFileLabel: String {
-        let size = model.bubbleFrame?.directFileBytes.map { " · " + ByteCountFormatter.storage.string(fromByteCount: $0) } ?? ""
-        return "Fichiers dans ce dossier" + size + " — Voir la liste"
+    private func goUp() {
+        guard let current = model.currentDirectory, let root = model.selectedVolume?.url,
+              current.standardizedFileURL.path != root.standardizedFileURL.path else { return }
+        model.loadExplorerDirectory(current.deletingLastPathComponent())
     }
 }
 
 private enum BubbleGeometry {
     static func rect(_ node: FolderBubble, size: CGSize) -> CGRect {
-        let diameter = max(0, min(size.width, size.height) - 8)
+        let diameter = max(0, min(size.width, size.height) - 12)
         let radius = CGFloat(node.circle.radius) * diameter / 2
         return CGRect(x: size.width / 2 + CGFloat(node.circle.x) * diameter / 2 - radius,
                       y: size.height / 2 + CGFloat(node.circle.y) * diameter / 2 - radius,
@@ -52,23 +51,23 @@ private enum BubbleGeometry {
 
 private struct FolderBubbleDiagram: View {
     @EnvironmentObject private var model: AppModel
-    private var nodes: [FolderBubble] { (model.bubbleFrame?.folders ?? []).sorted { $0.depth < $1.depth } }
+    private var nodes: [FolderBubble] { model.bubbleFrame?.folders ?? [] }
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 FolderBubbleDrawing(nodes: nodes)
-                ForEach(nodes) { node in
-                    FolderBubbleControl(node: node, bounds: BubbleGeometry.rect(node, size: proxy.size))
+                ForEach(nodes) { node in FolderBubbleControl(node: node, bounds: BubbleGeometry.rect(node, size: proxy.size)) }
+                if nodes.isEmpty && !model.bubbleIsLoading && !model.explorerIsLoading && !model.isScanning {
+                    ContentUnavailableView("Aucun élément mesuré", systemImage: "folder", description: Text(model.explorerIssues.first?.message ?? "Les tailles inconnues restent disponibles dans la liste."))
+                        .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                if nodes.isEmpty { emptyState.frame(width: proxy.size.width, height: proxy.size.height) }
+                if model.explorerIsLoading || model.bubbleIsLoading || model.isScanning && model.bubbleFrame?.totalBytes == nil {
+                    BriocheLoadingView(message: model.explorerIsLoading ? "Lecture du dossier…" : model.isScanning ? "Analyse du disque…" : "Préparation du graphique…", cancel: model.cancelExplorerLoading)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
             }
-        }
-    }
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "folder").font(.largeTitle)
-            Text(model.isScanning ? "Calcul des tailles en cours…" : "Aucun sous-dossier mesuré")
-            Button("Voir les fichiers dans la Liste") { model.showDirectFiles() }
+            .onAppear { model.resizeBubbleLayout(width: proxy.size.width, height: proxy.size.height) }
+            .onChange(of: proxy.size) { _, size in model.resizeBubbleLayout(width: size.width, height: size.height) }
         }
     }
 }
@@ -78,68 +77,53 @@ private struct FolderBubbleDrawing: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     let nodes: [FolderBubble]
     var body: some View {
-        Canvas { context, size in draw(context, size: size) }.accessibilityHidden(true)
-    }
-    private func draw(_ context: GraphicsContext, size: CGSize) {
-        let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let colors: [Color] = [.purple, .blue, .teal]
-        for node in nodes {
-            let rect = BubbleGeometry.rect(node, size: size)
-            let path = Path(ellipseIn: rect.insetBy(dx: 1, dy: 1))
-            let color: Color = node.isAggregate ? .gray : colors[node.depth % colors.count]
-            context.fill(path, with: .color(color.opacity(0.75)))
-            let matched = !query.isEmpty && node.name.localizedCaseInsensitiveContains(query)
-            let stroke = Color.primary.opacity(differentiateWithoutColor || matched ? 1 : 0.5)
-            context.stroke(path, with: .color(stroke), lineWidth: matched ? 3 : 1)
-            if rect.width > 70 { drawLabel(node, context: context, rect: rect) }
-        }
-    }
-    private func drawLabel(_ node: FolderBubble, context: GraphicsContext, rect: CGRect) {
-        let hasChildren = nodes.contains { $0.depth == node.depth + 1 && $0.path.hasPrefix(node.path + "/") }
-        let text = hasChildren ? node.name : node.name + "\n" + ByteCountFormatter.storage.string(fromByteCount: node.bytes)
-        let label = Text(text).font(.system(size: min(13, rect.width / 10))).foregroundColor(.white)
-        let labelRect: CGRect
-        if hasChildren {
-            labelRect = CGRect(x: rect.minX + rect.width * 0.15, y: rect.minY + rect.height * 0.06, width: rect.width * 0.7, height: rect.height * 0.18)
-        } else { labelRect = rect.insetBy(dx: rect.width * 0.18, dy: rect.height * 0.33) }
-        context.draw(context.resolve(label), in: labelRect)
-        if hasChildren {
-            let bytes = Text(ByteCountFormatter.storage.string(fromByteCount: node.bytes)).font(.system(size: min(12, rect.width / 12))).foregroundColor(.white)
-            context.draw(bytes, at: CGPoint(x: rect.midX, y: rect.maxY - rect.height * 0.1))
-        }
+        Canvas { context, size in
+            for node in nodes {
+                let rect = BubbleGeometry.rect(node, size: size)
+                let path = Path(ellipseIn: rect.insetBy(dx: 1, dy: 1))
+                let color: Color = node.isAggregate ? .gray : node.isDirectory ? .purple : .blue
+                context.fill(path, with: .color(color.opacity(0.85)))
+                let matched = model.explorerHoveredID == node.path || model.selectedIDs.contains(node.path) || !model.searchText.isEmpty && node.name.localizedCaseInsensitiveContains(model.searchText)
+                context.stroke(path, with: .color(Color.primary.opacity(differentiateWithoutColor || matched ? 1 : 0.4)), lineWidth: matched ? 3 : 1)
+                if rect.width >= 70 {
+                    let text = Text(node.name + "\n" + ByteCountFormatter.storage.string(fromByteCount: node.bytes)).font(.system(size: min(14, max(12, rect.width / 10)))).foregroundColor(.white)
+                    context.draw(context.resolve(text), in: rect.insetBy(dx: rect.width * 0.18, dy: rect.height * 0.30))
+                }
+            }
+        }.accessibilityHidden(true)
     }
 }
 
 private struct FolderBubbleControl: View {
     @EnvironmentObject private var model: AppModel
+    @FocusState private var focused: Bool
     let node: FolderBubble
     let bounds: CGRect
     var body: some View {
         Button { model.openBubble(node) } label: { Circle().fill(Color.clear).contentShape(Circle()) }
-            .buttonStyle(.plain)
-            .frame(width: bounds.width, height: bounds.height)
-            .position(x: bounds.midX, y: bounds.midY)
-            .accessibilityLabel(node.name)
-            .accessibilityValue(ByteCountFormatter.storage.string(fromByteCount: node.bytes))
+            .buttonStyle(.plain).focused($focused)
+            .frame(width: bounds.width, height: bounds.height).position(x: bounds.midX, y: bounds.midY)
+            .accessibilityLabel(node.name).accessibilityValue(ByteCountFormatter.storage.string(fromByteCount: node.bytes))
             .help(annotation)
+            .onHover { model.explorerHoveredID = $0 ? node.path : nil }
+            .onChange(of: focused) { _, value in if value { model.explorerHoveredID = node.path } }
             .contextMenu { contextActions }
     }
     @ViewBuilder private var contextActions: some View {
         if !node.isAggregate {
-            Button("Ouvrir le dossier") { model.openBubble(node) }
+            Button("Ouvrir") { if node.isDirectory { model.openBubble(node) } else { NSWorkspace.shared.open(URL(fileURLWithPath: node.path)) } }
             Button("Afficher dans le Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)]) }
             Button("Mettre à la corbeille…", role: .destructive, action: requestTrash).disabled(model.operationsAreBusy)
             Button("Copier le chemin") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(node.path, forType: .string) }
         }
     }
     private func requestTrash() {
-        let item = FileSystemItem(url: URL(fileURLWithPath: node.path), logicalSize: node.bytes, allocatedSize: node.bytes, isDirectory: true)
+        guard let item = model.explorerItems.first(where: { $0.id == node.path }) else { return }
         model.requestTrash(items: [item])
     }
     private var annotation: String {
         var text = node.name + "\n" + node.path + "\n" + ByteCountFormatter.storage.string(fromByteCount: node.bytes)
-        let total = node.parentBytes > 0 ? node.parentBytes : model.bubbleFrame?.totalBytes ?? 0
-        if total > 0 { text += String(format: " · %.1f %% du dossier parent", Double(node.bytes) * 100 / Double(total)) }
+        if node.parentBytes > 0 { text += String(format: " · %.1f %% du dossier parent", Double(node.bytes) * 100 / Double(node.parentBytes)) }
         return text
     }
 }

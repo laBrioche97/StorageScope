@@ -36,6 +36,8 @@ public struct FileSystemItem: Identifiable, Hashable, Codable, Sendable {
     /// APFS compression, clones and snapshots mean it is still not a perfect measure of unique bytes.
     public var allocatedSize: Int64
 
+    public var sizeIsKnown: Bool?
+    public var hasKnownSize: Bool { sizeIsKnown ?? (!isDirectory || allocatedSize > 0) }
     public let isDirectory: Bool
     public let isSymbolicLink: Bool
     public let isPackage: Bool
@@ -57,8 +59,10 @@ public struct FileSystemItem: Identifiable, Hashable, Codable, Sendable {
         creationDate: Date? = nil,
         modificationDate: Date? = nil,
         category: ItemCategory = .other,
-        safety: SafetyLevel = .review
+        safety: SafetyLevel = .review,
+        sizeIsKnown: Bool? = nil
     ) {
+        self.sizeIsKnown = sizeIsKnown
         self.id = url.path
         self.url = url
         self.name = name ?? (url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent)

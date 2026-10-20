@@ -83,7 +83,7 @@ struct EnhancedCategoriesView: View {
     }
 }
 
-private struct CategoryCard: View {
+struct CategoryCard: View {
     let summary: CategorySummary
     let total: Int64
     let action: () -> Void
@@ -121,41 +121,6 @@ private struct CategoryCard: View {
         .help("Ouvrir cette catégorie dans l’Explorateur")
     }
 
-    private var color: Color {
-        switch summary.category {
-        case .application: .indigo
-        case .applicationData: .purple
-        case .image: .pink
-        case .video: .red
-        case .audio: .orange
-        case .document: .blue
-        case .archive: .brown
-        case .development: .mint
-        case .virtualMachine: .cyan
-        case .backup: .teal
-        case .mailAndMessages: .green
-        case .cacheAndLogs: .yellow
-        case .systemAndLibrary: .gray
-        case .other: .secondary
-        }
-    }
-
-    private var icon: String {
-        switch summary.category {
-        case .application: "app.fill"
-        case .applicationData: "shippingbox.fill"
-        case .image: "photo.fill"
-        case .video: "film.fill"
-        case .audio: "waveform"
-        case .document: "doc.fill"
-        case .archive: "archivebox.fill"
-        case .development: "hammer.fill"
-        case .virtualMachine: "cube.box.fill"
-        case .backup: "externaldrive.badge.timemachine"
-        case .mailAndMessages: "envelope.fill"
-        case .cacheAndLogs: "bolt.horizontal.circle.fill"
-        case .systemAndLibrary: "gearshape.2.fill"
-        case .other: "ellipsis.circle.fill"
-        }
-    }
+    private var color: Color { summary.category.tint }
+    private var icon: String { summary.category.symbol }
 }

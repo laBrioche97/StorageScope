@@ -60,8 +60,8 @@ enum FileKindFilter: String, CaseIterable, Identifiable {
 }
 
 enum ExplorerDisplayMode: String, CaseIterable, Identifiable {
-    case bubbles = "Bulles"
-    case list = "Liste"
+    case bubbles = "Liste et bulles"
+    case list = "Liste seule"
     var id: String { rawValue }
 }
 
@@ -110,7 +110,20 @@ final class AppModel: ObservableObject {
     var operationsAreBusy: Bool {
         isScanning || cleanupIsAnalyzing || duplicateIsAnalyzing || uninstallIsWorking || trashIsWorking || gameUninstallIsWorking || emptyTrashStep == .running
     }
-    @Published var sidebar: SidebarSection? = .applications
+    private struct SectionFilters {
+        var search: String; var size: SizeFilter; var category: ItemCategory?; var order: ItemSort; var kind: FileKindFilter
+    }
+    private var sectionFilters: [SidebarSection: SectionFilters] = [:]
+    @Published var sidebar: SidebarSection? = .applications {
+        didSet {
+            guard oldValue != sidebar else { return }
+            if let oldValue { sectionFilters[oldValue] = SectionFilters(search: searchText, size: sizeFilter, category: categoryFilter, order: sort, kind: kindFilter) }
+            let next = sidebar.flatMap { sectionFilters[$0] }
+            searchText = next?.search ?? ""; sizeFilter = next?.size ?? .all; categoryFilter = next?.category
+            sort = next?.order ?? .allocated; kindFilter = next?.kind ?? .all
+            selectedIDs.removeAll()
+        }
+    }
     @Published var volumes: [StorageVolume]
     @Published var selectedVolumeID: String
     @Published var snapshot: ScanSnapshot?
@@ -170,6 +183,14 @@ final class AppModel: ObservableObject {
     let iconCache = SessionIconCache()
     @Published var applicationIcons: [String: NSImage] = [:]
     @Published var bubbleFrame: FolderBubbleFrame?
+    @Published var bubbleIsLoading = false
+    @Published var explorerHoveredID: String?
+    @Published var cleanupSelectedIDs: Set<String> = []
+    @Published var cleanupActionMessage = ""
+    private var maximumBubbles = 24
+    private var explorerHistory: [URL] = []
+    private var explorerHistoryPosition = -1
+    private var navigatingHistory = false
     @Published var bubbleMessage = "Préparation du graphique…"
     @Published var bubbleRemainderPaths: Set<String>?
     private var bubbleTask: Task<Void, Never>?
@@ -618,8 +639,9 @@ final class AppModel: ObservableObject {
         pendingCleanupAnalysis = false
     }
 
-    func startDuplicateAnalysis(minimumSize: Int64 = 10 * 1_048_576) {
+    func startDuplicateAnalysis(minimumSize: Int64 = 1, directory: URL? = nil) {
         guard let volume = selectedVolume, !duplicateIsAnalyzing else { return }
+        resetSectionFilters()
         duplicateTask?.cancel()
         duplicateReport = nil
         duplicateError = nil
@@ -629,7 +651,7 @@ final class AppModel: ObservableObject {
         let service = DuplicateAnalysisService()
         duplicateTask = Task { [weak self] in
             guard let self else { return }
-            for await event in service.events(root: volume.url, minimumSize: minimumSize) {
+            for await event in service.events(root: directory ?? volume.url, minimumSize: minimumSize) {
                 guard !Task.isCancelled, selectedVolumeID == volume.id else { break }
                 switch event {
                 case .progress(let progress): duplicateProgress = progress
@@ -750,6 +772,10 @@ final class AppModel: ObservableObject {
         explorerCategoryContext = nil
         selectedIDs.removeAll()
         explorerShowsSmallItems = false
+        if !navigatingHistory && explorerHistory.last != directory.standardizedFileURL {
+            explorerHistory = Array(explorerHistory.prefix(explorerHistoryPosition + 1))
+            explorerHistory.append(directory.standardizedFileURL); explorerHistoryPosition = explorerHistory.count - 1
+        }
         currentDirectory = directory.standardizedFileURL
         explorerItems = []
         explorerIssues = []
@@ -778,6 +804,7 @@ final class AppModel: ObservableObject {
                         if explorerIssues.count < 200 { explorerIssues.append(issue) }
                     case .completed:
                         explorerIsLoading = false
+                        if explorerDisplayMode == .bubbles { loadBubbleFrame(directory, store: store) }
                     case .cancelled:
                         explorerIsLoading = false
                     }
@@ -1052,46 +1079,88 @@ extension AppModel {
         bubbleTask?.cancel()
         let generation = UUID(); bubbleGeneration = generation
         let volumeID = selectedVolumeID
+        let items = explorerIsLoading ? nil : explorerItems
+        let maximum = maximumBubbles
+        bubbleIsLoading = true
         bubbleTask = Task { [weak self] in
             guard let self else { return }
+            defer { if bubbleGeneration == generation { bubbleIsLoading = false } }
             do {
                 let partial = isScanning || snapshot?.completedAt == nil || (snapshot?.progress.permissionErrors ?? 0) > 0
-                let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial)
-                guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volumeID else { return }
+                let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial, items: items, maximumVisible: maximum)
+                guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volumeID, currentDirectory?.path == directory.path else { return }
                 bubbleFrame = frame
                 if frame.totalBytes == nil {
-                    bubbleMessage = isScanning ? "Analyse en cours… Vous pouvez consulter la Liste ou arrêter l’analyse." : "Analyse nécessaire. Cliquez sur Analyser pour réessayer ou consultez la Liste."
+                    bubbleMessage = isScanning ? "Analyse du disque… Les tailles se précisent en arrière-plan." : "Tailles des dossiers inconnues. Analysez le disque pour compléter le graphique."
                     if !isScanning, !operationsAreBusy, !autoScanAttempts.contains(volumeID) {
-                        autoScanAttempts.insert(volumeID)
-                        startScan()
+                        autoScanAttempts.insert(volumeID); startScan()
                     }
-                } else {
-                    bubbleMessage = (frame.isPartial ? "Tailles identifiées · analyse partielle" : "Tailles identifiées") + " · Cliquez sur un dossier pour l’ouvrir."
-                }
+                } else { bubbleMessage = (frame.isPartial ? "Analyse partielle" : "Tailles mesurées") + " · Dossiers et fichiers de ce niveau" }
             } catch is CancellationError { }
-            catch { if bubbleGeneration == generation { bubbleFrame = nil; bubbleMessage = "Graphique indisponible. La Liste reste accessible." } }
+            catch { if bubbleGeneration == generation { bubbleFrame = nil; bubbleMessage = "Graphique indisponible. La liste reste accessible." } }
         }
     }
 
+    func resizeBubbleLayout(width: Double, height: Double) {
+        let maximum = min(24, max(4, Int(max(200, width) * max(200, height) / 18000)))
+        guard maximum != maximumBubbles else { return }
+        maximumBubbles = maximum
+        if let directory = currentDirectory, let store = directoryIndexStore { loadBubbleFrame(directory, store: store) }
+    }
+
+    func cancelExplorerLoading() {
+        browseTask?.cancel(); bubbleTask?.cancel(); browseGeneration = UUID(); bubbleGeneration = UUID()
+        if isScanning { stopScan() }
+        if let volume = selectedVolume { autoScanAttempts.insert(volume.id) }
+        explorerIsLoading = false; bubbleIsLoading = false
+        bubbleMessage = "Chargement annulé. Ouvrez un dossier ou relancez l’analyse pour reprendre."
+    }
+
+    func browseHistory(_ direction: Int) {
+        let next = explorerHistoryPosition + direction
+        guard explorerHistory.indices.contains(next) else { return }
+        explorerHistoryPosition = next; navigatingHistory = true
+        loadExplorerDirectory(explorerHistory[next]); navigatingHistory = false
+    }
+
     func openBubble(_ node: FolderBubble) {
-        let target = URL(fileURLWithPath: node.path, isDirectory: true)
-        loadExplorerDirectory(target)
         if node.isAggregate {
-            explorerDisplayMode = .list
-            searchText = ""; sizeFilter = .all; categoryFilter = nil; kindFilter = .folders
-            let generation = browseGeneration
-            Task {
-                guard let store = directoryIndexStore,
-                      let children = try? await store.children(of: node.path),
-                      browseGeneration == generation else { return }
-                bubbleRemainderPaths = Set(children.filter { $0.allocatedSize > 0 }.dropFirst(node.skipCount).map(\.path))
-            }
-        }
+            let known = explorerItems.filter { $0.hasKnownSize && $0.allocatedSize > 0 && !$0.isSymbolicLink }.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize }
+            bubbleRemainderPaths = Set(known.dropFirst(node.skipCount).map(\.id))
+            explorerDisplayMode = .list; resetSectionFilters()
+        } else if node.isDirectory { loadExplorerDirectory(URL(fileURLWithPath: node.path)) }
+        else { selectedIDs = [node.path]; explorerHoveredID = node.path }
     }
 
     func showDirectFiles() {
         explorerDisplayMode = .list; bubbleRemainderPaths = nil
-        searchText = ""; sizeFilter = .all; categoryFilter = nil; kindFilter = .files
+        resetSectionFilters(); kindFilter = .files
+    }
+
+    func resetSectionFilters() {
+        searchText = ""; sizeFilter = .all; categoryFilter = nil; kindFilter = .all; sort = .allocated
+    }
+
+    var selectedCleanupItems: [FileSystemItem] {
+        SelectionNormalizer.normalize((displayedCleanupReport?.suggestions.flatMap(\.items) ?? []).filter { cleanupSelectedIDs.contains($0.id) })
+    }
+
+    func selectRecognizedTemporaries() {
+        guard !operationsAreBusy else { cleanupActionMessage = "Terminez ou annulez l’opération en cours."; return }
+        guard let report = displayedCleanupReport else { cleanupActionMessage = "Calcul du nettoyage conseillé…"; calculateCleanup(); return }
+        resetSectionFilters()
+        let allowed: Set<CleanupSuggestionKind> = [.xcodeDerivedData, .toolCaches, .applicationCaches, .diagnosticReports]
+        let items = report.suggestions.filter { allowed.contains($0.id) && $0.confidence == .high && $0.action == .reviewAndTrash }.flatMap(\.items).filter(\.isTrashable)
+        cleanupSelectedIDs = Set(SelectionNormalizer.normalize(items).map(\.id))
+        cleanupActionMessage = items.isEmpty ? "Aucun temporaire reconnu admissible. Les documents et sauvegardes restent conservés." : "\(cleanupSelectedIDs.count) élément(s) sélectionné(s). Examinez la sélection avant de nettoyer. Les filtres ont été réinitialisés."
+    }
+
+    func chooseDuplicateDirectory() {
+        guard !operationsAreBusy else { duplicateError = "Terminez ou annulez l’opération en cours."; return }
+        let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
+        panel.message = "Choisissez un dossier personnel. Les contenus seront comparés ; aucun fichier ne sera supprimé."
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        startDuplicateAnalysis(directory: directory)
     }
 
     var trashSummaryLabel: String {

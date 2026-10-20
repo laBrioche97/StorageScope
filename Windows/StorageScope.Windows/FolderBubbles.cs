@@ -2,7 +2,7 @@ using System.IO;
 
 namespace StorageScope.Windows;
 
-internal sealed record FolderCircle(string Path, string Name, long Bytes, double X, double Y, double Radius, int Depth, bool Aggregate = false, int SkipCount = 0, long ParentBytes = 0);
+internal sealed record FolderCircle(string Path, string Name, long Bytes, double X, double Y, double Radius, int Depth, bool Aggregate = false, int SkipCount = 0, long ParentBytes = 0) { public bool IsDirectory { get; init; } = true; }
 internal sealed record FolderFrame(IReadOnlyList<FolderCircle> Circles, long? Total, long? DirectFiles, bool Partial);
 
 internal sealed class FolderIndex
@@ -27,37 +27,30 @@ internal sealed class FolderIndex
     private List<(string Path, long Bytes)> Children(string path) => _children.GetValueOrDefault(path.TrimEnd('\\')) ?? _children.GetValueOrDefault(path) ?? [];
     internal FolderFrame Frame(string path, CancellationToken token)
     {
-        var output = new List<FolderCircle>(); var budget = 200;
-        var total = _sizes.TryGetValue(path, out var bytes) || _sizes.TryGetValue(path.TrimEnd('\\'), out bytes) ? (long?)bytes : null;
-        Add(path, total ?? 0, 0, 0, 1, 0);
-        var childSum = Children(path).Sum(item => item.Bytes);
-        return new(output, total, total.HasValue ? Math.Max(0, total.Value - childSum) : null, _partial);
-
-        void Add(string parent, long parentBytes, double x, double y, double radius, int depth)
-        {
-            token.ThrowIfCancellationRequested();
-            if (depth >= 3 || budget == 0) return;
-            var all = Children(parent).Where(item => item.Bytes > 0).ToList();
-            var take = Math.Min(all.Count, Math.Min(32, budget));
-            if (take == 0) return;
-            var group = all.Count > take;
-            var visible = all.Take(group ? take - 1 : take).Select(item => (item.Path, item.Bytes, Aggregate: false)).ToList();
-            if (group) visible.Add((parent, all.Skip(take - 1).Sum(item => item.Bytes), true));
-            budget -= visible.Count;
-            var packed = CirclePacking.Pack(visible.Select(item => (double)item.Bytes).ToArray());
-            var childFraction = parentBytes > 0 ? Math.Min(1, visible.Sum(item => (double)item.Bytes) / parentBytes) : 1;
-            var scale = radius * .90 * Math.Sqrt(childFraction);
-            for (var i = 0; i < visible.Count; i++)
-            {
-                var item = visible[i]; var p = packed[i];
-                var circle = new FolderCircle(item.Path, item.Aggregate ? $"Autres dossiers ({all.Count - take + 1})" : System.IO.Path.GetFileName(item.Path.TrimEnd('\\')), item.Bytes, x + p.X * scale, y + p.Y * scale, p.Radius * scale, depth, item.Aggregate, item.Aggregate ? take - 1 : 0, parentBytes);
-                output.Add(circle);
-            }
-            // Reserve all siblings before allocating the bounded deeper levels.
-            foreach (var circle in output.Where(c => c.Depth == depth && Math.Abs(c.X - x) <= radius && Math.Abs(c.Y - y) <= radius).ToArray())
-                if (!circle.Aggregate && visible.Any(v => v.Path == circle.Path)) Add(circle.Path, circle.Bytes, circle.X, circle.Y, circle.Radius, depth + 1);
-        }
+        var frame = Frame(path, Children(path).Select(item => new ScanEntry(item.Path, Path.GetFileName(item.Path), item.Bytes, true, null, StorageCategory.Other)).ToArray(), 24, token);
+        return frame with { DirectFiles = frame.Total is long total ? Math.Max(0, total - Children(path).Sum(item => item.Bytes)) : null };
     }
+
+    internal FolderFrame Frame(string path, IReadOnlyList<ScanEntry> entries, int maximum, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var known = entries.Where(entry => entry.HasKnownSize && entry.Size > 0).OrderByDescending(entry => entry.Size).ThenBy(entry => entry.Path, StringComparer.OrdinalIgnoreCase).ToArray();
+        var total = _sizes.TryGetValue(path, out var bytes) || _sizes.TryGetValue(path.TrimEnd('\\'), out bytes) ? (long?)bytes : null;
+        return BuildFrame(path, known, total, entries.Any(entry => !entry.HasKnownSize) || _partial, maximum, token);
+    }
+    internal static FolderFrame BuildFrame(string path, IReadOnlyList<ScanEntry> entries, long? total, bool partial, int maximum, CancellationToken token)
+    {
+        var known = entries.Where(entry => entry.HasKnownSize && entry.Size > 0).OrderByDescending(entry => entry.Size).ThenBy(entry => entry.Path, StringComparer.OrdinalIgnoreCase).ToArray();
+        maximum = Math.Clamp(maximum, 2, 24);
+        var take = known.Length > maximum ? maximum - 1 : known.Length;
+        var visible = known.Take(take).Select(entry => (Entry: entry, Aggregate: false)).ToList();
+        if (known.Length > take) visible.Add((new ScanEntry(path, $"Autres éléments ({known.Length - take})", known.Skip(take).Sum(entry => entry.Size), true, null, StorageCategory.Other), true));
+        token.ThrowIfCancellationRequested();
+        var circles = CirclePacking.Pack(visible.Select(item => (double)item.Entry.Size).ToArray());
+        var output = visible.Select((item, i) => new FolderCircle(item.Entry.Path, item.Entry.Name, item.Entry.Size, circles[i].X * .97, circles[i].Y * .97, circles[i].Radius * .97, 0, item.Aggregate, take, total ?? known.Sum(entry => entry.Size)) { IsDirectory = item.Entry.IsDirectory }).ToArray();
+        return new(output, total, known.Where(entry => !entry.IsDirectory).Sum(entry => entry.Size), partial);
+    }
+
 }
 
 internal static class CirclePacking

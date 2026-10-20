@@ -36,13 +36,13 @@ public partial class MainWindow
     }
     private void ShowBubbles_Click(object sender, RoutedEventArgs e)
     {
-        _bubbleMode = true; BubblePanel.Visibility = Visibility.Visible; ExplorerGrid.Visibility = Visibility.Collapsed;
-        UpdateBubbleFilters(); UpdateResponsiveColumns(); EnsureBubbleAnalysis();
+        _bubbleMode = true; LayoutExplorer();
+        ApplyExplorerFilter(); UpdateBubbleFilters(); UpdateResponsiveColumns(); EnsureBubbleAnalysis();
         if (_currentDirectory is not null) _ = LoadBubblesAsync(_currentDirectory);
     }
     private void ShowExplorerList_Click(object sender, RoutedEventArgs e)
     {
-        _bubbleMode = false; BubblePanel.Visibility = Visibility.Collapsed; ExplorerGrid.Visibility = Visibility.Visible;
+        _bubbleMode = false; LayoutExplorer();
         UpdateBubbleFilters(); UpdateResponsiveColumns(); ApplyExplorerFilter();
     }
     private void DirectFiles_Click(object sender, RoutedEventArgs e)
@@ -60,27 +60,34 @@ public partial class MainWindow
         _bubbleCancellation?.Cancel();
         var cancellation = new CancellationTokenSource(); _bubbleCancellation = cancellation;
         var generation = ++_bubbleGeneration; var index = _folderIndex;
-        if (index is null)
-        {
-            _folderFrame = null; BubbleCanvas.Children.Clear();
-            BubbleStatus.Text = _scanning ? "Analyse en cours… Vous pouvez naviguer dans la Liste ou annuler l’analyse." : "Une analyse permet de comparer les dossiers. Cliquez sur Analyser pour réessayer.";
-            cancellation.Dispose(); if (ReferenceEquals(_bubbleCancellation, cancellation)) _bubbleCancellation = null;
-            return;
-        }
+        var entries = _allExplorerItems.ToArray();
+        var maximum = Math.Clamp((int)(Math.Max(200, BubbleCanvas.ActualWidth) * Math.Max(200, BubbleCanvas.ActualHeight) / 18000), 4, 24);
+        SetExplorerLoading(true, _scanning && index is null ? "Analyse du disque… Les tailles se précisent en arrière-plan." : "Préparation du graphique…");
         try
         {
-            var frame = await Task.Run(() => index.Frame(path, cancellation.Token), cancellation.Token);
+            var frame = await Task.Run(() => index is not null ? index.Frame(path, entries, maximum, cancellation.Token) : FolderIndex.BuildFrame(path, entries, null, true, maximum, cancellation.Token), cancellation.Token);
             if (_closing || generation != _bubbleGeneration || _currentDirectory != path || !ReferenceEquals(index, _folderIndex)) return;
             _folderFrame = frame;
-            BubbleStatus.Text = $"{path} · {(frame.Total is long total ? SizeFormatter.Format(total) + (frame.Partial ? " identifiés · analyse partielle" : " identifiés") : "Taille inconnue")}" + (frame.Circles.Count == 0 ? " · Aucun sous-dossier mesuré. Consultez les fichiers dans la Liste." : " · Cliquez sur un dossier pour l’ouvrir.");
+            BubbleStatus.Text = $"{path} · {(frame.Total is long total ? SizeFormatter.Format(total) + (frame.Partial ? " identifiés · analyse partielle" : " identifiés") : "Taille inconnue")}" + (frame.Circles.Count == 0 ? " · Aucun élément mesuré. Les tailles inconnues restent dans la liste." : " · Dossiers et fichiers de ce niveau · cliquez sur un dossier pour l’ouvrir.");
             DirectFilesButton.Content = $"Fichiers dans ce dossier{(frame.DirectFiles is long direct ? " · " + (frame.Partial ? "estimation " : "") + SizeFormatter.Format(direct) : "")} — Voir la liste";
             RenderBubbles();
         }
         catch (OperationCanceledException) { }
         catch (Exception error) { if (generation == _bubbleGeneration) { Diagnostics.Write("graphique-dossiers", error); BubbleStatus.Text = "Graphique indisponible. La Liste reste accessible."; } }
-        finally { if (ReferenceEquals(_bubbleCancellation, cancellation)) _bubbleCancellation = null; cancellation.Dispose(); }
+        finally { if (ReferenceEquals(_bubbleCancellation, cancellation)) { _bubbleCancellation = null; SetExplorerLoading(_scanning && _folderIndex is null, "Analyse du disque… Vous pouvez annuler à tout moment."); } cancellation.Dispose(); }
     }
-    private void BubbleCanvas_SizeChanged(object sender, SizeChangedEventArgs e) => RenderBubbles();
+    private System.Windows.Threading.DispatcherTimer? _resizeTimer;
+    private void BubbleCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        RenderBubbles();
+        _resizeTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _resizeTimer.Stop(); _resizeTimer.Tick -= ResizeLayout; _resizeTimer.Tick += ResizeLayout; _resizeTimer.Start();
+    }
+    private async void ResizeLayout(object? sender, EventArgs e)
+    {
+        _resizeTimer?.Stop();
+        if (_currentDirectory is not null && !_closing && !_scanning && _bubbleMode) await LoadBubblesAsync(_currentDirectory);
+    }
     private void RenderBubbles()
     {
         if (BubbleCanvas is null || _folderFrame is null) return;
@@ -90,7 +97,7 @@ public partial class MainWindow
         var query = string.Join(' ', new[] { ListSearch.Text.Trim(), ExplorerSearchBox.Text.Trim() }.Where(s => s.Length > 0));
         foreach (var circle in _folderFrame.Circles.OrderBy(c => c.Depth))
         {
-            var button = new BubbleButton { Circle = circle, HasChildren = _folderFrame.Circles.Any(child => child.Depth == circle.Depth + 1 && !child.Aggregate && DeletionSafetyPolicy.IsWithin(child.Path, circle.Path)), Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
+            var button = new BubbleButton { Circle = circle, HasChildren = false, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
             var total = circle.ParentBytes > 0 ? circle.ParentBytes : _folderFrame.Total;
             button.ToolTip = $"{circle.Name}\n{circle.Path}\n{SizeFormatter.Format(circle.Bytes)}" + (total > 0 ? $" · {circle.Bytes * 100d / total:N1} % du dossier parent" : "") + (_folderFrame.Partial ? "\nAnalyse partielle" : "");
             AutomationProperties.SetName(button, circle.Name + " · " + SizeFormatter.Format(circle.Bytes));
@@ -101,24 +108,31 @@ public partial class MainWindow
             {
                 if (circle.Aggregate)
                 {
-                    await BrowseAsync(circle.Path); ShowExplorerList_Click(this, new());
-                    ListSearch.Clear(); CategoryFilter.SelectedIndex = MinimumSizeFilter.SelectedIndex = 0; EntryKindFilter.SelectedIndex = 2;
-                    var remainder = _folderIndex?.Remainder(circle.Path, circle.SkipCount).ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
-                    _explorer.ReplaceAll(_allExplorerItems.Where(entry => remainder.Contains(entry.Path)));
+                    ListSearch.Clear(); CategoryFilter.SelectedIndex = MinimumSizeFilter.SelectedIndex = EntryKindFilter.SelectedIndex = 0;
+                    var remainder = _allExplorerItems.Where(item => item.HasKnownSize && item.Size > 0).OrderByDescending(item => item.Size).ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase).Skip(circle.SkipCount).ToHashSet();
+                    _explorer.ReplaceAll(_allExplorerItems.Where(remainder.Contains)); ShowExplorerList_Click(this, new());
+                    BubbleStatus.Text = "Autres éléments du dossier courant · Liste et bulles pour revenir à tous les éléments.";
                 }
-                else await BrowseAsync(circle.Path);
+                else if (circle.IsDirectory) await BrowseAsync(circle.Path);
+                else {
+                    ExplorerGrid.SelectedItem = _allExplorerItems.FirstOrDefault(entry => entry.Path == circle.Path);
+                    if (ExplorerGrid.SelectedItem is not null) ExplorerGrid.ScrollIntoView(ExplorerGrid.SelectedItem);
+                }
+
             };
             if (!circle.Aggregate)
             {
                 var menu = new ContextMenu();
                 void Add(string title, RoutedEventHandler action) { var item = new MenuItem { Header = title }; item.Click += action; menu.Items.Add(item); }
-                Add("Ouvrir le dossier", async (_, _) => await BrowseAsync(circle.Path));
+                Add(circle.IsDirectory ? "Ouvrir le dossier" : "Ouvrir", async (_, _) => { if (circle.IsDirectory) await BrowseAsync(circle.Path); else SafeOpen(circle.Path); });
                 Add("Afficher dans l’Explorateur", (_, _) => SafeReveal(circle.Path));
                 Add("Copier le chemin", (_, _) => { try { Clipboard.SetText(circle.Path); } catch (Exception error) { ShowError("Copie impossible.", error); } });
                 Add("Propriétés", (_, _) => { try { ExplorerService.Properties(circle.Path); } catch (Exception error) { ShowError("Propriétés indisponibles.", error); } });
-                Add("Mettre à la corbeille…", async (_, _) => await TrashEntriesAsync([new(circle.Path, circle.Name, circle.Bytes, true, null, StorageCategory.Other)]));
+                Add("Mettre à la corbeille…", async (_, _) => await TrashEntriesAsync([new(circle.Path, circle.Name, circle.Bytes, circle.IsDirectory, null, StorageCategory.Other)]));
                 button.ContextMenu = menu;
             }
+            button.MouseEnter += (_, _) => { HighlightExplorer(circle.Path); if (!circle.Aggregate) { var entry = _allExplorerItems.FirstOrDefault(item => item.Path == circle.Path); if (entry is not null) { ExplorerGrid.SelectedItem = entry; ExplorerGrid.ScrollIntoView(entry); } } };
+            button.GotKeyboardFocus += (_, _) => HighlightExplorer(circle.Path);
             BubbleCanvas.Children.Add(button);
         }
     }

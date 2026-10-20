@@ -90,6 +90,18 @@ struct EnhancedCleanupView: View {
                 Text("Aucun élément n’est sélectionné automatiquement. Les tailles sont des bornes hautes APFS et l’espace devient disponible seulement après vidage de la Corbeille.")
                     .font(.callout).foregroundStyle(.secondary)
                 ResultFilters()
+                HStack {
+                    Button("Sélectionner les temporaires reconnus") { model.selectRecognizedTemporaries() }.disabled(model.operationsAreBusy)
+                    Button("Tout décocher") { model.cleanupSelectedIDs.removeAll() }
+                }
+                if !model.cleanupActionMessage.isEmpty { Text(model.cleanupActionMessage).font(.callout).foregroundStyle(.secondary) }
+                if !model.selectedCleanupItems.isEmpty {
+                    HStack {
+                        Text("\(model.selectedCleanupItems.count) sélectionné(s) · " + ByteCountFormatter.storage.string(fromByteCount: model.selectedCleanupItems.reduce(0) { $0 + $1.allocatedSize }))
+                        Spacer()
+                        Button("Examiner la sélection…") { model.requestTrash(items: model.selectedCleanupItems) }.disabled(model.operationsAreBusy)
+                    }.padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                }
 
                 if report.suggestions.isEmpty {
                     ContentUnavailableView("Aucun candidat évident", systemImage: "checkmark.circle", description: Text("Les règles prudentes n’ont rien trouvé à recommander."))
@@ -117,7 +129,7 @@ private struct EnhancedCleanupSuggestionCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(suggestion.title).font(.headline)
+                        Label(suggestion.title, systemImage: (suggestion.items.first?.category ?? .cacheAndLogs).symbol).font(.headline)
                         Text(suggestion.explanation).font(.callout).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -133,11 +145,12 @@ private struct EnhancedCleanupSuggestionCard: View {
                     Spacer()
                     Button(expanded ? "Masquer" : "Examiner") { withAnimation(.snappy) { expanded.toggle() } }
                 }
-                if expanded {
+                if expanded || suggestion.items.contains(where: { model.cleanupSelectedIDs.contains($0.id) }) {
                     Divider()
                     ForEach(model.filteredForDisplay(suggestion.items)) { item in
                         HStack {
-                            Image(systemName: item.isDirectory ? "folder.fill" : "doc.fill").foregroundStyle(item.isDirectory ? .blue : .secondary)
+                            Toggle("Sélectionner " + item.name, isOn: Binding(get: { model.cleanupSelectedIDs.contains(item.id) }, set: { if $0 { model.cleanupSelectedIDs.insert(item.id) } else { model.cleanupSelectedIDs.remove(item.id) } })).labelsHidden().disabled(suggestion.action != .reviewAndTrash || !item.isTrashable || model.operationsAreBusy)
+                            Image(systemName: item.isDirectory ? "folder.fill" : item.category.symbol).foregroundStyle(item.isDirectory ? .blue : .secondary)
                             VStack(alignment: .leading) {
                                 Text(item.name).lineLimit(1)
                                 Text(item.url.path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
@@ -181,11 +194,11 @@ private struct DuplicateAnalysisPanel: View {
                 Image(systemName: "doc.on.doc.fill").font(.title).foregroundStyle(.purple)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Analyse approfondie des doublons").font(.headline)
-                    Text("Compare à la demande les fichiers d’au moins 10 Mo par taille, échantillon puis SHA-256. Aucun fichier n’est présélectionné.")
+                    Text("Compare à la demande les fichiers non vides par taille, échantillon puis SHA-256. Aucun fichier n’est présélectionné.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Analyser les doublons") { model.startDuplicateAnalysis() }
+                Button("Analyser les doublons") { model.chooseDuplicateDirectory() }
                     .buttonStyle(.borderedProminent)
             }
             .padding(7)

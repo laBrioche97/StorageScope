@@ -52,6 +52,7 @@ public partial class MainWindow : Window
         CollectionViewSource.GetDefaultView(_categoryFiles).GroupDescriptions.Add(new PropertyGroupDescription(nameof(ScanEntry.CategoryName)));
         InitializeDisplayFilters();
         InitializeContextActions();
+        InitializeInterface();
         Activated += (_, _) => { if (!IsPreviewMode) _ = RefreshRecycleBinAsync(false); };
         Closing += (_, e) =>
         {
@@ -101,6 +102,7 @@ public partial class MainWindow : Window
         _autoScanAttempts.Add(drive.Root);
         var destination = _currentDirectory;
         SetScanning(true);
+        SetExplorerLoading(true, "Analyse du disque…");
         ClearResults();
         ScanStatusText.Text = "Préparation de l’analyse…";
         ScanProgressBar.Value = 0;
@@ -110,6 +112,7 @@ public partial class MainWindow : Window
             if (!acceptingProgress || _closing || !_scanning || !ReferenceEquals(_scanCancellation, cancellation) || cancellation.IsCancellationRequested) return;
             ScanProgressBar.Value = value.Fraction * 100;
             ScanStatusText.Text = $"{value.Files:N0} fichiers · {SizeFormatter.Format(value.Bytes)} identifiés · {value.Errors:N0} refus — {value.Stage ?? value.CurrentPath}";
+            if (CurrentSection == Section.Explorer && _folderIndex is null) ExplorerLoader.Message = $"Analyse du disque…\n{value.Files:N0} fichiers · {SizeFormatter.Format(value.Bytes)} identifiés";
             IdentifiedText.Text = SizeFormatter.Format(value.Bytes);
             FilesText.Text = value.Files.ToString("N0");
             DirectoriesText.Text = value.Directories.ToString("N0");
@@ -150,6 +153,7 @@ public partial class MainWindow : Window
         _categoryFiles.ReplaceAll(result.CategoryFiles.Values.SelectMany(items => items));
         PopulateCategorySummary(result);
         _cleanup.ReplaceAll(result.CleanupCandidates);
+        OverviewCategories.ItemsSource = result.Categories.OrderByDescending(category => category.Bytes);
         IdentifiedText.Text = SizeFormatter.Format(result.IdentifiedBytes);
         FilesText.Text = result.FilesScanned.ToString("N0");
         DirectoriesText.Text = result.DirectoriesScanned.ToString("N0");
@@ -167,6 +171,7 @@ public partial class MainWindow : Window
         _categoryFiles.Clear();
         PopulateCategorySummary(null);
         _cleanup.Clear();
+        OverviewCategories.ItemsSource = null;
         _explorer.Clear();
         _allExplorerItems.Clear();
         IdentifiedText.Text = FilesText.Text = DirectoriesText.Text = ErrorsText.Text = "—";
@@ -180,7 +185,7 @@ public partial class MainWindow : Window
         DrivePicker.IsEnabled = !scanning;
         ScanProgressBar.IsIndeterminate = false;
         MainTabs.IsEnabled = !_busy;
-        CleanButton.IsEnabled = UninstallButton.IsEnabled = DuplicateButton.IsEnabled = !scanning && !_busy;
+        CleanButton.IsEnabled = UninstallButton.IsEnabled = DuplicateButton.IsEnabled = SelectRecommendedButton.IsEnabled = !scanning && !_busy;
         InstallUpdateButton.IsEnabled = !scanning;
         UpdateResponsiveColumns();
     }
@@ -188,16 +193,25 @@ public partial class MainWindow : Window
     private void UpdateResponsiveColumns()
     {
         if (LargestFilesGrid is null) return;
-        CheckUpdateButton.Visibility = HistoryButton.Visibility = ActualWidth >= 950 ? Visibility.Visible : Visibility.Collapsed;
+        CheckUpdateButton.Visibility = HistoryButton.Visibility = Visibility.Collapsed;
+        UpdateNavigationLayout(); LayoutExplorer();
         OptionsButton.Visibility = Visibility.Visible;
         var graphicalExplorer = CurrentSection == Section.Explorer && _bubbleMode;
-        ApplicationTitle.Visibility = WorkflowSteps.Visibility = ActualHeight >= 760 && !graphicalExplorer ? Visibility.Visible : Visibility.Collapsed;
-        VolumeTitle.Visibility = graphicalExplorer || ActualWidth < 950 && ActualHeight < 760 ? Visibility.Collapsed : Visibility.Visible;
+        ApplicationTitle.Visibility = Visibility.Visible; WorkflowSteps.Visibility = Visibility.Collapsed;
+        VolumeTitle.Visibility = Visibility.Collapsed;
+        DrivePicker.Width = ActualWidth < 950 ? 200 : 260;
+        CancelButton.Visibility = _busy || _scanning ? Visibility.Visible : Visibility.Collapsed;
         PrivacyFooter.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
-        StatusPanel.Visibility = ActualHeight >= 620 && (!graphicalExplorer || _scanning) ? Visibility.Visible : Visibility.Collapsed;
-        CompactStatus.Visibility = ActualHeight < 620 ? Visibility.Visible : Visibility.Collapsed;
-        CleanupIntro.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
-        DisplayFilterPanel.Visibility = ActualHeight >= 620 || _compactFiltersOpen ? Visibility.Visible : Visibility.Collapsed;
+        StatusPanel.Visibility = ActualHeight >= 760 && (!graphicalExplorer || _scanning) ? Visibility.Visible : Visibility.Collapsed;
+        CompactStatus.Visibility = ActualHeight < 760 ? Visibility.Visible : Visibility.Collapsed;
+        CleanupIntro.Visibility = ActualHeight >= 760 ? Visibility.Visible : Visibility.Collapsed;
+        CleanupDetails.Visibility = ActualHeight >= 650 ? Visibility.Visible : Visibility.Collapsed;
+        SectionSummary.Visibility = ActualHeight >= 650 ? Visibility.Visible : Visibility.Collapsed;
+        SelectRecommendedButton.Content = ActualWidth < 950 ? "Choisir les temporaires" : "Sélectionner les temporaires reconnus";
+        SelectRecommendedButton.ToolTip = "Sélectionner uniquement les temporaires reconnus admissibles";
+        ClearCleanupButton.Content = ActualWidth < 950 ? "Décocher" : "Tout décocher";
+        DuplicateButton.Content = ActualWidth < 950 ? "Doublons…" : "Rechercher des doublons…";
+        DisplayFilterPanel.Visibility = Visibility.Visible;
         void Show(DataGrid grid, int column, bool visible) { grid.Columns[column].Visibility = visible ? Visibility.Visible : Visibility.Collapsed; }
         Show(LargestFilesGrid, 3, ActualWidth >= 1000);
         Show(ExplorerGrid, 4, ActualWidth >= 1100);
@@ -256,6 +270,8 @@ public partial class MainWindow : Window
         _browseCancellation = new CancellationTokenSource();
         var cancellation = _browseCancellation;
         var generation = ++_browseGeneration;
+        RecordBrowse(path);
+        SetExplorerLoading(true);
         _currentDirectory = path;
         ExplorerPathBox.Text = path;
         ExplorerBreadcrumbs.Children.Clear();
@@ -275,8 +291,8 @@ public partial class MainWindow : Window
             await LoadBubblesAsync(path);
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) { if (!_closing && generation == _browseGeneration) ShowError("Impossible d’ouvrir ce dossier.", error); }
-        finally { if (ReferenceEquals(_browseCancellation, cancellation)) _browseCancellation = null; cancellation.Dispose(); }
+        catch (Exception error) { if (!_closing && generation == _browseGeneration) { Diagnostics.Write("lecture-dossier", error); BubbleStatus.Text = "Dossier inaccessible : " + error.Message; } }
+        finally { if (generation == _browseGeneration && !_scanning) SetExplorerLoading(false); if (ReferenceEquals(_browseCancellation, cancellation)) _browseCancellation = null; cancellation.Dispose(); RefreshSectionHeading(); }
     }
 
     private void ApplyExplorerFilter()
@@ -415,7 +431,8 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy)
     {
         _busy = busy;
-        MainTabs.IsEnabled = !busy;
+        MainTabs.IsEnabled = true;
+        CleanButton.IsEnabled = UninstallButton.IsEnabled = DuplicateButton.IsEnabled = SelectRecommendedButton.IsEnabled = !busy && !_scanning;
         ScanButton.IsEnabled = !busy;
         DrivePicker.IsEnabled = !busy;
         CancelButton.IsEnabled = busy;
@@ -479,11 +496,27 @@ public partial class MainWindow : Window
             return measured is long size ? application with { EstimatedBytes = size, SizeStatus = "Mesurée pendant l’analyse" } : application;
         }));
     }
-    private void SelectRecommended_Click(object sender, RoutedEventArgs e) { CleanupGrid.SelectedItems.Clear(); foreach (var item in CleanupGrid.Items.OfType<CleanupCandidate>().Where(item => item.Recommended)) CleanupGrid.SelectedItems.Add(item); }
+    private void SelectRecommended_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || _scanning) { CleanupActionStatus.Text = "Terminez ou annulez l’opération en cours avant de sélectionner les temporaires."; return; }
+        if (_result is null) { CleanupActionStatus.Text = "Analysez le disque pour reconnaître les temporaires. Le bouton Analyser le disque est disponible en haut."; return; }
+        var hidden = CurrentDisplayFilter.Search.Length > 0 || CurrentDisplayFilter.Category is not null || CurrentDisplayFilter.MinimumBytes > 0 || CurrentDisplayFilter.Kind != EntryKind.All;
+        ResetFilters_Click(this, new());
+        _changingCleanupSelection = true;
+        try { CleanupGrid.SelectedItems.Clear(); foreach (var candidate in _cleanup.Where(item => item.Recommended)) CleanupGrid.SelectedItems.Add(candidate); }
+        finally { _changingCleanupSelection = false; }
+        CleanupGrid_SelectionChanged(CleanupGrid, new SelectionChangedEventArgs(System.Windows.Controls.Primitives.Selector.SelectionChangedEvent, Array.Empty<object>(), Array.Empty<object>()));
+        CleanupActionStatus.Text = CleanupGrid.SelectedItems.Count == 0
+            ? "Aucun temporaire reconnu admissible. Les documents et sauvegardes restent conservés."
+            : $"{CleanupGrid.SelectedItems.Count:N0} temporaire(s) sélectionné(s) · {SizeFormatter.Format(CleanupGrid.SelectedItems.OfType<CleanupCandidate>().Sum(item => item.Size))}. Examinez la sélection avant de nettoyer.";
+        if (hidden) CleanupActionStatus.Text += " Les filtres ont été réinitialisés pour afficher la sélection.";
+    }
+
     private void ClearCleanup_Click(object sender, RoutedEventArgs e) => CleanupGrid.SelectedItems.Clear();
+    private bool _changingCleanupSelection;
     private void CleanupGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (CleanupSelectionText is null) return;
+        if (CleanupSelectionText is null || _changingCleanupSelection) return;
         var selected = CleanupGrid.SelectedItems.Cast<CleanupCandidate>().ToList();
         CleanupSelectionText.Text = $"{selected.Count} sélectionné(s) · {SizeFormatter.Format(selected.Sum(item => item.Size))}";
         CleanButton.IsEnabled = selected.Count > 0 && !_scanning && !_busy;
@@ -491,21 +524,35 @@ public partial class MainWindow : Window
     }
     private async void AnalyzeDuplicates_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy || _scanning) return;
-        var dialog = new OpenFolderDialog { Title = "Choisir un dossier personnel pour rechercher les doublons", InitialDirectory = Path.Combine(DeletionSafetyPolicy.Home, "Downloads") };
-        if (dialog.ShowDialog(this) != true) return;
+        if (_busy || _scanning) { CleanupActionStatus.Text = "Terminez ou annulez l’opération en cours avant la recherche."; return; }
+        string? folder;
+        if (IsPreviewMode && DuplicateDirectoryPicker is not null) folder = DuplicateDirectoryPicker();
+        else {
+            var downloads = Path.Combine(DeletionSafetyPolicy.Home, "Downloads");
+            var dialog = new OpenFolderDialog { Title = "Choisir un dossier personnel pour rechercher les doublons", InitialDirectory = Directory.Exists(downloads) ? downloads : DeletionSafetyPolicy.Home };
+            folder = dialog.ShowDialog(this) == true ? dialog.FolderName : null;
+        }
+        if (folder is null) { CleanupActionStatus.Text = "Recherche non lancée. Aucun fichier modifié."; return; }
         SetBusy(true); _operationCancellation = new();
+        var cancellation = _operationCancellation;
+        CleanupActionStatus.Text = "Recherche des fichiers… Vous pouvez annuler en haut de la fenêtre.";
+        ScanProgressBar.IsIndeterminate = true;
         try
         {
-            var duplicates = await DuplicateAnalysis.AnalyzeAsync(dialog.FolderName, new Progress<string>(status => ScanStatusText.Text = status), _operationCancellation.Token);
-            foreach (var old in _cleanup.Where(item => item.Group == "Doublons vérifiés").ToList()) _cleanup.Remove(old);
-            foreach (var item in duplicates) { var old = _cleanup.FirstOrDefault(candidate => candidate.Path == item.Path); if (old is not null) _cleanup.Remove(old); _cleanup.Add(item); }
-            ScanStatusText.Text = $"{duplicates.Count} copie(s) identique(s) vérifiée(s). Les exemplaires à conserver sont indiqués dans le détail.";
+            var duplicates = await DuplicateAnalysis.AnalyzeAsync(folder, new Progress<string>(status => { if (ReferenceEquals(_operationCancellation, cancellation) && !cancellation.IsCancellationRequested) CleanupActionStatus.Text = status; }), cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            ResetFilters_Click(this, new());
+            var paths = duplicates.Select(item => item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _cleanup.ReplaceAll(_cleanup.Where(item => item.Group != "Doublons vérifiés" && !paths.Contains(item.Path)).Concat(duplicates).ToArray());
+            ApplyDisplayFilters();
+            var first = duplicates.FirstOrDefault(); if (first is not null) { CleanupGrid.SelectedItem = first; CleanupGrid.ScrollIntoView(first); CleanupGrid.SelectedItems.Clear(); }
+            CleanupActionStatus.Text = duplicates.Count == 0 ? "Recherche terminée : aucun doublon vérifié parmi les fichiers accessibles. Les emplacements protégés et cloud sont exclus." : $"{duplicates.Count:N0} copie(s) identique(s) vérifiée(s) · groupe Doublons vérifiés. Un exemplaire est conservé ; rien n’a été supprimé. Les filtres ont été réinitialisés.";
         }
-        catch (OperationCanceledException) { ScanStatusText.Text = "Recherche des doublons annulée."; }
-        catch (Exception error) { ShowError("Analyse des doublons indisponible.", error); }
-        finally { SetBusy(false); _operationCancellation.Dispose(); _operationCancellation = null; }
+        catch (OperationCanceledException) { CleanupActionStatus.Text = "Recherche annulée. Aucun fichier modifié ; les précédents résultats sont conservés."; }
+        catch (Exception error) { Diagnostics.Write("recherche-doublons", error); CleanupActionStatus.Text = "Recherche impossible : " + error.Message; }
+        finally { ScanProgressBar.IsIndeterminate = false; SetBusy(false); cancellation.Dispose(); _operationCancellation = null; }
     }
+
     private void History_Click(object sender, RoutedEventArgs e)
     {
         try { Directory.CreateDirectory(OperationHistory.DirectoryPath); ExplorerService.Open(OperationHistory.DirectoryPath); }
