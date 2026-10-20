@@ -626,7 +626,7 @@ final class AppModel: ObservableObject {
         duplicateTask = Task { [weak self] in
             guard let self else { return }
             for await event in service.events(root: volume.url, minimumSize: minimumSize) {
-                guard !Task.isCancelled, selectedVolumeID == volume.id, browseGeneration == generation else { break }
+                guard !Task.isCancelled, selectedVolumeID == volume.id else { break }
                 switch event {
                 case .progress(let progress): duplicateProgress = progress
                 case .completed(let report):
