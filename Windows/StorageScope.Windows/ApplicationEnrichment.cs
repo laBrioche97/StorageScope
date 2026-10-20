@@ -65,8 +65,12 @@ internal static class ApplicationEnrichment
             }, token);
             if (!ReferenceEquals(local, ApplicationIcons.Fallback) || SteamId(app) is not string id) return local;
             var cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StorageScope", "Icons");
+            Directory.CreateDirectory(cache);
+            if (!SafeLocal(cache)) return local;
             var path = Path.Combine(cache, "steam-" + id + ".jpg");
             if (File.Exists(path)) return await Task.Run(() => ApplicationIcons.Load(app with { IconLocation = path }), token);
+            // A full or redirected cache never authorizes deleting arbitrary files.
+            if (Directory.EnumerateFiles(cache).Take(512).Count() >= 512) return local;
             // Exact Steam app IDs only. No search by display name or third-party artwork.
             using var response = await Images.GetAsync("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/" + id + "/header.jpg", HttpCompletionOption.ResponseHeadersRead, token);
             response.EnsureSuccessStatusCode();
@@ -74,8 +78,6 @@ internal static class ApplicationEnrichment
             await using var input = await response.Content.ReadAsStreamAsync(token);
             using var buffer = new MemoryStream(); var bytes = new byte[8192]; int count;
             while ((count = await input.ReadAsync(bytes, token)) > 0) { if (buffer.Length + count > 1_048_576) return local; buffer.Write(bytes, 0, count); }
-            Directory.CreateDirectory(cache);
-            if (Directory.EnumerateFiles(cache).Take(513).Count() > 512) foreach (var old in new DirectoryInfo(cache).EnumerateFiles().OrderBy(file => file.LastWriteTimeUtc).Take(32)) old.Delete();
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".jpg";
             try
             {
