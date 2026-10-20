@@ -51,6 +51,7 @@ Name: "{userprograms}\StorageScope"; Filename: "{app}\versions\{#AppVersion}\Sto
 
 [Run]
 Filename: "{app}\versions\{#AppVersion}\StorageScope.exe"; Description: "Lancer StorageScope"; Flags: nowait postinstall skipifsilent; Check: InstallationHealthy
+Filename: "{app}\versions\{#AppVersion}\StorageScope.exe"; Flags: nowait; Check: RestartAfterUpdate
 
 [Code]
 var PreviousVersion: String;
@@ -117,7 +118,12 @@ end;
 
 function InstallationHealthy: Boolean;
 begin
-  Result := Healthy;
+  Result := Healthy and (ExpandConstant('{param:UPDATE|0}') <> '1');
+end;
+
+function RestartAfterUpdate: Boolean;
+begin
+  Result := Healthy and (ExpandConstant('{param:UPDATE|0}') = '1');
 end;
 
 function InitializeSetup: Boolean;

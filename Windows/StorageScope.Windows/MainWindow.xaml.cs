@@ -497,7 +497,7 @@ public partial class MainWindow : Window
             var path = await _updates.DownloadVerifiedAsync(manifest, new Progress<double>(fraction => ScanStatusText.Text = $"Téléchargement : {fraction:P0}"), _operationCancellation.Token);
             using var guard = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             await Task.Run(() => UpdateService.VerifyInstaller(path, manifest), _operationCancellation.Token);
-            Process.Start(new ProcessStartInfo(path, "/UPDATE /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(path, "/UPDATE=1 /SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS") { UseShellExecute = true });
             SetBusy(false);
             Application.Current.Shutdown();
         }

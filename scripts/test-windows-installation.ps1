@@ -31,3 +31,21 @@ if (Test-Path -LiteralPath $shortcut) {
     if ($target -ne $application) { throw 'Shortcut still targets an old version.' }
 }
 Write-Output 'PASS failed replacement preserves old version; successful replacement leaves one version; offline health succeeds.'
+
+# Simulate a managed update and prove that silent installation restarts the GUI.
+New-Item -ItemType Directory -Path $old -Force | Out-Null
+Copy-Item -Path 'dist/win-x64/*' -Destination $old -Recurse
+Set-ItemProperty -LiteralPath $current -Name CurrentVersion -Value '3.1.0'
+$updated = Start-Process $installer -ArgumentList ($arguments + @('/UPDATE=1')) -WindowStyle Hidden -PassThru -Wait
+if ($updated.ExitCode -ne 0) { throw 'Managed update failed.' }
+$deadline = [DateTime]::UtcNow.AddSeconds(20)
+$restarted = $null
+do {
+    $restarted = Get-Process -Name StorageScope -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $application -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+    if (-not $restarted) { Start-Sleep -Milliseconds 250 }
+} until ($restarted -or [DateTime]::UtcNow -gt $deadline)
+if (-not $restarted) { throw 'Update did not restart the application.' }
+if (@(Get-ChildItem -LiteralPath (Join-Path $root 'versions') -Directory).Count -ne 1) { throw 'Old version remains after managed update.' }
+$null = $restarted.CloseMainWindow()
+if (-not $restarted.WaitForExit(15000)) { throw 'Restarted application could not close normally.' }
+Write-Output 'PASS accepted update restarts StorageScope and leaves exactly one managed version.'
