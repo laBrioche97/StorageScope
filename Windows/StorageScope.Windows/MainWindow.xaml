@@ -36,7 +36,7 @@
         <Button x:Name="CheckUpdateButton" Content="Mises à jour" Click="CheckUpdate_Click"/>
         <Button x:Name="HistoryButton" Content="Historique" Click="History_Click"/>
         <Button x:Name="OptionsButton" Content="⋯" ToolTip="Mises à jour et historique" AutomationProperties.Name="Options de StorageScope" Click="Options_Click" Visibility="Collapsed">
-          <Button.ContextMenu><ContextMenu Background="{DynamicResource PanelBrush}" Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource BorderBrush}"><MenuItem Header="Rechercher des mises à jour" Click="CheckUpdate_Click"/><MenuItem Header="Historique local" Click="History_Click"/></ContextMenu></Button.ContextMenu>
+          <Button.ContextMenu><ContextMenu Background="{DynamicResource PanelBrush}" Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource BorderBrush}"><MenuItem Header="Filtres et tri" Click="ShowFilters_Click"/><MenuItem Header="Réinitialiser les filtres" Click="ResetFilters_Click"/><MenuItem Header="Rechercher des mises à jour" Click="CheckUpdate_Click"/><MenuItem Header="Historique local" Click="History_Click"/></ContextMenu></Button.ContextMenu>
         </Button>
       </WrapPanel>
     </DockPanel>
@@ -57,7 +57,23 @@
       </Grid>
     </Border>
 
-    <TabControl Grid.Row="3" x:Name="MainTabs">
+    <Grid Grid.Row="3">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <StackPanel x:Name="DisplayFilterPanel" Margin="0,0,0,8">
+      <WrapPanel>
+        <TextBlock Text="Rechercher" VerticalAlignment="Center" Margin="4,0,4,0"/>
+        <TextBox x:Name="ListSearch" Width="180" Margin="4" TextChanged="ListSearch_Changed" ToolTip="Nom, extension, chemin ou éditeur" AutomationProperties.Name="Rechercher dans les résultats"/>
+        <ComboBox x:Name="ResultSort" Width="215" DisplayMemberPath="Label" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Ordre des résultats"/>
+        <Button x:Name="FilterToggleButton" Content="Filtres" Click="ToggleFilters_Click" ToolTip="Filtrer par catégorie, taille et type"/>
+      </WrapPanel>
+      <WrapPanel x:Name="ExtraFilters" Visibility="Collapsed">
+        <ComboBox x:Name="CategoryFilter" Width="195" DisplayMemberPath="Label" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Filtrer par catégorie"/>
+        <ComboBox x:Name="MinimumSizeFilter" Width="150" DisplayMemberPath="Label" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Taille minimale"/>
+        <ComboBox x:Name="EntryKindFilter" Width="150" DisplayMemberPath="Label" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Fichiers ou dossiers"/>
+        <Button Content="Réinitialiser" Click="ResetFilters_Click"/>
+      </WrapPanel>
+    </StackPanel>
+    <TabControl Grid.Row="1" x:Name="MainTabs">
       <TabItem Header="Vue d’ensemble">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -107,29 +123,29 @@
       </TabItem>
 
       <TabItem Header="Catégories">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <ItemsControl x:Name="CategoriesList" Margin="12">
-            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate>
-                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="18" Margin="6" MinHeight="126">
-                  <StackPanel>
-                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
-                    <TextBlock Text="{Binding DisplaySize}" FontSize="25" FontWeight="Bold" Margin="0,12,0,4" Foreground="{DynamicResource TextBrush}"/>
-                    <TextBlock Text="{Binding Details}" Foreground="{DynamicResource MutedBrush}"/>
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
+        <Grid Margin="12">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <StackPanel Margin="4,0,4,8">
+            <ComboBox x:Name="CategorySummary" DisplayMemberPath="Label" SelectionChanged="CategorySummary_Changed" AutomationProperties.Name="Choisir une catégorie et voir son espace total"/>
+            <TextBlock Text="Les 500 plus gros fichiers de chaque catégorie sont conservés, indépendamment du classement global. Les filtres portent sur cette liste ; l’Explorateur permet de poursuivre l’examen." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,0"/>
+          </StackPanel>
+          <DataGrid Grid.Row="1" x:Name="CategoryFilesGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" MouseDoubleClick="RevealCategory_Click">
+            <DataGrid.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="8,14,8,8"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></DataGrid.GroupStyle>
+            <DataGrid.Columns>
+              <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Nom" Binding="{Binding Name}" Width="250" MinWidth="180"/>
+              <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille" Binding="{Binding DisplaySize}" Width="130" MinWidth="120"/>
+              <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Emplacement" Binding="{Binding Path}" Width="*" MinWidth="250"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <Button Grid.Row="2" Content="Afficher dans l’Explorateur" Click="RevealCategory_Click" HorizontalAlignment="Right"/>
+        </Grid>
       </TabItem>
 
       <TabItem Header="Nettoyage conseillé">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel>
-            <TextBlock Text="Choisissez ce que vous souhaitez retirer. Les documents et sauvegardes restent décochés." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/>
+            <TextBlock x:Name="CleanupIntro" Text="Choisissez ce que vous souhaitez retirer. Les documents et sauvegardes restent décochés." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/>
             <WrapPanel><Button Content="Sélectionner les temporaires reconnus" Click="SelectRecommended_Click"/><Button Content="Tout décocher" Click="ClearCleanup_Click"/><Button x:Name="DuplicateButton" Content="Rechercher des doublons…" Click="AnalyzeDuplicates_Click"/><TextBlock x:Name="CleanupSelectionText" VerticalAlignment="Center" Margin="8"/></WrapPanel>
           </StackPanel>
           <DataGrid Grid.Row="1" x:Name="CleanupGrid" SelectionChanged="CleanupGrid_SelectionChanged" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended">
@@ -154,11 +170,12 @@
       <TabItem Header="Applications et jeux">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <StackPanel><TextBlock Text="Désinstallation officielle · sauvegardes conservées par StorageScope · les étapes externes sont annoncées avant de continuer." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,10"/><TextBox x:Name="ApplicationSearch" TextChanged="ApplicationSearch_TextChanged" ToolTip="Rechercher une application ou un launcher" AutomationProperties.Name="Rechercher une application ou un jeu" Margin="4,0,4,8"/></StackPanel>
+          <StackPanel><TextBlock Text="Désinstallation officielle · sauvegardes conservées par StorageScope · tailles déclarées ou mesurées après analyse, tailles inconnues en dernier." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/><ComboBox x:Name="ApplicationSourceFilter" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Filtrer les applications par source" Margin="4,0,4,8"/></StackPanel>
           <DataGrid Grid.Row="1" x:Name="ApplicationsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Application / jeu" Binding="{Binding Name}" Width="2*" MinWidth="180"/>
+                <DataGridTemplateColumn Header="Application / jeu" Width="2*" MinWidth="180"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="4"><Image Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,10,0"/><TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                 <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Source" Binding="{Binding Source}" Width="140"/>
+                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille estimée" Binding="{Binding DisplaySize}" Width="125"/>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Éditeur et version" Binding="{Binding Details}" Width="2*"/>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Emplacement" Binding="{Binding InstallLocation}" Width="3*"/>
             </DataGrid.Columns>
@@ -167,6 +184,7 @@
         </Grid>
       </TabItem>
     </TabControl>
+    </Grid>
 
     <StackPanel Grid.Row="4" Margin="4,10,4,0"><TextBlock x:Name="PrivacyFooter" Text="Analyse locale · aucune télémétrie · liens et fichiers cloud exclus du nettoyage" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/><TextBlock x:Name="CompactStatus" Text="{Binding Text,ElementName=ScanStatusText}" Foreground="{DynamicResource MutedBrush}" TextTrimming="CharacterEllipsis" Visibility="Collapsed"/></StackPanel>
   </Grid>

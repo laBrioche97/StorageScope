@@ -4,14 +4,18 @@ import SwiftUI
 
 struct ApplicationsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var protectionFilter = 0
 
     private var filteredApplications: [InstalledApplication] {
         let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return model.applications.filter {
-            query.isEmpty || $0.displayName.lowercased().contains(query) || ($0.bundleIdentifier?.lowercased().contains(query) == true)
+            $0.allocatedBytesUpperBound >= model.sizeFilter.rawValue &&
+            (protectionFilter == 0 || $0.isProtected == (protectionFilter == 2)) &&
+            (query.isEmpty || $0.displayName.lowercased().contains(query) || ($0.bundleIdentifier?.lowercased().contains(query) == true))
         }.sorted { lhs, rhs in
+            if model.sort == .name { return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending }
             if lhs.allocatedBytesUpperBound != rhs.allocatedBytesUpperBound {
-                return lhs.allocatedBytesUpperBound > rhs.allocatedBytesUpperBound
+                return model.sort == .smallest ? lhs.allocatedBytesUpperBound < rhs.allocatedBytesUpperBound : lhs.allocatedBytesUpperBound > rhs.allocatedBytesUpperBound
             }
             return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
         }
@@ -41,6 +45,10 @@ struct ApplicationsView: View {
                         }
                         Text("Les caches reconnus peuvent être sélectionnés. Les réglages, sauvegardes et autres données personnelles restent décochés ; les composants partagés restent protégés.")
                             .padding(12).background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                        ResultFilters(showsKind: false)
+                        Picker("Applications", selection: $protectionFilter) {
+                            Text("Toutes").tag(0); Text("Désinstallables").tag(1); Text("Protégées").tag(2)
+                        }.pickerStyle(.segmented)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
                             ForEach(filteredApplications) { application in
                                 ApplicationCard(application: application)

@@ -8,7 +8,24 @@ struct ManagedGamesPanel: View {
     @State private var selected: ManagedGame?
     @State private var message: String?
     @State private var loading = true
+    @State private var source = "Toutes les sources"
+    @State private var icons: [String: NSImage] = [:]
     private let adapter = LocalGameLibraryAdapter()
+
+    private var filteredGames: [ManagedGame] {
+        let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return games.filter { game in
+            (source == "Toutes les sources" || game.provider.rawValue == source) &&
+            (model.sizeFilter == .all || (game.estimatedBytes ?? -1) >= model.sizeFilter.rawValue) &&
+            (query.isEmpty || (game.name + " " + game.provider.rawValue + " " + game.installURL.path).lowercased().contains(query))
+        }.sorted { lhs, rhs in
+            if model.sort != .name {
+                if (lhs.estimatedBytes == nil) != (rhs.estimatedBytes == nil) { return lhs.estimatedBytes != nil }
+                if lhs.estimatedBytes != rhs.estimatedBytes { return model.sort == .smallest ? (lhs.estimatedBytes ?? 0) < (rhs.estimatedBytes ?? 0) : (lhs.estimatedBytes ?? 0) > (rhs.estimatedBytes ?? 0) }
+            }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
 
     var body: some View {
         GroupBox {
@@ -22,12 +39,18 @@ struct ManagedGamesPanel: View {
                     .font(.callout).foregroundStyle(.secondary)
                 if loading { ProgressView() }
                 else if games.isEmpty { Text("Aucune bibliothèque reconnue sur ce Mac.").foregroundStyle(.secondary) }
-                ForEach(games.filter { model.searchText.isEmpty || ($0.name + $0.provider.rawValue).localizedCaseInsensitiveContains(model.searchText) }) { game in
+                Picker("Source", selection: $source) {
+                    Text("Toutes les sources").tag("Toutes les sources")
+                    ForEach(GameProvider.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
+                }
+                ForEach(filteredGames) { game in
                     VStack(alignment: .leading, spacing: 7) {
                         HStack {
+                            if let icon = icons[game.id] { Image(nsImage: icon).resizable().scaledToFit().frame(width: 32, height: 32) }
                             VStack(alignment: .leading) {
                                 Text(game.name).font(.headline)
                                 Text(game.provider.rawValue).font(.caption).foregroundStyle(.secondary)
+                                if let bytes = game.estimatedBytes { Text(ByteCountFormatter.storage.string(fromByteCount: bytes)).font(.caption).monospacedDigit() }
                             }
                             Spacer()
                             Button("Examiner") { NSWorkspace.shared.activateFileViewerSelecting([game.installURL]) }
@@ -48,7 +71,16 @@ struct ManagedGamesPanel: View {
         } message: { Text(selected?.explanation ?? "") }
     }
 
-    @MainActor private func reload() async { loading = true; games = await adapter.detect(); loading = false }
+    @MainActor private func reload() async {
+        loading = true; games = await adapter.detect()
+        for game in games {
+            let bundle: URL?
+            if game.installURL.pathExtension == "app" { bundle = game.installURL }
+            else { bundle = (try? FileManager.default.contentsOfDirectory(at: game.installURL, includingPropertiesForKeys: [.isSymbolicLinkKey]))?.prefix(100).first(where: { $0.pathExtension == "app" && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true }) }
+            icons[game.id] = bundle.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSImage(systemSymbolName: "gamecontroller.fill", accessibilityDescription: "Jeu")
+        }
+        loading = false
+    }
     @MainActor private func uninstall(_ game: ManagedGame) async {
         selected = nil
         guard !model.operationsAreBusy, await adapter.prepare(game), !model.operationsAreBusy else { message = "L’installation a changé ou sa méthode n’est pas disponible. Actualisez la liste."; return }

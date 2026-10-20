@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Windows.Media;
 
 namespace StorageScope.Windows;
 
@@ -31,6 +32,7 @@ public sealed record ScanEntry(
 {
     public string DisplaySize => SizeFormatter.Format(Size);
     public string Type => IsDirectory ? "Dossier" : CategoryLabels.Name(Category);
+    public string CategoryName => CategoryLabels.Name(Category);
 }
 
 public sealed record CategoryResult(StorageCategory Category, long Bytes, long FileCount)
@@ -58,10 +60,14 @@ public sealed record CleanupCandidate(string Path, string Reason, long Size, boo
 
 public sealed record InstalledApplication(string Name, string? Publisher, string? Version, string? InstallLocation, string? UninstallCommand,
     string Provider = "Application", string? ProductId = null, string? RegistrationPath = null, string? PackageFullName = null,
-    string? ManifestPath = null, FileSnapshot? ManifestSnapshot = null)
+    string? ManifestPath = null, FileSnapshot? ManifestSnapshot = null, long? EstimatedBytes = null, string? IconLocation = null)
 {
     public string Details => string.Join(" · ", new[] { Publisher, Version }.Where(value => !string.IsNullOrWhiteSpace(value)));
     public string Source => Provider;
+    public long SortSize => EstimatedBytes ?? 0;
+    public bool HasKnownSize => EstimatedBytes.HasValue;
+    public string DisplaySize => EstimatedBytes is long size ? SizeFormatter.Format(size) : "Non disponible";
+    public ImageSource Icon { get; init; } = ApplicationIcons.Fallback;
 }
 
 public sealed class ScanResult
@@ -76,6 +82,7 @@ public sealed class ScanResult
     public required long DirectoriesScanned { get; init; }
     public required long AccessErrors { get; init; }
     public bool CleanupTruncated { get; init; }
+    public IReadOnlyDictionary<StorageCategory, IReadOnlyList<ScanEntry>> CategoryFiles { get; init; } = new Dictionary<StorageCategory, IReadOnlyList<ScanEntry>>();
 }
 
 public sealed record ScanProgress(long Files, long Directories, long Bytes, long Errors, string CurrentPath, double Fraction);

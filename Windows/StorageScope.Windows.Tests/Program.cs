@@ -175,6 +175,37 @@ internal static class Program
                 }
             });
             Test("unsigned executable cannot be trusted", () => Throws(() => Authenticode.Verify(Fixture("unsigned.exe", "not an executable"), "CN=La Brioche")));
+            Test("category files are retained independently and bounded per category", () =>
+            {
+                var index = new CategoryFileIndex();
+                for (var i = 0; i < 800; i++) index.Observe(Entry(Path.Combine(_root, i + ".mp4")) with { Size = i + 1000, Category = StorageCategory.Videos });
+                var document = Entry(Path.Combine(_root,"small.txt")) with { Size = 1, Category = StorageCategory.Documents };
+                index.Observe(document);
+                var groups = index.Results();
+                Check(groups[StorageCategory.Videos].Count == CategoryFileIndex.Limit);
+                Check(groups[StorageCategory.Documents].Single() == document);
+                Check(groups[StorageCategory.Videos].First().Size == 1799 && groups[StorageCategory.Videos].Last().Size == 1300);
+            });
+            Test("filters combine search category size and kind without treating unknown app sizes as zero", () =>
+            {
+                var filter = new DisplayFilter("photo", StorageCategory.Images, 100, EntryKind.Files);
+                Check(filter.Matches(Entry(Path.Combine(_root,"Photo.JPG")) with { Size = 1000, Category = StorageCategory.Images }));
+                Check(!filter.Matches(Entry(Path.Combine(_root,"Photo.JPG")) with { Size = 20, Category = StorageCategory.Images }));
+                Check(!filter.Matches(Entry(Path.Combine(_root,"Photo.JPG")) with { Size = 1000, Category = StorageCategory.Documents }));
+                Check(!new DisplayFilter("", null, 1, EntryKind.All).Matches(new InstalledApplication("Unknown",null,null,null,null)));
+                Check(RegisteredProductProvider.DeclaredSize(100) == 102400 && RegisteredProductProvider.DeclaredSize(long.MaxValue) is null);
+            });
+            Test("icon references reject remote paths and malformed resources safely fall back", () =>
+            {
+                Check(ApplicationIcons.ParseLocation("https://example.com/icon.png") is null);
+                Check(ApplicationIcons.ParseLocation(@"\\server\share\icon.ico") is null);
+                Check(ApplicationIcons.ParseLocation("relative.exe,0") is null);
+                var parsed = ApplicationIcons.ParseLocation("\"C:\\App, With Comma\\app.exe\",-7");
+                Check(parsed?.Index == -7 && parsed?.Path == @"C:\App, With Comma\app.exe");
+                var corrupt = Fixture("corrupt.png", "not a bitmap");
+                Check(ReferenceEquals(ApplicationIcons.Load(new InstalledApplication("Bad",null,null,null,null,IconLocation:corrupt)),ApplicationIcons.Fallback));
+                Check(!ReferenceEquals(ApplicationIcons.Load(new InstalledApplication("StorageScope",null,null,null,null,IconLocation:Path.GetFullPath("Packaging/Branding/StorageScope.ico"))),ApplicationIcons.Fallback));
+            });
             Test("offline window construction and responsive rendering", () => Render(args.FirstOrDefault()));
             Console.WriteLine($"PASS: {_passed} Windows safety, update and rendering scenarios.");
             return 0;
@@ -193,21 +224,55 @@ internal static class Program
         var window = new MainWindow { IsPreviewMode = true, ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000 };
         var tab = (TabControl)window.FindName("MainTabs");
         var largest = (DataGrid)window.FindName("LargestFilesGrid");
-        largest.ItemsSource = new[] { Entry(Path.Combine(_root, "Mes vidéos", "Vacances.mp4")) with { Size = 2_800_000_000 }, Entry(Path.Combine(_root, "Documents", "Projet personnel.zip")) with { Size = 650_000_000 } };
+        var largestSource = (IList<ScanEntry>)largest.ItemsSource;
+        largestSource.Add(Entry(Path.Combine(_root,"Documents","Projet personnel.zip")) with { Size = 650_000_000, Category = StorageCategory.ArchivesInstallers });
+        largestSource.Add(Entry(Path.Combine(_root,"Mes vidéos","Vacances.mp4")) with { Size = 2_800_000_000, Category = StorageCategory.Videos });
         var cleanup = (DataGrid)window.FindName("CleanupGrid");
-        cleanup.ItemsSource = new[] { new CleanupCandidate(Path.Combine(_root,"cache.tmp"), "Temporaire reconnu", 120_000_000, false, "Caches et temporaires", "Peut être recréé", true), new CleanupCandidate(Path.Combine(_root,"photo.jpg"), "Fichier personnel", 200_000_000, false, "À examiner") };
-        CollectionViewSource.GetDefaultView(cleanup.ItemsSource).GroupDescriptions.Add(new PropertyGroupDescription(nameof(CleanupCandidate.Group)));
-        ((DataGrid)window.FindName("ApplicationsGrid")).ItemsSource = new[] { new InstalledApplication("Jeu Steam — exemple", "Steam", "1.0", "D:/Jeux/Steam", "steam://uninstall/123", "Steam"), new InstalledApplication("Jeu Epic — exemple", "Epic Games", "1.0", "D:/Jeux/Epic", null, "Epic"), new InstalledApplication("Application personnelle", "Éditeur", "2.0", "C:/Applications/Exemple", null) };
+        var cleanupSource = (IList<CleanupCandidate>)cleanup.ItemsSource;
+        cleanupSource.Add(new CleanupCandidate(Path.Combine(_root,"cache.tmp"),"Temporaire reconnu",120_000_000,false,"Caches et temporaires","Peut être recréé",true));
+        cleanupSource.Add(new CleanupCandidate(Path.Combine(_root,"photo.jpg"),"Fichier personnel",200_000_000,false,"À examiner"));
+        var categories = (DataGrid)window.FindName("CategoryFilesGrid");
+        var categorySource = (IList<ScanEntry>)categories.ItemsSource;
+        categorySource.Add(Entry(Path.Combine(_root,"petite-photo.jpg")) with { Size = 20_000_000, Category = StorageCategory.Images });
+        categorySource.Add(Entry(Path.Combine(_root,"grande-photo.jpg")) with { Size = 800_000_000, Category = StorageCategory.Images });
+        categorySource.Add(Entry(Path.Combine(_root,"sauvegarde.zip")) with { Size = 2_000_000_000, Category = StorageCategory.ArchivesInstallers });
+        var applications = (DataGrid)window.FindName("ApplicationsGrid");
+        var applicationSource = (IList<InstalledApplication>)applications.ItemsSource;
+        var sample = new InstalledApplication("StorageScope", "La Brioche", "3.1.0", "C:/Applications/StorageScope", null, EstimatedBytes: 120_000_000, IconLocation: Path.GetFullPath("Packaging/Branding/StorageScope.ico"));
+        applicationSource.Add(new InstalledApplication("Taille non déclarée", "Éditeur", "1.0", "C:/Applications/Exemple", null));
+        applicationSource.Add(sample with { Icon = ApplicationIcons.Load(sample) });
+        applicationSource.Add(new InstalledApplication("Jeu Steam — exemple", "Steam", "1.0", "D:/Jeux/Steam", "steam://uninstall/123", "Steam", EstimatedBytes: 12_000_000_000));
+        Test("rendered lists sort numeric sizes and keep unknown applications last", () => {
+            Check(largest.Items.OfType<ScanEntry>().First().Size == 2_800_000_000);
+            Check(categories.Items.OfType<ScanEntry>().Where(item => item.Category == StorageCategory.Images).First().Size == 800_000_000);
+            Check(applications.Items.OfType<InstalledApplication>().First().Provider == "Steam");
+            Check(!applications.Items.OfType<InstalledApplication>().Last().HasKnownSize);
+            ((ComboBox)window.FindName("ResultSort")).SelectedIndex = 1;
+            Check(applications.Items.OfType<InstalledApplication>().First().Name == "StorageScope");
+            Check(!applications.Items.OfType<InstalledApplication>().Last().HasKnownSize);
+            ((ComboBox)window.FindName("ResultSort")).SelectedIndex = 0;
+        });
+        Test("rendered filters refresh existing rows and preserve category boundaries", () => {
+            var search = (TextBox)window.FindName("ListSearch"); search.Text = "projet";
+            Check(largest.Items.OfType<ScanEntry>().Single().Name.Contains("Projet")); search.Clear();
+            var size = (ComboBox)window.FindName("MinimumSizeFilter"); size.SelectedIndex = 3;
+            Check(largest.Items.OfType<ScanEntry>().Count() == 1 && applications.Items.OfType<InstalledApplication>().Count() == 1); size.SelectedIndex = 0;
+            var category = (ComboBox)window.FindName("CategoryFilter"); category.SelectedItem = category.Items.OfType<CategoryChoice>().Single(item => item.Category == StorageCategory.Images);
+            Check(categories.Items.OfType<ScanEntry>().Count() == 2 && largest.Items.OfType<ScanEntry>().Count() == 0); category.SelectedIndex = 0;
+            var kind = (ComboBox)window.FindName("EntryKindFilter"); kind.SelectedIndex = 2;
+            Check(largest.Items.OfType<ScanEntry>().Count() == 0); kind.SelectedIndex = 0;
+        });
         var content = (Grid)window.Content;
         var drive = (ComboBox)window.FindName("DrivePicker");
         drive.ItemsSource = new[] { new DriveChoice(new DriveInfo(Path.GetPathRoot(_root)!)) }; drive.SelectedIndex = 0;
         window.Show();
-        foreach (var (name, width, height, index, scale, dark, contrast) in new[] { ("windows-overview",1120,800,0,1d,true,false), ("windows-cleanup-small",740,700,3,1d,true,false), ("windows-minimum",740,560,3,1d,true,false), ("windows-cleanup-200",1120,800,3,2d,true,false), ("windows-games-light",1120,800,4,1d,false,false), ("windows-contrast",1120,800,0,1d,false,true) })
+        foreach (var (name, width, height, index, scale, dark, contrast) in new[] { ("windows-overview",1120,800,0,1d,true,false), ("windows-cleanup-small",740,700,3,1d,true,false), ("windows-minimum",740,560,3,1d,true,false), ("windows-cleanup-200",1120,800,3,2d,true,false), ("windows-games-light",1120,800,4,1d,false,false), ("windows-categories",1120,800,2,1d,true,false), ("windows-games-small",740,560,4,1d,true,false), ("windows-filters",1120,800,4,1d,true,false), ("windows-contrast",1120,800,0,1d,false,true) })
         {
             app.ApplyPalette(dark,contrast);
             content.Background = (Brush)app.Resources["PageBrush"];
             window.Width = width; window.Height = height;
             tab.SelectedIndex = index;
+            ((System.Windows.FrameworkElement)window.FindName("ExtraFilters")).Visibility = name == "windows-filters" ? Visibility.Visible : Visibility.Collapsed;
             window.UpdateLayout();
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             window.UpdateLayout();
@@ -215,6 +280,7 @@ internal static class Program
             Check(content.ActualWidth > 600 && content.ActualHeight > 400);
             if (index == 3)
             {
+                Console.WriteLine($"Layout {width}x{height}: cleanup table {cleanup.ActualHeight}");
                 Check(cleanup.ActualHeight >= 120);
                 var clean = (Button)window.FindName("CleanButton");
                 Check(clean.TransformToAncestor(content).Transform(new Point(0,clean.ActualHeight)).Y <= content.ActualHeight);

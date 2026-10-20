@@ -12,6 +12,7 @@ public struct ManagedGame: Identifiable, Hashable, Sendable {
     public let installURL: URL
     public let manifestURL: URL
     public let uninstallURL: URL?
+    public var estimatedBytes: Int64? = nil
     public var canUninstall: Bool { uninstallURL != nil }
     public var explanation: String {
         canUninstall
@@ -45,7 +46,8 @@ public actor LocalGameLibraryAdapter: GameLibraryAdapter {
                       let name = object["DisplayName"] as? String,
                       let path = object["InstallLocation"] as? String,
                       path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else { continue }
-                games.append(ManagedGame(id: "epic:" + id, name: name, provider: .epic, installURL: URL(fileURLWithPath: path), manifestURL: file, uninstallURL: nil))
+                let size = (object["InstallSize"] as? NSNumber)?.int64Value
+                games.append(ManagedGame(id: "epic:" + id, name: name, provider: .epic, installURL: URL(fileURLWithPath: path), manifestURL: file, uninstallURL: nil, estimatedBytes: size.flatMap { $0 >= 0 ? $0 : nil }))
             }
         }
         // These launchers have no supported universal unattended uninstall API on macOS.
@@ -96,7 +98,8 @@ public actor LocalGameLibraryAdapter: GameLibraryAdapter {
                       !directory.contains("/"), !directory.contains("\\"), directory != ".", directory != ".." else { continue }
                 result.append(ManagedGame(id: "steam:" + id, name: name, provider: .steam,
                     installURL: apps.appendingPathComponent("common").appendingPathComponent(directory),
-                    manifestURL: file, uninstallURL: URL(string: "steam://uninstall/" + id)))
+                    manifestURL: file, uninstallURL: URL(string: "steam://uninstall/" + id),
+                    estimatedBytes: captures("\"SizeOnDisk\"\\s+\"([0-9]+)\"", in: text).first.flatMap(Int64.init)))
             }
         }
         return result

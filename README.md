@@ -15,6 +15,8 @@ Le premier passage depuis une ancienne version ZIP se fait par cet installateur.
 
 ## Nettoyer et désinstaller
 
+La version 3.1 ajoute la recherche et les filtres de catégorie, taille minimale et type, ainsi qu’un filtre de source pour les applications Windows. Les listes commencent par les éléments les plus volumineux ; le tri croissant et le tri alphabétique restent disponibles. Sur Windows, la vue Catégories conserve indépendamment les 500 plus gros fichiers de chaque catégorie, avec ses totaux complets et un accès à l’Explorateur pour poursuivre l’examen. Les tailles d’applications déclarées ou mesurées après analyse servent au tri ; les tailles inconnues restent à la fin. Les icônes sont lues localement, sans téléchargement ; une icône neutre remplace les logos absents ou invalides.
+
 Le parcours est **Analyser → Choisir → Vérifier → Nettoyer**. Les fichiers personnels restent décochés. Les caches reconnus sont expliqués ; une confirmation précède leur mise à la Corbeille. Le bilan distingue les réussites, les éléments bloqués et l'espace récupérable après vidage.
 
 Les bibliothèques Steam/Epic et les désinstalleurs enregistrés de GOG, EA, Ubisoft et Battle.net sont inventoriés localement sous Windows ; les paquets Xbox/Microsoft Store utilisent l'API Windows. Sur Mac, Steam, Epic et les installations Battle.net reconnues complètent les bundles d'applications ordinaires. Une action externe obligatoire est annoncée ; aucune suppression directe de dossier ne remplace un moteur officiel indisponible.

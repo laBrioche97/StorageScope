@@ -95,11 +95,8 @@ struct StorageExplorerView: View {
                 }
             }
 
+            ResultFilters()
             HStack {
-                Picker("Taille", selection: $model.sizeFilter) {
-                    ForEach(SizeFilter.allCases) { Text($0.label).tag($0) }
-                }
-                .labelsHidden().frame(width: 105)
                 if let context = model.explorerCategoryContext {
                     Text("\(context.knownItemCount.formatted()) principaux fichiers affichés sur \(context.totalFileCount.formatted()) classés")
                         .font(.callout)

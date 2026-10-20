@@ -205,18 +205,12 @@ private struct StorageResultsView: View {
     }
 
     private var filters: some View {
-        HStack {
-            Picker("Taille", selection: $model.sizeFilter) {
-                ForEach(SizeFilter.allCases) { Text($0.label).tag($0) }
-            }.labelsHidden().frame(width: 105)
+        VStack(alignment: .leading) {
+            ResultFilters()
             Picker("Catégorie", selection: $model.categoryFilter) {
                 Text("Toutes catégories").tag(ItemCategory?.none)
                 ForEach(ItemCategory.allCases, id: \.self) { Text($0.rawValue).tag(Optional($0)) }
             }.labelsHidden().frame(width: 180)
-            Spacer()
-            Picker("Trier par", selection: $model.sort) {
-                ForEach(ItemSort.allCases) { Text($0.rawValue).tag($0) }
-            }.frame(width: 150)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
     }

@@ -104,8 +104,12 @@ private struct CategoryCard: View {
                     .font(.title2.bold()).monospacedDigit()
                 Text("\(summary.fileCount.formatted()) fichier(s)").font(.caption).foregroundStyle(.secondary)
                 ProgressView(value: fraction).tint(color)
-                if let contributor = summary.topContributors.first {
-                    Text("Principal : \(contributor.name)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                ForEach(Array(summary.topContributors.sorted { $0.allocatedSize > $1.allocatedSize }.prefix(3))) { contributor in
+                    HStack {
+                        Text(contributor.name).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(ByteCountFormatter.storage.string(fromByteCount: contributor.allocatedSize)).monospacedDigit()
+                    }.font(.caption2).foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)

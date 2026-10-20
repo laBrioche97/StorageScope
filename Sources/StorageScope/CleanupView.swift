@@ -89,13 +89,15 @@ struct EnhancedCleanupView: View {
 
                 Text("Aucun élément n’est sélectionné automatiquement. Les tailles sont des bornes hautes APFS et l’espace devient disponible seulement après vidage de la Corbeille.")
                     .font(.callout).foregroundStyle(.secondary)
+                ResultFilters()
 
                 if report.suggestions.isEmpty {
                     ContentUnavailableView("Aucun candidat évident", systemImage: "checkmark.circle", description: Text("Les règles prudentes n’ont rien trouvé à recommander."))
                 } else {
-                    ForEach(report.suggestions) { suggestion in
+                    ForEach(report.suggestions.filter { !model.filteredForDisplay($0.items).isEmpty }.sorted { model.sort == .smallest ? $0.potentialBytes < $1.potentialBytes : model.sort == .name ? $0.title.localizedStandardCompare($1.title) == .orderedAscending : $0.potentialBytes > $1.potentialBytes }) { suggestion in
                         EnhancedCleanupSuggestionCard(suggestion: suggestion)
                     }
+                    if report.suggestions.allSatisfy({ model.filteredForDisplay($0.items).isEmpty }) { Text("Aucun élément ne correspond aux filtres. Réinitialisez-les pour retrouver les propositions.").foregroundStyle(.secondary) }
                 }
 
                 DuplicateAnalysisPanel()
@@ -133,7 +135,7 @@ private struct EnhancedCleanupSuggestionCard: View {
                 }
                 if expanded {
                     Divider()
-                    ForEach(suggestion.items) { item in
+                    ForEach(model.filteredForDisplay(suggestion.items)) { item in
                         HStack {
                             Image(systemName: item.isDirectory ? "folder.fill" : "doc.fill").foregroundStyle(item.isDirectory ? .blue : .secondary)
                             VStack(alignment: .leading) {

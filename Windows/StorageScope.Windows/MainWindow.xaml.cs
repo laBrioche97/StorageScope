@@ -13,7 +13,7 @@ public partial class MainWindow : Window
 {
     private readonly ScanService _scanner = new();
     private readonly ObservableCollection<ScanEntry> _largestFiles = [];
-    private readonly ObservableCollection<CategoryTile> _categories = [];
+    private readonly ObservableCollection<ScanEntry> _categoryFiles = [];
     private readonly ObservableCollection<CleanupCandidate> _cleanup = [];
     private readonly ObservableCollection<InstalledApplication> _applications = [];
     private readonly ObservableCollection<ScanEntry> _explorer = [];
@@ -35,11 +35,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         LargestFilesGrid.ItemsSource = _largestFiles;
-        CategoriesList.ItemsSource = _categories;
+        CategoryFilesGrid.ItemsSource = _categoryFiles;
         CleanupGrid.ItemsSource = _cleanup;
         ApplicationsGrid.ItemsSource = _applications;
         ExplorerGrid.ItemsSource = _explorer;
         CollectionViewSource.GetDefaultView(_cleanup).GroupDescriptions.Add(new PropertyGroupDescription(nameof(CleanupCandidate.Group)));
+        CollectionViewSource.GetDefaultView(_categoryFiles).GroupDescriptions.Add(new PropertyGroupDescription(nameof(ScanEntry.CategoryName)));
+        InitializeDisplayFilters();
         SizeChanged += (_, _) => UpdateResponsiveColumns();
     }
 
@@ -99,22 +101,24 @@ public partial class MainWindow : Window
     {
         _largestFiles.Clear();
         foreach (var item in result.LargestFiles) _largestFiles.Add(item);
-        _categories.Clear();
-        foreach (var category in result.Categories)
-            _categories.Add(new CategoryTile(category, result.IdentifiedBytes == 0 ? 0 : category.Bytes * 100d / result.IdentifiedBytes));
+        _categoryFiles.Clear();
+        foreach (var item in result.CategoryFiles.Values.SelectMany(items => items)) _categoryFiles.Add(item);
+        PopulateCategorySummary(result);
         _cleanup.Clear();
         foreach (var candidate in result.CleanupCandidates) _cleanup.Add(candidate);
         IdentifiedText.Text = SizeFormatter.Format(result.IdentifiedBytes);
         FilesText.Text = result.FilesScanned.ToString("N0");
         DirectoriesText.Text = result.DirectoriesScanned.ToString("N0");
         ErrorsText.Text = result.AccessErrors.ToString("N0");
+        ApplyApplicationFilter();
     }
 
     private void ClearResults()
     {
         _result = null;
         _largestFiles.Clear();
-        _categories.Clear();
+        _categoryFiles.Clear();
+        PopulateCategorySummary(null);
         _cleanup.Clear();
         _explorer.Clear();
         _allExplorerItems.Clear();
@@ -136,9 +140,11 @@ public partial class MainWindow : Window
         if (LargestFilesGrid is null) return;
         CheckUpdateButton.Visibility = HistoryButton.Visibility = ActualWidth >= 950 ? Visibility.Visible : Visibility.Collapsed;
         OptionsButton.Visibility = ActualWidth < 950 ? Visibility.Visible : Visibility.Collapsed;
-        ApplicationTitle.Visibility = WorkflowSteps.Visibility = ActualHeight >= 680 ? Visibility.Visible : Visibility.Collapsed;
+        ApplicationTitle.Visibility = WorkflowSteps.Visibility = ActualHeight >= 760 ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = PrivacyFooter.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
         CompactStatus.Visibility = ActualHeight < 620 ? Visibility.Visible : Visibility.Collapsed;
+        CleanupIntro.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
+        DisplayFilterPanel.Visibility = ActualHeight >= 620 || _compactFiltersOpen ? Visibility.Visible : Visibility.Collapsed;
         void Show(DataGrid grid, int column, bool visible) { grid.Columns[column].Visibility = visible ? Visibility.Visible : Visibility.Collapsed; }
         Show(LargestFilesGrid, 3, ActualWidth >= 1000);
         Show(ExplorerGrid, 4, ActualWidth >= 1100);
@@ -146,8 +152,9 @@ public partial class MainWindow : Window
         Show(ExplorerGrid, 2, ActualWidth >= 850);
         Show(CleanupGrid, 3, ActualWidth >= 1000);
         Show(CleanupGrid, 4, ActualWidth >= 1250);
-        Show(ApplicationsGrid, 3, ActualWidth >= 1150);
-        Show(ApplicationsGrid, 2, ActualWidth >= 950);
+        Show(ApplicationsGrid, 4, ActualWidth >= 1150);
+        Show(ApplicationsGrid, 3, ActualWidth >= 1000);
+        Show(ApplicationsGrid, 1, ActualWidth >= 850);
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) { _scanCancellation?.Cancel(); _operationCancellation?.Cancel(); }
@@ -342,16 +349,21 @@ public partial class MainWindow : Window
     private async Task ReloadApplicationsAsync()
     {
         _allApplications = await _products.DetectAsync(CancellationToken.None);
+        var selectedSource = ApplicationSourceFilter.SelectedItem as string;
+        ApplicationSourceFilter.ItemsSource = new[] { "Toutes les sources" }.Concat(_allApplications.Select(item => item.Provider).Distinct().Order());
+        ApplicationSourceFilter.SelectedItem = selectedSource is not null && _allApplications.Any(item => item.Provider == selectedSource) ? selectedSource : "Toutes les sources";
         ApplyApplicationFilter();
     }
     private void ApplyApplicationFilter()
     {
-        var query = ApplicationSearch.Text.Trim();
         _applications.Clear();
-        foreach (var application in _allApplications.Where(item => (item.Name + " " + item.Provider).Contains(query, StringComparison.CurrentCultureIgnoreCase))) _applications.Add(application);
+        foreach (var application in _allApplications)
+        {
+            var measured = application.InstallLocation is string location && _result is not null && _result.DirectorySizes.TryGetValue(location.TrimEnd('\\'), out var bytes) ? (long?)bytes : null;
+            _applications.Add(measured is long size ? application with { EstimatedBytes = size } : application);
+        }
     }
-    private void ApplicationSearch_TextChanged(object sender, TextChangedEventArgs e) { if (IsLoaded) ApplyApplicationFilter(); }
-    private void SelectRecommended_Click(object sender, RoutedEventArgs e) { CleanupGrid.SelectedItems.Clear(); foreach (var item in _cleanup.Where(item => item.Recommended)) CleanupGrid.SelectedItems.Add(item); }
+    private void SelectRecommended_Click(object sender, RoutedEventArgs e) { CleanupGrid.SelectedItems.Clear(); foreach (var item in CleanupGrid.Items.OfType<CleanupCandidate>().Where(item => item.Recommended)) CleanupGrid.SelectedItems.Add(item); }
     private void ClearCleanup_Click(object sender, RoutedEventArgs e) => CleanupGrid.SelectedItems.Clear();
     private void CleanupGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

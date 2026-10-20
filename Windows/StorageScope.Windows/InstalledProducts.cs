@@ -44,7 +44,8 @@ public sealed class RegisteredProductProvider : IInstalledProductProvider
                     var location = key.GetValue("InstallLocation") as string;
                     var provider = IdentifyProvider(keyName, command, location, key.GetValue("Publisher") as string);
                     result.Add(new(name.Trim(), key.GetValue("Publisher") as string, key.GetValue("DisplayVersion") as string,
-                        location, command, provider, keyName, $"{hive}|{view}|{keyName}"));
+                        location, command, provider, keyName, $"{hive}|{view}|{keyName}",
+                        EstimatedBytes: DeclaredSize(key.GetValue("EstimatedSize")), IconLocation: key.GetValue("DisplayIcon") as string));
                 }
                 catch (Exception error) when (error is UnauthorizedAccessException or System.Security.SecurityException or FormatException) { }
             }
@@ -62,6 +63,12 @@ public sealed class RegisteredProductProvider : IInstalledProductProvider
         if (value.Contains("Ubisoft", StringComparison.OrdinalIgnoreCase) || value.Contains("Uplay", StringComparison.OrdinalIgnoreCase)) return "Ubisoft";
         if (value.Contains("Battle.net", StringComparison.OrdinalIgnoreCase) || value.Contains("Blizzard", StringComparison.OrdinalIgnoreCase)) return "Battle.net";
         return "Application";
+    }
+
+    internal static long? DeclaredSize(object? kilobytes)
+    {
+        if (kilobytes is null || !long.TryParse(kilobytes.ToString(), out var value) || value <= 0 || value > long.MaxValue / 1024) return null;
+        return value * 1024;
     }
 
     public ProductUninstallPlan Prepare(InstalledApplication product)
@@ -171,7 +178,8 @@ public sealed class LauncherManifestProvider : IInstalledProductProvider
                     var id = Value("appid");
                     var directory = Value("installdir");
                     if (!Regex.IsMatch(id, @"^\d+$") || Path.GetFileName(file) != "appmanifest_" + id + ".acf" || string.IsNullOrWhiteSpace(directory) || directory.IndexOfAny(['\\', '/', ':']) >= 0 || directory is "." or "..") continue;
-                    products.Add(new(Value("name"), "Valve / Steam", null, Path.Combine(apps, "common", directory), "steam://uninstall/" + id, "Steam", "Steam App " + id, ManifestPath: file, ManifestSnapshot: manifestSnapshot));
+                    products.Add(new(Value("name"), "Valve / Steam", null, Path.Combine(apps, "common", directory), "steam://uninstall/" + id, "Steam", "Steam App " + id, ManifestPath: file, ManifestSnapshot: manifestSnapshot,
+                        EstimatedBytes: long.TryParse(Value("SizeOnDisk"), out var size) && size >= 0 ? size : null));
                 }
             }
         }
@@ -186,7 +194,9 @@ public sealed class LauncherManifestProvider : IInstalledProductProvider
                     var root = json.RootElement;
                     string? Get(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
                     if (Get("DisplayName") is not string name || Get("InstallLocation") is not string location || !Directory.Exists(location)) continue;
-                    products.Add(new(name, "Epic Games", Get("AppVersionString"), location, null, "Epic", Get("AppName")));
+                    products.Add(new(name, "Epic Games", Get("AppVersionString"), location, null, "Epic", Get("AppName"),
+                        EstimatedBytes: root.TryGetProperty("InstallSize", out var size) && size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out var bytes) && bytes >= 0 ? bytes : null,
+                        IconLocation: Get("LaunchExecutable") is string executable ? Path.Combine(location, executable) : null));
                 }
                 catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { }
             }
@@ -247,7 +257,8 @@ public sealed class WindowsPackageProvider : IInstalledProductProvider
         {
             token.ThrowIfCancellationRequested();
             if (package.IsFramework || package.IsResourcePackage || package.IsBundle || package.SignatureKind == global::Windows.ApplicationModel.PackageSignatureKind.System) continue;
-            try { products.Add(new(package.DisplayName, package.PublisherDisplayName, package.Id.Version.Major + "." + package.Id.Version.Minor, package.InstalledLocation.Path, null, "Xbox / Microsoft Store", package.Id.FamilyName, PackageFullName: package.Id.FullName)); }
+            try { products.Add(new(package.DisplayName, package.PublisherDisplayName, package.Id.Version.Major + "." + package.Id.Version.Minor, package.InstalledLocation.Path, null, "Xbox / Microsoft Store", package.Id.FamilyName, PackageFullName: package.Id.FullName,
+                IconLocation: package.Logo.IsFile ? package.Logo.LocalPath : Path.Combine(package.InstalledLocation.Path, Uri.UnescapeDataString(package.Logo.AbsolutePath.TrimStart('/'))))); }
             catch (Exception error) when (error is UnauthorizedAccessException or COMException) { }
         }
         return products;
@@ -284,10 +295,11 @@ public sealed class InstalledProductCatalog
                 && (string.IsNullOrWhiteSpace(item.InstallLocation) || item.InstallLocation.TrimEnd('\\').Equals(manifest.InstallLocation?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)));
             if (registration is null) continue;
             result.Remove(registration); result.Remove(manifest);
-            result.Add(registration with { ManifestPath = manifest.ManifestPath, ManifestSnapshot = manifest.ManifestSnapshot, InstallLocation = manifest.InstallLocation });
+            result.Add(registration with { ManifestPath = manifest.ManifestPath, ManifestSnapshot = manifest.ManifestSnapshot, InstallLocation = manifest.InstallLocation, EstimatedBytes = manifest.EstimatedBytes ?? registration.EstimatedBytes });
         }
-        return result.GroupBy(item => item.PackageFullName ?? (item.InstallLocation is { Length: > 0 } location && Path.IsPathFullyQualified(location) ? location.TrimEnd('\\') : item.Provider + ":" + item.ProductId + ":" + item.Name), StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.OrderByDescending(item => item.RegistrationPath is not null).First()).OrderBy(item => item.Name).ToList();
+        var unique = result.GroupBy(item => item.PackageFullName ?? (item.InstallLocation is { Length: > 0 } location && Path.IsPathFullyQualified(location) ? location.TrimEnd('\\') : item.Provider + ":" + item.ProductId + ":" + item.Name), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderByDescending(item => item.RegistrationPath is not null).First()).ToList();
+        return await Task.Run<IReadOnlyList<InstalledApplication>>(() => unique.Select(item => { token.ThrowIfCancellationRequested(); return item with { Icon = ApplicationIcons.Load(item) }; }).ToList(), token);
     }
     public IInstalledProductProvider ProviderFor(InstalledApplication product) => product.PackageFullName is not null ? _providers[2] : product.RegistrationPath is not null ? _providers[0] : _providers[1];
 }

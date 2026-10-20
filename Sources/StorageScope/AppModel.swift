@@ -45,11 +45,17 @@ enum SizeFilter: Int64, CaseIterable, Identifiable {
 }
 
 enum ItemSort: String, CaseIterable, Identifiable {
-    case allocated = "Taille"
+    case allocated = "Taille décroissante"
+    case smallest = "Taille croissante"
     case name = "Nom"
     case type = "Type"
     case date = "Date"
     case path = "Chemin"
+    var id: String { rawValue }
+}
+
+enum FileKindFilter: String, CaseIterable, Identifiable {
+    case all = "Fichiers et dossiers", files = "Fichiers seulement", folders = "Dossiers seulement"
     var id: String { rawValue }
 }
 
@@ -113,6 +119,7 @@ final class AppModel: ObservableObject {
     @Published var sizeFilter: SizeFilter = .all
     @Published var categoryFilter: ItemCategory?
     @Published var sort: ItemSort = .allocated
+    @Published var kindFilter: FileKindFilter = .all
     @Published var selectedIDs: Set<String> = []
     @Published var currentDirectory: URL?
     @Published var explorerItems: [FileSystemItem] = []
@@ -193,6 +200,7 @@ final class AppModel: ObservableObject {
     var explorerVisibleItems: [FileSystemItem] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return explorerItems.filter { item in
+            (kindFilter == .all || item.isDirectory == (kindFilter == .folders)) &&
             item.allocatedSize >= sizeFilter.rawValue &&
             (categoryFilter == nil || item.category == categoryFilter) &&
             (query.isEmpty || item.name.lowercased().contains(query) || item.url.path.lowercased().contains(query))
@@ -213,6 +221,7 @@ final class AppModel: ObservableObject {
         }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let filtered = base.filter { item in
+            (kindFilter == .all || item.isDirectory == (kindFilter == .folders)) &&
             item.allocatedSize >= sizeFilter.rawValue &&
             (categoryFilter == nil || item.category == categoryFilter) &&
             (query.isEmpty || item.name.lowercased().contains(query) || item.url.path.lowercased().contains(query) || item.fileExtension.contains(query.replacingOccurrences(of: ".", with: "")))
@@ -223,11 +232,21 @@ final class AppModel: ObservableObject {
     private var comparator: (FileSystemItem, FileSystemItem) -> Bool {
         switch sort {
         case .allocated: { $0.allocatedSize > $1.allocatedSize }
+        case .smallest: { $0.allocatedSize < $1.allocatedSize }
         case .name: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         case .type: { $0.category.rawValue < $1.category.rawValue }
         case .date: { ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast) }
         case .path: { $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending }
         }
+    }
+
+    func filteredForDisplay(_ items: [FileSystemItem]) -> [FileSystemItem] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return items.filter { item in
+            item.allocatedSize >= sizeFilter.rawValue &&
+            (kindFilter == .all || item.isDirectory == (kindFilter == .folders)) &&
+            (query.isEmpty || item.name.lowercased().contains(query) || item.url.path.lowercased().contains(query))
+        }.sorted(by: comparator)
     }
 
     func startScan() {
@@ -873,6 +892,7 @@ final class AppModel: ObservableObject {
     }
 
     func openCategory(_ category: ItemCategory) {
+        sort = .allocated
         guard let report = displayedCategoryReport else {
             alertMessage = "Une analyse est nécessaire pour afficher les principaux fichiers de cette catégorie."
             return

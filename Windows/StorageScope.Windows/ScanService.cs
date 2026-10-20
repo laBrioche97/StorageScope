@@ -19,6 +19,7 @@ public sealed class ScanService
         var allDirectorySizes = new ConcurrentDictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         var largestFiles = new ConcurrentBag<List<ScanEntry>>();
         var cleanupAnalysis = new CleanupAnalysis();
+        var categoryFiles = new CategoryFileIndex();
         long files = 0, directories = 1, bytes = 0, errors = 0, nextReportTicks = 0;
 
         void ReportOccasionally(string currentPath)
@@ -52,6 +53,7 @@ public sealed class ScanService
             Interlocked.Increment(ref categoryCounts[(int)category]);
             var entry = new ScanEntry(info.FullName, info.Name, length, false, SafeModified(info), category);
             cleanupAnalysis.Observe(entry);
+            categoryFiles.Observe(entry);
             localLargest.Add(entry);
             if (localLargest.Count > LargestFileLimit * 2)
             {
@@ -113,7 +115,8 @@ public sealed class ScanService
             FilesScanned = files,
             DirectoriesScanned = directories,
             AccessErrors = errors,
-            CleanupTruncated = cleanupAnalysis.IsTruncated
+            CleanupTruncated = cleanupAnalysis.IsTruncated,
+            CategoryFiles = categoryFiles.Results()
         };
     }
 
