@@ -120,19 +120,24 @@ public partial class MainWindow
     private void LayoutExplorer()
     {
         if (ExplorerSplit is null) return;
-        var stacked = ExplorerSplit.ActualWidth is > 0 and < 540 && _bubbleMode;
-        ExplorerGrid.Columns[2].Visibility = _bubbleMode ? Visibility.Collapsed : Visibility.Visible;
-        ExplorerGrid.Columns[3].Visibility = !_bubbleMode && ActualWidth >= 1000 ? Visibility.Visible : Visibility.Collapsed;
-        ExplorerGrid.Columns[4].Visibility = !_bubbleMode && ActualWidth >= 1100 ? Visibility.Visible : Visibility.Collapsed;
-        ExplorerSplit.ColumnDefinitions[1].Width = new GridLength(_bubbleMode && !stacked ? 1.2 : 0, GridUnitType.Star);
+        var showGraph = ExplorerShowsGraph;
+        var stacked = ExplorerSplit.ActualWidth is > 0 and < 540 && showGraph;
+        ExplorerCombinedButton.Content = _bubbleMode ? "✓ Liste et bulles" : "Liste et bulles";
+        ExplorerListButton.Content = !_bubbleMode ? "✓ Liste seule" : "Liste seule";
+        System.Windows.Automation.AutomationProperties.SetItemStatus(ExplorerCombinedButton, _bubbleMode ? "Mode préféré sélectionné" : "Non sélectionné");
+        System.Windows.Automation.AutomationProperties.SetItemStatus(ExplorerListButton, !_bubbleMode ? "Mode préféré sélectionné" : "Non sélectionné");
+        ExplorerGrid.Columns[2].Visibility = showGraph ? Visibility.Collapsed : Visibility.Visible;
+        ExplorerGrid.Columns[3].Visibility = !showGraph && ActualWidth >= 1000 ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerGrid.Columns[4].Visibility = !showGraph && ActualWidth >= 1100 ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerSplit.ColumnDefinitions[1].Width = new GridLength(showGraph && !stacked ? 1.2 : 0, GridUnitType.Star);
         ExplorerSplit.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
         ExplorerSplit.RowDefinitions[1].Height = new GridLength(stacked ? 1 : 0, GridUnitType.Star);
         Grid.SetColumn(BubblePanel, stacked ? 0 : 1); Grid.SetRow(BubblePanel, 0);
         Grid.SetColumn(ExplorerGrid, 0); Grid.SetRow(ExplorerGrid, stacked ? 1 : 0);
-        BubblePanel.Visibility = _bubbleMode ? Visibility.Visible : Visibility.Collapsed;
+        BubblePanel.Visibility = showGraph ? Visibility.Visible : Visibility.Collapsed;
         ExplorerGrid.Visibility = Visibility.Visible;
         BubblePanel.Margin = new Thickness(stacked ? 0 : 12, 8, 0, 8);
-        Grid.SetColumn(ExplorerLoadingPanel, stacked || !_bubbleMode ? 0 : 1);
+        Grid.SetColumn(ExplorerLoadingPanel, stacked || !showGraph ? 0 : 1);
         Grid.SetColumnSpan(ExplorerLoadingPanel, 1); Grid.SetRowSpan(ExplorerLoadingPanel, 1);
     }
 }

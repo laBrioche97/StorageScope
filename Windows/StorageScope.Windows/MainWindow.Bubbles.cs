@@ -16,6 +16,17 @@ public partial class MainWindow
     private FolderFrame? _folderFrame;
     private int _bubbleGeneration;
     private bool _bubbleMode = true;
+    private enum ExplorerScope { All, DirectFiles, Remainder }
+    private ExplorerScope _explorerScope;
+    private HashSet<string>? _explorerRemainder;
+    private bool ExplorerShowsGraph => _bubbleMode && _explorerScope == ExplorerScope.All;
+
+    private void ResetExplorerScope()
+    {
+        _explorerScope = ExplorerScope.All; _explorerRemainder = null;
+        if (EntryKindFilter.SelectedIndex != 0) EntryKindFilter.SelectedIndex = 0;
+        LayoutExplorer();
+    }
 
     private void EnsureBubbleAnalysis()
     {
@@ -34,20 +45,21 @@ public partial class MainWindow
     }
     private void ShowBubbles_Click(object sender, RoutedEventArgs e)
     {
-        _bubbleMode = true; LayoutExplorer();
+        _bubbleMode = true; ResetExplorerScope();
         ApplyExplorerFilter(); UpdateBubbleFilters(); UpdateResponsiveColumns(); EnsureBubbleAnalysis();
         if (_currentDirectory is not null) _ = LoadBubblesAsync(_currentDirectory);
     }
     private void ShowExplorerList_Click(object sender, RoutedEventArgs e)
     {
-        _bubbleMode = false; LayoutExplorer();
+        _bubbleMode = false; ResetExplorerScope();
         UpdateBubbleFilters(); UpdateResponsiveColumns(); ApplyExplorerFilter();
     }
     private void DirectFiles_Click(object sender, RoutedEventArgs e)
     {
-        ShowExplorerList_Click(sender, e);
+        _explorerScope = ExplorerScope.DirectFiles; _explorerRemainder = null; LayoutExplorer();
         ListSearch.Clear(); CategoryFilter.SelectedIndex = MinimumSizeFilter.SelectedIndex = 0;
         EntryKindFilter.SelectedIndex = 1;
+        ApplyExplorerFilter();
     }
     private async void ExplorerRoot_Click(object sender, RoutedEventArgs e)
     {
@@ -65,7 +77,7 @@ public partial class MainWindow
         try
         {
             var frame = await Task.Run(() => index is not null ? index.Frame(path, entries, maximum, cancellation.Token, availableDiameter) : FolderIndex.BuildFrame(path, entries, null, true, maximum, cancellation.Token, availableDiameter), cancellation.Token);
-            if (_closing || generation != _bubbleGeneration || _currentDirectory != path || !ReferenceEquals(index, _folderIndex)) return;
+            if (_closing || cancellation.IsCancellationRequested || generation != _bubbleGeneration || _currentDirectory != path || !ReferenceEquals(index, _folderIndex)) return;
             _folderFrame = frame;
             BubbleStatus.Text = $"{path} · {(frame.Total is long total ? SizeFormatter.Format(total) + (frame.Partial ? " identifiés · analyse partielle" : " identifiés") : "Taille inconnue")}" + (frame.Circles.Count == 0 ? " · Aucun élément mesuré. Les tailles inconnues restent dans la liste." : " · Dossiers et fichiers de ce niveau · cliquez sur un dossier pour l’ouvrir.");
             DirectFilesButton.Content = $"Fichiers dans ce dossier{(frame.DirectFiles is long direct ? " · " + (frame.Partial ? "estimation " : "") + SizeFormatter.Format(direct) : "")} — Voir la liste";
@@ -85,12 +97,14 @@ public partial class MainWindow
     private async void ResizeLayout(object? sender, EventArgs e)
     {
         _resizeTimer?.Stop();
-        if (_currentDirectory is not null && !_closing && !_scanning && _bubbleMode) await LoadBubblesAsync(_currentDirectory);
+        if (_currentDirectory is not null && !_closing && !_scanning && _browseCancellation is null && ExplorerShowsGraph) await LoadBubblesAsync(_currentDirectory);
     }
     private void RenderBubbles()
     {
         if (BubbleCanvas is null || _folderFrame is null) return;
         BubbleCanvas.Children.Clear();
+        BubbleEmptyState.Text = _allExplorerItems.Count == 0 ? "Ce dossier est vide." : "Aucun élément mesuré. Les tailles inconnues restent dans la liste ; analysez le disque pour préparer les bulles.";
+        BubbleEmptyState.Visibility = _folderFrame.Circles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var diameter = Math.Max(0, Math.Min(BubbleCanvas.ActualWidth, BubbleCanvas.ActualHeight) - 8);
         if (diameter < 1) return;
         var query = ListSearch.Text.Trim();
@@ -109,7 +123,8 @@ public partial class MainWindow
                 {
                     ListSearch.Clear(); CategoryFilter.SelectedIndex = MinimumSizeFilter.SelectedIndex = EntryKindFilter.SelectedIndex = 0;
                     var remainder = _allExplorerItems.Where(item => item.HasKnownSize && item.Size > 0).OrderByDescending(item => item.Size).ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase).Skip(circle.SkipCount).ToHashSet();
-                    _explorer.ReplaceAll(_allExplorerItems.Where(remainder.Contains)); ShowExplorerList_Click(this, new());
+                    _explorerRemainder = remainder.Select(item => item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    _explorerScope = ExplorerScope.Remainder; LayoutExplorer(); ApplyExplorerFilter();
                     BubbleStatus.Text = "Autres éléments du dossier courant · Liste et bulles pour revenir à tous les éléments.";
                 }
                 else if (circle.IsDirectory) await BrowseAsync(circle.Path);

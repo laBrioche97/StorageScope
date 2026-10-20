@@ -93,7 +93,7 @@
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel><TextBlock Text="Désinstallation officielle · sauvegardes conservées · tailles calculées en arrière-plan. L’espace réellement libéré dépend des composants partagés et du désinstalleur." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/><ComboBox x:Name="ApplicationSourceFilter" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Filtrer les applications par source" Margin="4,0,4,8"/></StackPanel>
-          <DataGrid Grid.Row="1" x:Name="ApplicationsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+          <DataGrid Grid.Row="1" x:Name="ApplicationsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" SelectionChanged="ApplicationSelection_Changed">
             <DataGrid.Columns>
                 <DataGridTemplateColumn Header="Application / jeu" Width="2*" MinWidth="180"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="4"><Image Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,10,0"/><TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                 <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Source" Binding="{Binding Source}" Width="140"/>
@@ -153,10 +153,11 @@
             <Grid x:Name="BubblePanel" Grid.Column="1" Margin="12,8,0,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
               <StackPanel><ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><StackPanel x:Name="ExplorerBreadcrumbs" Orientation="Horizontal"/></ScrollViewer><TextBlock x:Name="BubbleStatus" Text="Préparation du graphique…" TextWrapping="Wrap"/></StackPanel>
               <Canvas Grid.Row="1" x:Name="BubbleCanvas" ClipToBounds="True" SizeChanged="BubbleCanvas_SizeChanged" Background="Transparent"/>
+              <TextBlock Grid.Row="1" x:Name="BubbleEmptyState" Visibility="Collapsed" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="16" Foreground="{DynamicResource MutedBrush}" IsHitTestVisible="False"/>
             </Grid>
             <Border x:Name="ExplorerLoadingPanel" Grid.ColumnSpan="2" Grid.RowSpan="2" Visibility="Collapsed" Background="{DynamicResource PanelBrush}" CornerRadius="12"><StackPanel VerticalAlignment="Center"><local:BriocheLoader x:Name="ExplorerLoader"/><Button Content="Annuler le chargement" Click="CancelExplorer_Click" HorizontalAlignment="Center"/></StackPanel></Border>
           </Grid>
-          <WrapPanel Grid.Row="2"><Button Content="Liste et bulles" Click="ShowBubbles_Click"/><Button Content="Liste seule" Click="ShowExplorerList_Click"/><Button x:Name="DirectFilesButton" Content="Fichiers dans ce dossier — Voir la liste" Click="DirectFiles_Click"/><TextBlock x:Name="BubbleLegend" Text="Les espaces entre bulles ne représentent pas l’espace libre." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4"/></WrapPanel>
+          <WrapPanel Grid.Row="2"><Button x:Name="ExplorerCombinedButton" Content="Liste et bulles" Click="ShowBubbles_Click"/><Button x:Name="ExplorerListButton" Content="Liste seule" Click="ShowExplorerList_Click"/><Button x:Name="DirectFilesButton" Content="Fichiers dans ce dossier — Voir la liste" Click="DirectFiles_Click"/><TextBlock x:Name="BubbleLegend" Text="Les espaces entre bulles ne représentent pas l’espace libre." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4"/></WrapPanel>
           <StackPanel Grid.Row="2" Visibility="Collapsed" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Ouvrir" Click="OpenSelection_Click"/>
             <Button Content="Afficher dans l’Explorateur" Click="RevealSelection_Click"/>

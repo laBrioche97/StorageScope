@@ -18,6 +18,14 @@ enum NativeInterfaceValidation {
         model.searchText = "Dossiers"; model.sidebar = .applications
         precondition(model.searchText == "Applications")
         model.sidebar = .explorer; precondition(model.searchText == "Dossiers"); model.resetSectionFilters()
+        model.showDirectFiles()
+        precondition(model.explorerDisplayMode == .bubbles && !model.explorerShowsGraph)
+        model.loadExplorerDirectory(URL(fileURLWithPath: "/Volumes/Test/Child"))
+        precondition(model.explorerShowsGraph && model.kindFilter == .all)
+        model.explorerDisplayMode = .list
+        model.loadExplorerDirectory(URL(fileURLWithPath: "/Volumes/Test/Child"))
+        precondition(!model.explorerShowsGraph && model.explorerDisplayMode == .list)
+        model.explorerDisplayMode = .bubbles
         let weights: [Int64] = [40, 25, 15, 10, 5]
         model.explorerItems = weights.enumerated().map { index, bytes in
             FileSystemItem(url: URL(fileURLWithPath: "/Volumes/Test/Item-\(index)"), name: ["Applications", "Documents", "Jeux", "Vidéo.mp4", "Archives.zip"][index], logicalSize: bytes * 1_073_741_824, allocatedSize: bytes * 1_073_741_824, isDirectory: index < 3, category: index == 3 ? .video : index == 4 ? .archive : .other, sizeIsKnown: true)

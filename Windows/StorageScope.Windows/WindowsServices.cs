@@ -11,24 +11,28 @@ public static class DirectoryBrowser
     public static Task<IReadOnlyList<ScanEntry>> BrowseAsync(string path, IReadOnlyDictionary<string, long>? sizes, CancellationToken token) => Task.Run(() =>
     {
         var result = new List<ScanEntry>();
-        var options = new EnumerationOptions { IgnoreInaccessible = true, RecurseSubdirectories = false, ReturnSpecialDirectories = false };
-        try
+        var options = new EnumerationOptions { IgnoreInaccessible = false, RecurseSubdirectories = false, ReturnSpecialDirectories = false };
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new IOException("Les liens et jonctions ne sont pas parcourus.");
         {
             foreach (var directory in new DirectoryInfo(path).EnumerateDirectories("*", options))
             {
                 token.ThrowIfCancellationRequested();
-                if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) continue;
-                result.Add(new ScanEntry(directory.FullName, directory.Name, sizes?.GetValueOrDefault(directory.FullName) ?? 0, true, SafeModified(directory), StorageCategory.Other) { HasKnownSize = sizes?.ContainsKey(directory.FullName) == true });
+                try
+                {
+                    if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    result.Add(new ScanEntry(directory.FullName, directory.Name, sizes?.GetValueOrDefault(directory.FullName) ?? 0, true, SafeModified(directory), StorageCategory.Other) { HasKnownSize = sizes?.ContainsKey(directory.FullName) == true });
+                }
+                catch (Exception error) when (error is UnauthorizedAccessException or IOException) { }
             }
             foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", options))
             {
                 token.ThrowIfCancellationRequested();
-                long length;
-                try { length = file.Length; } catch { length = 0; }
-                result.Add(new ScanEntry(file.FullName, file.Name, length, false, SafeModified(file), CategoryClassifier.Classify(file.FullName)));
+                long? length;
+                try { if ((file.Attributes & FileAttributes.ReparsePoint) != 0) continue; length = file.Length; }
+                catch (Exception error) when (error is UnauthorizedAccessException or IOException) { length = null; }
+                result.Add(new ScanEntry(file.FullName, file.Name, length ?? 0, false, SafeModified(file), CategoryClassifier.Classify(file.FullName)) { HasKnownSize = length.HasValue });
             }
         }
-        catch (Exception error) when (error is UnauthorizedAccessException or IOException or System.Security.SecurityException) { }
         return (IReadOnlyList<ScanEntry>)result.OrderByDescending(item => item.Size).ThenBy(item => item.Name).ToList();
     }, token);
 

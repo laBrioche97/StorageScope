@@ -19,11 +19,13 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--epic-uninstall-fixture")) return NavigationAndEpicTests.RunOfficialFixture(args);
         if (args.Contains("--probe-exit")) { Thread.Sleep(500); return unchecked((int)0xC0000005); }
         _root = Path.Combine(Environment.CurrentDirectory, ".test-data", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
         // Every diagnostic written by the test process stays in its disposable fixture tree.
         Diagnostics.TestDirectory = Path.Combine(_root, "diagnostics");
+        OperationHistory.TestDirectory = Path.Combine(_root, "history");
         try
         {
             Test("protected system and profile roots", () =>
@@ -412,6 +414,7 @@ internal static class Program
         window.Show();
         window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         GuidedInterfaceTests.Run(window, _root, Test);
+        NavigationAndEpicTests.Run(window, _root, Test);
         ScanResponsivenessTests.Run(_root, Test);
         if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
         var bubbleRoot = Path.Combine(_root, "graph-display");

@@ -282,9 +282,13 @@ public partial class MainWindow : Window
     private async Task BrowseAsync(string path, bool addHistory = true)
     {
         _browseCancellation?.Cancel();
+        _bubbleCancellation?.Cancel(); _bubbleCancellation = null; ++_bubbleGeneration;
         _browseCancellation = new CancellationTokenSource();
         var cancellation = _browseCancellation;
         var generation = ++_browseGeneration;
+        BubbleEmptyState.Visibility = Visibility.Collapsed;
+        if (_explorerScope != ExplorerScope.All) ResetExplorerScope();
+        LayoutExplorer();
         if (addHistory) RecordBrowse(path);
         SetExplorerLoading(true);
         if (!string.Equals(_currentDirectory, path, StringComparison.OrdinalIgnoreCase)) {
@@ -306,16 +310,20 @@ public partial class MainWindow : Window
             if (_closing || generation != _browseGeneration || cancellation.IsCancellationRequested) return;
             _allExplorerItems = entries.ToList();
             ApplyExplorerFilter();
-            await LoadBubblesAsync(path);
+            if (ExplorerShowsGraph) await LoadBubblesAsync(path);
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) { if (!_closing && generation == _browseGeneration) { Diagnostics.Write("lecture-dossier", error); BubbleStatus.Text = "Dossier inaccessible : " + error.Message; } }
+        catch (Exception error) { if (!_closing && generation == _browseGeneration) { Diagnostics.Write("lecture-dossier", error); BubbleStatus.Text = "Dossier inaccessible : " + error.Message; BubbleEmptyState.Text = "Ce dossier n’a pas pu être lu. Vous pouvez revenir au dossier parent ou réessayer."; BubbleEmptyState.Visibility = Visibility.Visible; } }
         finally { if (generation == _browseGeneration && !_scanning) SetExplorerLoading(false); if (ReferenceEquals(_browseCancellation, cancellation)) _browseCancellation = null; cancellation.Dispose(); RefreshSectionHeading(); }
     }
 
     private void ApplyExplorerFilter()
     {
-        _explorer.ReplaceAll(_allExplorerItems);
+        _explorer.ReplaceAll(_allExplorerItems.Where(item => _explorerScope switch {
+            ExplorerScope.DirectFiles => !item.IsDirectory,
+            ExplorerScope.Remainder => _explorerRemainder?.Contains(item.Path) == true,
+            _ => true
+        }));
         ApplyDisplayFilters();
     }
 
@@ -422,6 +430,13 @@ public partial class MainWindow : Window
         finally { SetBusy(false); _operationCancellation.Dispose(); _operationCancellation = null; }
     }
 
+    private void ApplicationSelection_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (UninstallButton is null) return;
+        UninstallButton.Content = ApplicationsGrid.SelectedItem is InstalledApplication { Provider: "Epic", ManifestPath: not null, UninstallCommand: null or "" }
+            ? "Désinstaller avec Epic…" : "Vérifier la désinstallation…";
+    }
+
     private async void UninstallApplication_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || _scanning || ApplicationsGrid.SelectedItem is not InstalledApplication application) return;
@@ -430,10 +445,12 @@ public partial class MainWindow : Window
         {
             Diagnostics.Action = "désinstallation"; Diagnostics.Write("action");
             var provider = _products.ProviderFor(application);
-            var plan = provider.Prepare(application);
+            ScanStatusText.Text = "Préparation de la désinstallation…";
+            var plan = await Task.Run(() => provider.Prepare(application), _operationCancellation.Token);
+            plan = plan with { Progress = new Progress<string>(message => ScanStatusText.Text = message) };
             if (!plan.CanProceed) { MessageBox.Show(plan.Explanation, "Désinstallation indisponible", MessageBoxButton.OK, MessageBoxImage.Information); return; }
             if (MessageBox.Show($"Désinstaller « {application.Name} » ?\n\nInstallation : {application.DisplaySize}.\nCette taille ne garantit pas l’espace libéré ; des composants peuvent être partagés.\n\n{plan.Explanation}\n\nLes sauvegardes restent conservées par StorageScope. Les résidus attribués seront proposés séparément.", "Vérifier la désinstallation", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            ScanStatusText.Text = "Désinstallation officielle en cours…";
+            ScanStatusText.Text = plan.EpicGuided ? "Ouverture d’Epic pour confirmer la désinstallation…" : "Désinstallation officielle en cours…";
             var result = await provider.ExecuteAsync(plan, _operationCancellation.Token);
             if (result.Verified)
             {
@@ -444,8 +461,9 @@ public partial class MainWindow : Window
             MessageBox.Show(result.Message, result.Verified ? "Désinstallation confirmée" : "Vérification nécessaire", MessageBoxButton.OK, result.Verified ? MessageBoxImage.Information : MessageBoxImage.Warning);
             await ReloadApplicationsAsync();
             RefreshSpaceStatus();
-            ScanStatusText.Text = result.Verified ? "Désinstallation confirmée." : "Terminez l’étape officielle puis actualisez l’inventaire.";
+            ScanStatusText.Text = result.Verified ? "Désinstallation confirmée." : result.Message;
         }
+        catch (OperationCanceledException) { ScanStatusText.Text = "Suivi annulé. Actualisez l’inventaire pour vérifier le résultat dans le launcher."; }
         catch (Exception error) { ShowError("La désinstallation n’a pas pu être confirmée.", error); }
         finally { SetBusy(false); _operationCancellation.Dispose(); _operationCancellation = null; }
     }

@@ -26,14 +26,14 @@ struct StorageExplorerView: View {
         VStack(spacing: 0) {
             explorerHeader
             Divider()
-            if model.explorerIsLoading && model.explorerItems.isEmpty {
+            if model.explorerShowsGraph {
+                FolderBubblesView()
+            } else if model.explorerIsLoading && model.explorerItems.isEmpty {
                 VStack(spacing: 14) {
                     BriocheLoadingView(message: "Lecture du dossier…", cancel: model.cancelExplorerLoading)
                     if model.isScanning { Text("Les tailles se précisent pendant l’analyse.").foregroundStyle(.secondary) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.explorerDisplayMode == .bubbles && model.explorerCategoryContext == nil {
-                FolderBubblesView()
             } else {
                 ExplorerListTable(items: model.explorerVisibleItems)
             }

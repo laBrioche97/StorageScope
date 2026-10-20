@@ -139,7 +139,16 @@ final class AppModel: ObservableObject {
     @Published var explorerItems: [FileSystemItem] = []
     @Published var explorerIssues: [ScanIssue] = []
     @Published var explorerIsLoading = false
-    @Published var explorerDisplayMode: ExplorerDisplayMode = .bubbles
+    @Published var explorerDisplayMode: ExplorerDisplayMode = .bubbles {
+        didSet { resetExplorerTemporaryList() }
+    }
+    @Published var explorerTemporaryList = false
+    var explorerShowsGraph: Bool { explorerDisplayMode == .bubbles && !explorerTemporaryList && explorerCategoryContext == nil }
+
+    func resetExplorerTemporaryList() {
+        if explorerTemporaryList { kindFilter = .all }
+        explorerTemporaryList = false; bubbleRemainderPaths = nil
+    }
     @Published var explorerShowsSmallItems = false
     @Published var explorerCategoryContext: ExplorerCategoryContext?
     @Published var cleanupIsAnalyzing = false
@@ -768,9 +777,11 @@ final class AppModel: ObservableObject {
     }
 
     func loadExplorerDirectory(_ directory: URL, allowPackageTraversal: Bool = false) {
+        resetExplorerTemporaryList()
         if isPreviewMode { return }
         guard let volume = selectedVolume else { return }
         browseTask?.cancel()
+        bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil; bubbleIsLoading = false
         let generation = UUID(); browseGeneration = generation
         bubbleRemainderPaths = nil
         explorerCategoryContext = nil
@@ -1071,7 +1082,7 @@ private final class QuickLookPresenter: NSObject, @preconcurrency QLPreviewPanel
 extension AppModel {
     func ensureBubbleAnalysis() {
         if isPreviewMode { return }
-        guard explorerDisplayMode == .bubbles, sidebar == .explorer, explorerCategoryContext == nil,
+        guard explorerShowsGraph, sidebar == .explorer,
               let volume = selectedVolume else { return }
         do {
             let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)
@@ -1134,13 +1145,13 @@ extension AppModel {
         if node.isAggregate {
             let known = explorerItems.filter { $0.hasKnownSize && $0.allocatedSize > 0 && !$0.isSymbolicLink }.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize }
             bubbleRemainderPaths = Set(known.dropFirst(node.skipCount).map(\.id))
-            explorerDisplayMode = .list; resetSectionFilters()
+            explorerTemporaryList = true; resetSectionFilters()
         } else if node.isDirectory { loadExplorerDirectory(URL(fileURLWithPath: node.path)) }
         else { selectedIDs = [node.path]; explorerHoveredID = node.path }
     }
 
     func showDirectFiles() {
-        explorerDisplayMode = .list; bubbleRemainderPaths = nil
+        explorerTemporaryList = true; bubbleRemainderPaths = nil
         resetSectionFilters(); kindFilter = .files
     }
 

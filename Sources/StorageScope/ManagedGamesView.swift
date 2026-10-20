@@ -54,7 +54,7 @@ struct ManagedGamesPanel: View {
                             }
                             Spacer()
                             Button("Examiner") { NSWorkspace.shared.activateFileViewerSelecting([game.installURL]) }
-                            Button(game.canUninstall ? "Désinstaller…" : "Voir la méthode") { selected = game }
+                            Button(game.provider == .epic ? "Désinstaller avec Epic…" : game.canUninstall ? "Désinstaller…" : "Voir la méthode") { selected = game }
                                 .disabled(model.operationsAreBusy)
                         }
                         Text(game.installURL.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -84,13 +84,15 @@ struct ManagedGamesPanel: View {
     }
     @MainActor private func uninstall(_ game: ManagedGame) async {
         selected = nil
-        guard !model.operationsAreBusy, await adapter.prepare(game), !model.operationsAreBusy else { message = "L’installation a changé ou sa méthode n’est pas disponible. Actualisez la liste."; return }
+        guard !model.operationsAreBusy else { return }
+        if let reason = await adapter.unavailabilityReason(game) { message = reason; return }
+        guard !model.operationsAreBusy else { return }
         model.gameUninstallIsWorking = true
         defer { model.gameUninstallIsWorking = false }
         do { try OperationJournal.append(operation: "désinstallation officielle", path: game.installURL.path, status: "préparé") }
         catch { message = "L’historique local n’est pas accessible. Aucun désinstalleur n’a été lancé."; return }
         guard await adapter.execute(game) else { message = "Le launcher officiel n’a pas pu être ouvert. Aucun fichier n’a été supprimé."; return }
-        for _ in 0..<60 {
+        for _ in 0..<150 {
             try? await Task.sleep(for: .seconds(2))
             if Task.isCancelled { break }
             if await adapter.verify(game) {

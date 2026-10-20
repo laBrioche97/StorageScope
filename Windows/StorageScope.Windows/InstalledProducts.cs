@@ -9,8 +9,12 @@ using Windows.Management.Deployment;
 namespace StorageScope.Windows;
 
 public sealed record ProductUninstallPlan(InstalledApplication Product, string Explanation, bool CanProceed, bool ExternalStep,
-    string? Executable = null, string? Arguments = null, string? BlockReason = null, FileSnapshot? UninstallerIdentity = null);
-public sealed record ProductUninstallResult(bool Verified, string Message);
+    string? Executable = null, string? Arguments = null, string? BlockReason = null, FileSnapshot? UninstallerIdentity = null)
+{
+    public IProgress<string>? Progress { get; init; }
+    public bool EpicGuided { get; init; }
+}
+public sealed record ProductUninstallResult(bool Verified, string Message, string State = "non confirmé");
 
 public interface IInstalledProductProvider
 {
@@ -183,23 +187,6 @@ public sealed class LauncherManifestProvider : IInstalledProductProvider
                 }
             }
         }
-        var epic = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Epic", "EpicGamesLauncher", "Data", "Manifests");
-        if (Directory.Exists(epic))
-            foreach (var file in Directory.EnumerateFiles(epic, "*.item"))
-            {
-                token.ThrowIfCancellationRequested();
-                try
-                {
-                    using var json = JsonDocument.Parse(File.ReadAllText(file));
-                    var root = json.RootElement;
-                    string? Get(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                    if (Get("DisplayName") is not string name || Get("InstallLocation") is not string location || !Directory.Exists(location)) continue;
-                    products.Add(new(name, "Epic Games", Get("AppVersionString"), location, null, "Epic", Get("AppName"),
-                        EstimatedBytes: root.TryGetProperty("InstallSize", out var size) && size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out var bytes) && bytes >= 0 ? bytes : null,
-                        IconLocation: Get("LaunchExecutable") is string executable ? Path.Combine(location, executable) : null));
-                }
-                catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException) { }
-            }
         products.AddRange(DetectRegisteredLibraries(token));
         return products;
     }, token);
@@ -280,7 +267,7 @@ public sealed class WindowsPackageProvider : IInstalledProductProvider
 
 public sealed class InstalledProductCatalog
 {
-    private readonly IInstalledProductProvider[] _providers = [new RegisteredProductProvider(), new LauncherManifestProvider(), new WindowsPackageProvider()];
+    private readonly IInstalledProductProvider[] _providers = [new RegisteredProductProvider(), new LauncherManifestProvider(), new WindowsPackageProvider(), new EpicProductProvider()];
     public async Task<IReadOnlyList<InstalledApplication>> DetectAsync(CancellationToken token)
     {
         var result = new List<InstalledApplication>();
@@ -293,6 +280,7 @@ public sealed class InstalledProductCatalog
     }
     internal static IReadOnlyList<InstalledApplication> Merge(List<InstalledApplication> result)
     {
+        static bool EpicComponent(InstalledApplication item) => Regex.IsMatch(item.Name, @"^Epic (Games Launcher|Online Services)(?:\s|$)", RegexOptions.IgnoreCase);
         static string? Canonical(string? path)
         {
             try { return path is not null && Path.IsPathFullyQualified(path) ? Path.GetFullPath(path).TrimEnd('\\') : path; }
@@ -301,17 +289,23 @@ public sealed class InstalledProductCatalog
         result = result.Select(item => item with { InstallLocation = Canonical(item.InstallLocation), ManifestPath = Canonical(item.ManifestPath) }).ToList();
         foreach (var manifest in result.Where(item => item.ManifestPath is not null).ToList())
         {
-            var registrations = result.Where(item => item.RegistrationPath is not null && item.Provider == manifest.Provider && string.Equals(item.ProductId, manifest.ProductId, StringComparison.OrdinalIgnoreCase)
-                && (string.IsNullOrWhiteSpace(item.InstallLocation) || item.InstallLocation.TrimEnd('\\').Equals(manifest.InstallLocation?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))).ToList();
+            var registrations = result.Where(item => item.RegistrationPath is not null && !(manifest.Provider == "Epic" && EpicComponent(item)) && (
+                item.Provider == manifest.Provider && string.Equals(item.ProductId, manifest.ProductId, StringComparison.OrdinalIgnoreCase)
+                    && (string.IsNullOrWhiteSpace(item.InstallLocation) || item.InstallLocation.TrimEnd('\\').Equals(manifest.InstallLocation?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                || manifest.Provider == "Epic" && item.Provider is "Epic" or "Application" && !EpicComponent(item) && !string.IsNullOrWhiteSpace(item.InstallLocation)
+                    && item.InstallLocation.Equals(manifest.InstallLocation, StringComparison.OrdinalIgnoreCase)
+                    && result.Count(other => other.ManifestPath is not null && string.Equals(other.InstallLocation, manifest.InstallLocation, StringComparison.OrdinalIgnoreCase)) == 1
+            )).ToList();
             var registration = registrations.OrderByDescending(item => !string.IsNullOrWhiteSpace(item.IconLocation)).FirstOrDefault();
             if (registration is null) continue;
             foreach (var item in registrations) result.Remove(item);
             result.Remove(manifest);
-            result.Add(registration with { ManifestPath = manifest.ManifestPath, ManifestSnapshot = manifest.ManifestSnapshot, InstallLocation = manifest.InstallLocation, EstimatedBytes = manifest.EstimatedBytes ?? registration.EstimatedBytes });
+            result.Add(registration with { ManifestPath = manifest.ManifestPath, ManifestSnapshot = manifest.ManifestSnapshot, InstallLocation = manifest.InstallLocation, EstimatedBytes = manifest.EstimatedBytes ?? registration.EstimatedBytes,
+                Provider = manifest.Provider, ProductId = manifest.ProductId, EpicNamespace = manifest.EpicNamespace, EpicCatalogId = manifest.EpicCatalogId, IconLocation = registration.IconLocation ?? manifest.IconLocation });
         }
-        var unique = result.GroupBy(item => item.PackageFullName ?? (item.InstallLocation is { Length: > 0 } location && Path.IsPathFullyQualified(location) ? location.TrimEnd('\\') : item.Provider + ":" + item.ProductId + ":" + item.Name), StringComparer.OrdinalIgnoreCase)
+        var unique = result.GroupBy(item => item.PackageFullName ?? (item.Provider == "Epic" && item.ManifestPath is not null ? $"epic:{item.EpicNamespace}:{item.EpicCatalogId}:{item.ProductId}:{item.InstallLocation}" : EpicComponent(item) ? "epic-component:" + (item.RegistrationPath ?? item.Name) : item.InstallLocation is { Length: > 0 } location && Path.IsPathFullyQualified(location) ? location.TrimEnd('\\') : item.Provider + ":" + item.ProductId + ":" + item.Name), StringComparer.OrdinalIgnoreCase)
             .Select(group => group.OrderByDescending(item => item.RegistrationPath is not null).First()).ToList();
         return unique;
     }
-    public IInstalledProductProvider ProviderFor(InstalledApplication product) => product.PackageFullName is not null ? _providers[2] : product.RegistrationPath is not null ? _providers[0] : _providers[1];
+    public IInstalledProductProvider ProviderFor(InstalledApplication product) => product.PackageFullName is not null ? _providers[2] : product.Provider == "Epic" && product.ManifestPath is not null ? _providers[3] : product.RegistrationPath is not null ? _providers[0] : _providers[1];
 }

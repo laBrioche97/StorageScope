@@ -11,7 +11,8 @@ public sealed record CleanupPreparation(IReadOnlyList<CleanupSelection> Ready, I
 
 public static class OperationHistory
 {
-    public static string DirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StorageScope", "History");
+    internal static string? TestDirectory { get; set; }
+    public static string DirectoryPath => TestDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StorageScope", "History");
     private static readonly object Gate = new();
     public static void Append(object entry)
     {

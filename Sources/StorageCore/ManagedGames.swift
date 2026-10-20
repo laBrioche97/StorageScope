@@ -1,5 +1,7 @@
 import Foundation
 import AppKit
+import CryptoKit
+import Darwin
 
 public enum GameProvider: String, Codable, CaseIterable, Sendable {
     case steam = "Steam", epic = "Epic", gog = "GOG", ea = "EA", battleNet = "Battle.net"
@@ -13,9 +15,14 @@ public struct ManagedGame: Identifiable, Hashable, Sendable {
     public let manifestURL: URL
     public let uninstallURL: URL?
     public var estimatedBytes: Int64? = nil
+    public var manifestIdentity: FileIdentity? = nil
+    public var manifestDigest: Data? = nil
     public var canUninstall: Bool { uninstallURL != nil }
     public var explanation: String {
-        canUninstall
+        if provider == .epic {
+            return "Epic Games Launcher va s’ouvrir. Dans Bibliothèque, retrouvez « \(name) », ouvrez son menu ⋯, puis choisissez Désinstaller et confirmez dans Epic. StorageScope vérifie ensuite le manifeste local. Les sauvegardes et composants partagés ne sont jamais nettoyés par StorageScope. Vérifiez aussi les options du launcher."
+        }
+        return canUninstall
             ? "Le moteur officiel demandera confirmation. StorageScope vérifiera ensuite le manifeste local. Les sauvegardes, mods et composants partagés ne sont pas nettoyés."
             : "Ce launcher ne fournit pas de méthode intégrée vérifiable pour cette installation. Utilisez sa désinstallation officielle ; aucun dossier de jeu ne sera supprimé directement."
     }
@@ -47,7 +54,10 @@ public actor LocalGameLibraryAdapter: GameLibraryAdapter {
                       let path = object["InstallLocation"] as? String,
                       path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else { continue }
                 let size = (object["InstallSize"] as? NSNumber)?.int64Value
-                games.append(ManagedGame(id: "epic:" + id, name: name, provider: .epic, installURL: URL(fileURLWithPath: path), manifestURL: file, uninstallURL: nil, estimatedBytes: size.flatMap { $0 >= 0 ? $0 : nil }))
+                if let main = object["MainGameAppName"] as? String, !main.isEmpty, main != id { continue }
+                if object["bIsApplication"] as? Bool == false { continue }
+                guard let identity = manifestIdentity(file), (try? safeData(file)) == data else { continue }
+                games.append(ManagedGame(id: "epic:" + id, name: name, provider: .epic, installURL: URL(fileURLWithPath: path), manifestURL: file, uninstallURL: URL(string: "com.epicgames.launcher://"), estimatedBytes: size.flatMap { $0 >= 0 ? $0 : nil }, manifestIdentity: identity, manifestDigest: Data(SHA256.hash(data: data))))
             }
         }
         // These launchers have no supported universal unattended uninstall API on macOS.
@@ -64,17 +74,36 @@ public actor LocalGameLibraryAdapter: GameLibraryAdapter {
         return games.filter { seen.insert($0.installURL.standardizedFileURL.path).inserted }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    public func prepare(_ game: ManagedGame) -> Bool {
-        detect().contains { $0 == game } && game.canUninstall
+    public func unavailabilityReason(_ game: ManagedGame) async -> String? {
+        guard detect().contains(game), game.canUninstall else { return "L’installation a changé ou sa méthode n’est pas disponible. Actualisez la liste." }
+        if game.provider == .epic, let url = game.uninstallURL {
+            let installed = await MainActor.run { NSWorkspace.shared.urlForApplication(toOpen: url) != nil }
+            if !installed { return "Epic Games Launcher est absent. Réinstallez le launcher officiel pour désinstaller ce jeu ; aucun fichier n’a été supprimé." }
+        }
+        return nil
+    }
+
+    public func prepare(_ game: ManagedGame) async -> Bool {
+        await unavailabilityReason(game) == nil
     }
 
     public func verify(_ game: ManagedGame) -> Bool {
         // Only the disappearance of the original registration is accepted as evidence.
-        !FileManager.default.fileExists(atPath: game.manifestURL.path)
+        guard let files = try? FileManager.default.contentsOfDirectory(at: game.manifestURL.deletingLastPathComponent(), includingPropertiesForKeys: nil),
+              !files.contains(game.manifestURL) else { return false }
+        if game.provider == .epic {
+            for file in files where file.pathExtension == "item" {
+                guard let data = try? safeData(file), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+                if "epic:" + (object["AppName"] as? String ?? "") == game.id,
+                   let path = object["InstallLocation"] as? String,
+                   URL(fileURLWithPath: path).standardizedFileURL == game.installURL.standardizedFileURL { return false }
+            }
+        }
+        return true
     }
 
     public func execute(_ game: ManagedGame) async -> Bool {
-        guard prepare(game), let url = game.uninstallURL else { return false }
+        guard await prepare(game), let url = game.uninstallURL else { return false }
         return await MainActor.run { NSWorkspace.shared.open(url) }
     }
 
@@ -109,6 +138,16 @@ public actor LocalGameLibraryAdapter: GameLibraryAdapter {
         let values = try file.resourceValues(forKeys: [.isSymbolicLinkKey, .fileSizeKey])
         guard values.isSymbolicLink != true, let size = values.fileSize, size <= 2_000_000 else { throw CocoaError(.fileReadNoPermission) }
         return try Data(contentsOf: file)
+    }
+
+    private func manifestIdentity(_ file: URL) -> FileIdentity? {
+        var information = stat()
+        let result = file.withUnsafeFileSystemRepresentation { path -> Int32 in
+            guard let path else { return -1 }
+            return lstat(path, &information)
+        }
+        guard result == 0, information.st_mode & S_IFMT == S_IFREG else { return nil }
+        return FileIdentity(deviceID: FileIdentity.deviceID(fromRawValue: information.st_dev), inode: UInt64(information.st_ino), fileType: UInt16(information.st_mode & S_IFMT))
     }
     private func captures(_ pattern: String, in text: String) -> [String] {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }

@@ -1,13 +1,12 @@
-# StorageScope 3.4.1
+# StorageScope 3.4.2
 
-- Correctif : recherche de doublons autorisée dans les dossiers personnels principaux, qui restent protégés contre la suppression.
-- Interface native simplifiée : navigation latérale, version visible à côté du nom, recherche et filtres propres à chaque section.
-- Explorateur avec liste et bulles synchronisées, fichiers et dossiers du niveau courant, navigation précédente/suivante et regroupement adapté à la fenêtre.
-- Animation de chargement Brioche, progression et annulation explicites ; prise en compte de la réduction des animations.
-- Icônes cohérentes dans la vue d’ensemble, les catégories et le nettoyage.
-- Sélection des temporaires reconnus corrigée malgré les filtres et la virtualisation des lignes.
-- Recherche de doublons indépendante avec progression, résultats visibles, comparaison SHA-256 et conservation d’un exemplaire.
-- Fonctionnement hors ligne, protections de suppression, sauvegardes conservées et logos en cache pendant la session.
+- L’Explorateur conserve le mode choisi en ouvrant un dossier depuis les bulles, la liste ou l’historique. Le mode préféré reste visible.
+- « Autres éléments » et « Voir les fichiers » ouvrent une liste temporaire ; la navigation suivante retrouve votre mode préféré.
+- Le graphique conserve son panneau et le chargement Brioche. Les dossiers vides, inaccessibles ou de taille inconnue affichent un état explicite.
+- Les jeux Epic conservent leurs identifiants et manifestes pour préparer et vérifier leur désinstallation.
+- Lorsqu’une commande officielle est enregistrée pour le jeu, StorageScope l’utilise. Sinon, « Désinstaller avec Epic » ouvre le launcher et indique comment confirmer dans sa bibliothèque ; StorageScope suit ensuite le résultat.
+- L’ouverture d’Epic seule n’est jamais annoncée comme une désinstallation réussie. L’absence du launcher, l’annulation du suivi et les résultats non confirmés sont explicités.
+- Aucun dossier de jeu ni sauvegarde n’est supprimé directement. Les protections de nettoyage et le fonctionnement hors ligne sont conservés.
 
 ## Installation et mises à jour
 

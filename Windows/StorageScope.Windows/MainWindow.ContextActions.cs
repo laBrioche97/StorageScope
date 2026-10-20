@@ -55,7 +55,7 @@ public partial class MainWindow
         Add("Copier le chemin", () => Clipboard.SetText(string.Join(Environment.NewLine, grid.SelectedItems.Cast<object>().Select(ItemPath).Where(value => value is not null))), path is not null);
         Add("Propriétés", () => ExplorerService.Properties(path!), exists && single && !_busy);
         menu.Items.Add(new Separator());
-        if (item is InstalledApplication) Add("Vérifier la désinstallation…", () => UninstallApplication_Click(grid, new RoutedEventArgs()), single && !_busy);
+        if (item is InstalledApplication application) Add(application is { Provider: "Epic", ManifestPath: not null, UninstallCommand: null or "" } ? "Désinstaller avec Epic…" : "Vérifier la désinstallation…", () => UninstallApplication_Click(grid, new RoutedEventArgs()), single && !_busy);
         else
         {
             var trash = new MenuItem { Header = "Mettre à la corbeille…", IsEnabled = grid.SelectedItems.Count > 0 && !_busy && ScanButton.IsEnabled };

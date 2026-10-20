@@ -77,7 +77,8 @@ public sealed record CleanupCandidate(string Path, string Reason, long Size, boo
 
 public sealed record InstalledApplication(string Name, string? Publisher, string? Version, string? InstallLocation, string? UninstallCommand,
     string Provider = "Application", string? ProductId = null, string? RegistrationPath = null, string? PackageFullName = null,
-    string? ManifestPath = null, FileSnapshot? ManifestSnapshot = null, long? EstimatedBytes = null, string? IconLocation = null)
+    string? ManifestPath = null, FileSnapshot? ManifestSnapshot = null, long? EstimatedBytes = null, string? IconLocation = null,
+    string? EpicNamespace = null, string? EpicCatalogId = null)
 {
     public string Details => string.Join(" · ", new[] { Publisher, Version }.Where(value => !string.IsNullOrWhiteSpace(value)));
     public string Source => Provider;
