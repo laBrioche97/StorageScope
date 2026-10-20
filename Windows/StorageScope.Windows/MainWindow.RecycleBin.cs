@@ -8,12 +8,13 @@ public partial class MainWindow
 {
     private RecycleSummary? _recycleSummary;
     private Task? _recycleRefresh;
+    private bool _recycleNeedsRefresh;
     private DateTime _recycleChecked = DateTime.MinValue;
     private string? _recycleError;
     private Task RefreshRecycleBinAsync(bool force)
     {
         if (_closing || IsPreviewMode) return Task.CompletedTask;
-        if (_recycleRefresh is { IsCompleted: false }) return _recycleRefresh;
+        if (_recycleRefresh is { IsCompleted: false }) { if (force) _recycleNeedsRefresh = true; return _recycleRefresh; }
         if (!force && DateTime.UtcNow - _recycleChecked < TimeSpan.FromSeconds(30)) return Task.CompletedTask;
         return _recycleRefresh = Refresh();
         async Task Refresh()
@@ -25,7 +26,7 @@ public partial class MainWindow
                 RecycleBinButton.Content = _recycleSummary.Available ? $"Corbeille · {(_recycleSummary.Partial ? "≈ " : "")}{SizeFormatter.Format(_recycleSummary.Bytes)}" : "Corbeille · Indisponible";
             }
             catch (Exception error) { _recycleError = error.Message; RecycleBinButton.Content = "Corbeille · Indisponible"; Diagnostics.Write("inventaire-corbeille", error); }
-            finally { _recycleChecked = DateTime.UtcNow; }
+            finally { _recycleChecked = DateTime.UtcNow; if (_recycleNeedsRefresh) { _recycleNeedsRefresh = false; _ = Dispatcher.BeginInvoke(() => { _ = RefreshRecycleBinAsync(true); }); } }
         }
     }
     private async void RecycleBin_Click(object sender, RoutedEventArgs e)
@@ -48,7 +49,7 @@ public partial class MainWindow
             await RefreshRecycleBinAsync(true);
             if (_busy || _scanning || _recycleSummary is not { Available: true, Items: > 0 } current) { dialog.Close(); return; }
             var roots = current.Volumes.Where(v => v.Error is null && v.Items > 0).Select(v => v.Root).ToArray();
-            if (MessageBox.Show(dialog, $"Vider la corbeille de votre compte sur {string.Join(", ", roots)} ?\n\n{current.Items:N0} élément(s) · {SizeFormatter.Format(current.Bytes)}{(current.Partial ? " (estimation partielle ; volumes inaccessibles exclus)" : "")}\n\nCette suppression est définitive. Elle concerne le contenu présent au moment du vidage.", "Vider définitivement", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) { empty.IsEnabled = true; return; }
+            if (!ConfirmEmptyBin(dialog, $"Vider la corbeille de votre compte sur {string.Join(", ", roots)} ?\n\n{current.Items:N0} élément(s) · {SizeFormatter.Format(current.Bytes)}{(current.Partial ? " (estimation partielle ; volumes inaccessibles exclus)" : "")}\n\nCette suppression est définitive. Elle concerne le contenu présent au moment du vidage.")) { empty.IsEnabled = true; return; }
             dialog.Close(); SetBusy(true); CancelButton.IsEnabled = false;
             Diagnostics.Action = "vidage-corbeille"; Diagnostics.Write("action");
             ScanStatusText.Text = "Vidage de la corbeille en cours…"; ScanProgressBar.IsIndeterminate = true;
@@ -66,4 +67,18 @@ public partial class MainWindow
         panel.Children.Add(empty);
         dialog.ShowDialog();
     }
+    private static bool ConfirmEmptyBin(Window owner, string message)
+    {
+        var confirmation = new Window { Owner = owner, Title = "Vider définitivement", Width = 480, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var content = new StackPanel { Margin = new Thickness(20) };
+        content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) });
+        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        var cancel = new Button { Content = "Annuler", IsCancel = true };
+        var accept = new Button { Content = "Vider définitivement" };
+        accept.Click += (_, _) => confirmation.DialogResult = true;
+        actions.Children.Add(cancel); actions.Children.Add(accept); content.Children.Add(actions);
+        confirmation.Content = content; confirmation.Loaded += (_, _) => cancel.Focus();
+        return confirmation.ShowDialog() == true;
+    }
+
 }

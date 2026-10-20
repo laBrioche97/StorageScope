@@ -85,8 +85,8 @@ struct FolderBubblesView: View {
         return "Fichiers dans ce dossier" + size + " — Voir la liste"
     }
     private func percentage(_ node: FolderBubble) -> String {
-        guard let total = model.bubbleFrame?.totalBytes, total > 0 else { return "" }
-        return String(format: " · %.1f %% du dossier affiché", Double(node.bytes) * 100 / Double(total))
+        guard let total = node.parentBytes > 0 ? node.parentBytes : model.bubbleFrame?.totalBytes, total > 0 else { return "" }
+        return String(format: " · %.1f %% du dossier parent", Double(node.bytes) * 100 / Double(total))
     }
     private func rect(_ node: FolderBubble, size: CGSize, diameter: Double) -> CGRect {
         CGRect(x: size.width / 2 + node.circle.x * diameter / 2 - node.circle.radius * diameter / 2,

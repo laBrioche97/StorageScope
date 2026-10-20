@@ -176,6 +176,7 @@ final class AppModel: ObservableObject {
     private var autoScanAttempts: Set<String> = []
     private var browseGeneration = UUID()
     private var trashRefreshTask: Task<Void, Never>?
+    private var trashNeedsRefresh = false
     private var trashCheckedAt = Date.distantPast
     private var trashAuthorization: TrashEmptyAuthorization?
     private var directoryIndexStore: DirectoryIndexStore?
@@ -1097,12 +1098,14 @@ extension AppModel {
 
     func refreshTrashSummary(force: Bool = false) {
         if isPreviewMode { return }
-        guard trashRefreshTask == nil, force || Date().timeIntervalSince(trashCheckedAt) >= 30 else { return }
+        if trashRefreshTask != nil { if force { trashNeedsRefresh = true }; return }
+        guard force || Date().timeIntervalSince(trashCheckedAt) >= 30 else { return }
         trashRefreshTask = Task { [weak self] in
             guard let self else { return }
             trashSummary = await trashService.inventoryTrash(volumes: volumes)
             trashCheckedAt = Date()
             trashRefreshTask = nil
+            if trashNeedsRefresh { trashNeedsRefresh = false; refreshTrashSummary(force: true) }
         }
     }
 }

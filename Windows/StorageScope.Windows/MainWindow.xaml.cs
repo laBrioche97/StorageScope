@@ -140,6 +140,7 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_scanCancellation, cancellation)) _scanCancellation = null;
             cancellation.Dispose();
             SetScanning(false); RefreshSpaceStatus();
+            if (_folderIndex is null && _currentDirectory is not null) await LoadBubblesAsync(_currentDirectory);
         }
     }
 
@@ -181,6 +182,7 @@ public partial class MainWindow : Window
         MainTabs.IsEnabled = !_busy;
         CleanButton.IsEnabled = UninstallButton.IsEnabled = DuplicateButton.IsEnabled = !scanning && !_busy;
         InstallUpdateButton.IsEnabled = !scanning;
+        UpdateResponsiveColumns();
     }
 
     private void UpdateResponsiveColumns()
@@ -188,9 +190,11 @@ public partial class MainWindow : Window
         if (LargestFilesGrid is null) return;
         CheckUpdateButton.Visibility = HistoryButton.Visibility = ActualWidth >= 950 ? Visibility.Visible : Visibility.Collapsed;
         OptionsButton.Visibility = Visibility.Visible;
-        ApplicationTitle.Visibility = WorkflowSteps.Visibility = ActualHeight >= 760 ? Visibility.Visible : Visibility.Collapsed;
-        VolumeTitle.Visibility = ActualWidth < 950 && ActualHeight < 760 ? Visibility.Collapsed : Visibility.Visible;
-        StatusPanel.Visibility = PrivacyFooter.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
+        var graphicalExplorer = CurrentSection == Section.Explorer && _bubbleMode;
+        ApplicationTitle.Visibility = WorkflowSteps.Visibility = ActualHeight >= 760 && !graphicalExplorer ? Visibility.Visible : Visibility.Collapsed;
+        VolumeTitle.Visibility = graphicalExplorer || ActualWidth < 950 && ActualHeight < 760 ? Visibility.Collapsed : Visibility.Visible;
+        PrivacyFooter.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
+        StatusPanel.Visibility = ActualHeight >= 620 && (!graphicalExplorer || _scanning) ? Visibility.Visible : Visibility.Collapsed;
         CompactStatus.Visibility = ActualHeight < 620 ? Visibility.Visible : Visibility.Collapsed;
         CleanupIntro.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
         DisplayFilterPanel.Visibility = ActualHeight >= 620 || _compactFiltersOpen ? Visibility.Visible : Visibility.Collapsed;
@@ -254,6 +258,14 @@ public partial class MainWindow : Window
         var generation = ++_browseGeneration;
         _currentDirectory = path;
         ExplorerPathBox.Text = path;
+        ExplorerBreadcrumbs.Children.Clear();
+        var crumbs = new Stack<string>();
+        for (var ancestor = path; ancestor is not null && crumbs.Count < 32; ancestor = Directory.GetParent(ancestor)?.FullName) crumbs.Push(ancestor);
+        foreach (var crumb in crumbs) {
+            var button = new Button { Content = Path.GetFileName(crumb.TrimEnd('\\')) is { Length: > 0 } name ? name : crumb, ToolTip = crumb, Padding = new Thickness(8, 4, 8, 4) };
+            button.Click += async (_, _) => await BrowseAsync(crumb);
+            ExplorerBreadcrumbs.Children.Add(button);
+        }
         try
         {
             var entries = await DirectoryBrowser.BrowseAsync(path, _result?.DirectorySizes, cancellation.Token);
@@ -474,7 +486,7 @@ public partial class MainWindow : Window
         if (CleanupSelectionText is null) return;
         var selected = CleanupGrid.SelectedItems.Cast<CleanupCandidate>().ToList();
         CleanupSelectionText.Text = $"{selected.Count} sélectionné(s) · {SizeFormatter.Format(selected.Sum(item => item.Size))}";
-        CleanButton.IsEnabled = selected.Count > 0;
+        CleanButton.IsEnabled = selected.Count > 0 && !_scanning && !_busy;
         CleanupDetails.Text = CleanupGrid.SelectedItem is CleanupCandidate candidate ? candidate.Reason + " " + candidate.Consequence : "Choisissez un élément pour comprendre les conséquences du nettoyage.";
     }
     private async void AnalyzeDuplicates_Click(object sender, RoutedEventArgs e)

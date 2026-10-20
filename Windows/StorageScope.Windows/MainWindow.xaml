@@ -123,7 +123,7 @@
             <TextBox x:Name="ExplorerPathBox" Grid.Column="1" Margin="6,4" KeyDown="ExplorerPathBox_KeyDown"/>
             <TextBox x:Name="ExplorerSearchBox" Grid.Column="2" Margin="6,4" TextChanged="ExplorerSearchBox_TextChanged" ToolTip="Rechercher dans le dossier"/>
           </Grid>
-          <Grid Grid.Row="1" x:Name="BubblePanel" Margin="0,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><TextBlock x:Name="BubbleStatus" Text="Préparation du graphique…" TextWrapping="Wrap"/><Canvas Grid.Row="1" x:Name="BubbleCanvas" ClipToBounds="True" SizeChanged="BubbleCanvas_SizeChanged" Background="Transparent"/></Grid>
+          <Grid Grid.Row="1" x:Name="BubblePanel" Margin="0,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><StackPanel><ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"><StackPanel x:Name="ExplorerBreadcrumbs" Orientation="Horizontal"/></ScrollViewer><TextBlock x:Name="BubbleStatus" Text="Préparation du graphique…" TextWrapping="Wrap"/></StackPanel><Canvas Grid.Row="1" x:Name="BubbleCanvas" ClipToBounds="True" SizeChanged="BubbleCanvas_SizeChanged" Background="Transparent"/></Grid>
           <DataGrid Visibility="Collapsed" Grid.Row="1" x:Name="ExplorerGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" MouseDoubleClick="ExplorerGrid_MouseDoubleClick" Margin="0,8">
             <DataGrid.Columns>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Nom" Binding="{Binding Name}" Width="2*" MinWidth="180"/>

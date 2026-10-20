@@ -44,9 +44,10 @@ public struct FolderBubble: Identifiable, Sendable {
     public let depth: Int
     public let isAggregate: Bool
     public let skipCount: Int
-    public init(path: String, name: String, bytes: Int64, circle: PackedCircle, depth: Int, isAggregate: Bool = false, skipCount: Int = 0) {
+    public let parentBytes: Int64
+    public init(path: String, name: String, bytes: Int64, circle: PackedCircle, depth: Int, isAggregate: Bool = false, skipCount: Int = 0, parentBytes: Int64 = 0) {
         self.path = path; self.name = name; self.bytes = bytes; self.circle = circle
-        self.depth = depth; self.isAggregate = isAggregate; self.skipCount = skipCount
+        self.depth = depth; self.isAggregate = isAggregate; self.skipCount = skipCount; self.parentBytes = parentBytes
     }
 }
 
@@ -87,7 +88,7 @@ extension DirectoryIndexStore {
             let fraction = bytes > 0 ? min(1, Double(totals.bytes) / Double(bytes)) : 1
             let scale = radius * 0.90 * sqrt(fraction)
             let siblings = zip(visible, circles).map { item, circle in
-                FolderBubble(path: item.path, name: item.name, bytes: item.bytes, circle: PackedCircle(x: x + circle.x * scale, y: y + circle.y * scale, radius: circle.radius * scale), depth: depth, isAggregate: item.aggregate, skipCount: children.count)
+                FolderBubble(path: item.path, name: item.name, bytes: item.bytes, circle: PackedCircle(x: x + circle.x * scale, y: y + circle.y * scale, radius: circle.radius * scale), depth: depth, isAggregate: item.aggregate, skipCount: children.count, parentBytes: bytes)
             }
             output.append(contentsOf: siblings)
             for node in siblings where !node.isAggregate {

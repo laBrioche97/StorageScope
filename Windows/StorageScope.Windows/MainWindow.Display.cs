@@ -42,6 +42,7 @@ public partial class MainWindow
         ApplyDisplayFilters();
         if (CurrentSection == Section.Explorer) EnsureBubbleAnalysis();
         UpdateBubbleFilters();
+        UpdateResponsiveColumns();
     }
 
     private void InitializeDisplayFilters()

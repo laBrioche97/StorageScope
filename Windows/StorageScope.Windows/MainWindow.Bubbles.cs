@@ -37,13 +37,13 @@ public partial class MainWindow
     private void ShowBubbles_Click(object sender, RoutedEventArgs e)
     {
         _bubbleMode = true; BubblePanel.Visibility = Visibility.Visible; ExplorerGrid.Visibility = Visibility.Collapsed;
-        UpdateBubbleFilters(); EnsureBubbleAnalysis();
+        UpdateBubbleFilters(); UpdateResponsiveColumns(); EnsureBubbleAnalysis();
         if (_currentDirectory is not null) _ = LoadBubblesAsync(_currentDirectory);
     }
     private void ShowExplorerList_Click(object sender, RoutedEventArgs e)
     {
         _bubbleMode = false; BubblePanel.Visibility = Visibility.Collapsed; ExplorerGrid.Visibility = Visibility.Visible;
-        UpdateBubbleFilters(); ApplyExplorerFilter();
+        UpdateBubbleFilters(); UpdateResponsiveColumns(); ApplyExplorerFilter();
     }
     private void DirectFiles_Click(object sender, RoutedEventArgs e)
     {
@@ -91,8 +91,8 @@ public partial class MainWindow
         foreach (var circle in _folderFrame.Circles.OrderBy(c => c.Depth))
         {
             var button = new BubbleButton { Circle = circle, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
-            var total = _folderFrame.Total;
-            button.ToolTip = $"{circle.Name}\n{circle.Path}\n{SizeFormatter.Format(circle.Bytes)}" + (total > 0 ? $" · {circle.Bytes * 100d / total:N1} % du dossier affiché" : "") + (_folderFrame.Partial ? "\nAnalyse partielle" : "");
+            var total = circle.ParentBytes > 0 ? circle.ParentBytes : _folderFrame.Total;
+            button.ToolTip = $"{circle.Name}\n{circle.Path}\n{SizeFormatter.Format(circle.Bytes)}" + (total > 0 ? $" · {circle.Bytes * 100d / total:N1} % du dossier parent" : "") + (_folderFrame.Partial ? "\nAnalyse partielle" : "");
             AutomationProperties.SetName(button, circle.Name + " · " + SizeFormatter.Format(circle.Bytes));
             AutomationProperties.SetHelpText(button, button.ToolTip.ToString());
             Canvas.SetLeft(button, BubbleCanvas.ActualWidth / 2 + circle.X * diameter / 2 - button.Width / 2);

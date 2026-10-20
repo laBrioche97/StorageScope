@@ -2,7 +2,7 @@ using System.IO;
 
 namespace StorageScope.Windows;
 
-internal sealed record FolderCircle(string Path, string Name, long Bytes, double X, double Y, double Radius, int Depth, bool Aggregate = false, int SkipCount = 0);
+internal sealed record FolderCircle(string Path, string Name, long Bytes, double X, double Y, double Radius, int Depth, bool Aggregate = false, int SkipCount = 0, long ParentBytes = 0);
 internal sealed record FolderFrame(IReadOnlyList<FolderCircle> Circles, long? Total, long? DirectFiles, bool Partial);
 
 internal sealed class FolderIndex
@@ -50,7 +50,7 @@ internal sealed class FolderIndex
             for (var i = 0; i < visible.Count; i++)
             {
                 var item = visible[i]; var p = packed[i];
-                var circle = new FolderCircle(item.Path, item.Aggregate ? $"Autres dossiers ({all.Count - take + 1})" : System.IO.Path.GetFileName(item.Path.TrimEnd('\\')), item.Bytes, x + p.X * scale, y + p.Y * scale, p.Radius * scale, depth, item.Aggregate, item.Aggregate ? take - 1 : 0);
+                var circle = new FolderCircle(item.Path, item.Aggregate ? $"Autres dossiers ({all.Count - take + 1})" : System.IO.Path.GetFileName(item.Path.TrimEnd('\\')), item.Bytes, x + p.X * scale, y + p.Y * scale, p.Radius * scale, depth, item.Aggregate, item.Aggregate ? take - 1 : 0, parentBytes);
                 output.Add(circle);
             }
             // Reserve all siblings before allocating the bounded deeper levels.
