@@ -11,6 +11,34 @@ public partial class MainWindow
     private bool _viewsReady;
     private bool _syncCategory;
     private bool _compactFiltersOpen;
+    private sealed record FilterState(string Search = "", int Category = 0, int Size = 0, int Kind = 0, int Sort = 0, string Source = "Toutes les sources");
+    private readonly Dictionary<int, FilterState> _sectionFilters = [];
+    private int _filterSection;
+    private FilterState CaptureFilter() => new(ListSearch.Text, CategoryFilter.SelectedIndex, MinimumSizeFilter.SelectedIndex, EntryKindFilter.SelectedIndex, ResultSort.SelectedIndex, ApplicationSourceFilter.SelectedItem as string ?? "Toutes les sources");
+    private DisplayFilter SectionFilter(int section)
+    {
+        if (section == MainTabs.SelectedIndex) return CurrentDisplayFilter;
+        var state = _sectionFilters.GetValueOrDefault(section) ?? new();
+        return new(state.Search, (CategoryFilter.Items[Math.Max(0, state.Category)] as CategoryChoice)?.Category,
+            (MinimumSizeFilter.Items[Math.Max(0, state.Size)] as SizeChoice)?.Bytes ?? 0,
+            (EntryKindFilter.Items[Math.Max(0, state.Kind)] as KindChoice)?.Kind ?? EntryKind.All);
+    }
+    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_viewsReady || e.Source != MainTabs || MainTabs.SelectedIndex == _filterSection) return;
+        _sectionFilters[_filterSection] = CaptureFilter();
+        _filterSection = MainTabs.SelectedIndex;
+        var state = _sectionFilters.GetValueOrDefault(_filterSection) ?? new();
+        _viewsReady = false;
+        try
+        {
+            ListSearch.Text = state.Search; CategoryFilter.SelectedIndex = state.Category; MinimumSizeFilter.SelectedIndex = state.Size;
+            EntryKindFilter.SelectedIndex = state.Kind; ResultSort.SelectedIndex = state.Sort;
+            ApplicationSourceFilter.SelectedItem = state.Source;
+        }
+        finally { _viewsReady = true; }
+        ApplyDisplayFilters();
+    }
 
     private void InitializeDisplayFilters()
     {
@@ -44,12 +72,13 @@ public partial class MainWindow
     {
         if (!_viewsReady) return;
         var filter = CurrentDisplayFilter;
-        var order = (ResultSort.SelectedItem as SortChoice)?.Order ?? ResultOrder.Largest;
         var source = ApplicationSourceFilter.SelectedItem as string;
         var active = (filter.Category is null ? 0 : 1) + (filter.MinimumBytes == 0 ? 0 : 1) + (filter.Kind == EntryKind.All ? 0 : 1) + (source is null or "Toutes les sources" ? 0 : 1);
         FilterToggleButton.Content = active == 0 ? "Filtres" : $"Filtres ({active})";
-        void Refresh(IEnumerable items, Predicate<object> predicate, bool applications = false)
+        void Refresh(IEnumerable items, Predicate<object> predicate, int section, bool applications = false)
         {
+            var order = section == MainTabs.SelectedIndex ? (ResultSort.SelectedItem as SortChoice)?.Order ?? ResultOrder.Largest
+                : (ResultSort.Items[(_sectionFilters.GetValueOrDefault(section) ?? new()).Sort] as SortChoice)?.Order ?? ResultOrder.Largest;
             var view = CollectionViewSource.GetDefaultView(items);
             using (view.DeferRefresh())
             {
@@ -63,15 +92,20 @@ public partial class MainWindow
                 view.SortDescriptions.Add(new("Name", ListSortDirection.Ascending));
             }
         }
-        Refresh(_largestFiles, item => item is ScanEntry entry && filter.Matches(entry));
-        Refresh(_explorer, item => item is ScanEntry entry && filter.Matches(entry));
-        Refresh(_categoryFiles, item => item is ScanEntry entry && filter.Matches(entry));
-        Refresh(_cleanup, item => item is CleanupCandidate candidate && filter.Matches(candidate));
-        Refresh(_applications, item => item is InstalledApplication app && filter.Matches(app) && (source is null or "Toutes les sources" || app.Provider == source), true);
+        Refresh(_largestFiles, item => item is ScanEntry entry && SectionFilter(0).Matches(entry), 0);
+        Refresh(_explorer, item => item is ScanEntry entry && SectionFilter(1).Matches(entry), 1);
+        Refresh(_categoryFiles, item => item is ScanEntry entry && SectionFilter(2).Matches(entry), 2);
+        Refresh(_cleanup, item => item is CleanupCandidate candidate && SectionFilter(3).Matches(candidate), 3);
+        var appSource = MainTabs.SelectedIndex == 4 ? source : (_sectionFilters.GetValueOrDefault(4) ?? new()).Source;
+        Refresh(_applications, item => item is InstalledApplication app && SectionFilter(4).Matches(app) && (appSource is null or "Toutes les sources" || app.Provider == appSource), 4, true);
+        var categoryFilter = SectionFilter(2);
+        var count = CategoryFilesGrid.Items.OfType<ScanEntry>().Count();
+        var total = _result?.Categories.Where(category => categoryFilter.Category is null || category.Category == categoryFilter.Category).Sum(category => category.FileCount) ?? 0;
+        CategoryStatusText.Text = $"{(categoryFilter.Category is StorageCategory category ? CategoryLabels.Name(category) : "Toutes les catégories")} · {count:N0} affiché(s) / {total:N0} détecté(s) · 500 plus gros fichiers maximum par catégorie." + (count == 0 ? (_result is null ? " Lancez une analyse pour voir les fichiers." : " Aucun résultat : modifiez les filtres.") : "");
         if (!_syncCategory)
         {
             _syncCategory = true;
-            CategorySummary.SelectedItem = CategorySummary.Items.OfType<CategoryChoice>().FirstOrDefault(item => item.Category == filter.Category);
+            CategorySummary.SelectedItem = CategorySummary.Items.OfType<CategoryChoice>().FirstOrDefault(item => item.Category == categoryFilter.Category);
             _syncCategory = false;
         }
     }
@@ -89,8 +123,18 @@ public partial class MainWindow
     private void CategorySummary_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_viewsReady || _syncCategory || CategorySummary.SelectedItem is not CategoryChoice selected) return;
+        MainTabs.SelectedIndex = 2;
+        _syncCategory = true;
+        ListSearch.Clear(); MinimumSizeFilter.SelectedIndex = EntryKindFilter.SelectedIndex = 0;
         CategoryFilter.SelectedItem = CategoryFilter.Items.OfType<CategoryChoice>().First(item => item.Category == selected.Category);
         ResultSort.SelectedIndex = 0;
+        _syncCategory = false;
+        ApplyDisplayFilters();
     }
-    private void RevealCategory_Click(object sender, RoutedEventArgs e) { if (CategoryFilesGrid.SelectedItem is ScanEntry entry) ExplorerService.ShowInExplorer(entry.Path); }
+    private void CategoryHeader_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.DataContext is not CollectionViewGroup group) return;
+        CategorySummary.SelectedItem = CategorySummary.Items.OfType<CategoryChoice>().FirstOrDefault(item => item.Category is StorageCategory category && CategoryLabels.Name(category) == group.Name?.ToString());
+    }
+    private void RevealCategory_Click(object sender, RoutedEventArgs e) { if (CategoryFilesGrid.SelectedItem is ScanEntry entry) SafeReveal(entry.Path); }
 }

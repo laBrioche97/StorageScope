@@ -49,10 +49,10 @@ internal static class ApplicationIcons
                 {
                     using var stream = File.OpenRead(path);
                     var frame = new IconBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames.MaxBy(item => item.PixelWidth)!;
-                    frame.Freeze(); return frame;
+                    return Detach(frame);
                 }
                 var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.DecodePixelWidth = 64; bitmap.UriSource = new Uri(path); bitmap.EndInit(); bitmap.Freeze(); return bitmap;
+                bitmap.DecodePixelWidth = 64; bitmap.UriSource = new Uri(path); bitmap.EndInit(); return Detach(bitmap);
             }
             if (!new[] { ".exe", ".dll" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)) return Fallback;
             IntPtr large = IntPtr.Zero, small = IntPtr.Zero;
@@ -60,11 +60,23 @@ internal static class ApplicationIcons
             {
                 if (SHDefExtractIcon(path, index, 0, out large, out small, 32) < 0 || large == IntPtr.Zero) return Fallback;
                 var bitmap = Imaging.CreateBitmapSourceFromHIcon(large, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                bitmap.Freeze(); return bitmap;
+                return Detach(bitmap);
             }
             finally { if (large != IntPtr.Zero) DestroyIcon(large); if (small != IntPtr.Zero) DestroyIcon(small); }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or FormatException or System.Security.SecurityException or COMException) { return Fallback; }
+    }
+
+    internal static BitmapSource Detach(BitmapSource source)
+    {
+        if (source.PixelWidth > 4096 || source.PixelHeight > 4096) throw new IOException("Image trop volumineuse.");
+        var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var stride = checked(converted.PixelWidth * 4);
+        var pixels = new byte[checked(stride * converted.PixelHeight)];
+        converted.CopyPixels(pixels, stride, 0);
+        var bitmap = BitmapSource.Create(converted.PixelWidth, converted.PixelHeight, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+        bitmap.Freeze();
+        return bitmap;
     }
 
     [DllImport("shell32.dll", EntryPoint = "SHDefExtractIconW", CharSet = CharSet.Unicode)]

@@ -73,7 +73,7 @@ public static class CleanupOperations
                         }
                         (record ?? OperationHistory.Append)(new { operation = "corbeille", status = "préparé", path = item.Entry.Path, identity = item.Identity });
                         DeletionSafetyPolicy.Revalidate(item.Entry.Path, item.Identity, token, item.GameCache);
-                        (recycle ?? ShellRecycle.Move)(item.Entry.Path);
+                        if (recycle is not null) recycle(item.Entry.Path); else RecycleWorker.Move(item);
                         var result = new CleanupOutcome(item.Entry.Path, "corbeille", item.Entry.Size);
                         results.Add(result);
                         try { (record ?? OperationHistory.Append)(result); }
@@ -105,7 +105,7 @@ internal static class ShellRecycle
     {
         if (new DriveInfo(Path.GetPathRoot(path)!).DriveType != DriveType.Fixed) throw new IOException("La Corbeille ne peut pas être garantie sur ce volume. Aucun fichier n’a été supprimé.");
         var operation = (IFileOperation)new FileOperation();
-        object? shellItem = null;
+        IShellItem? shellItem = null;
         try
         {
             var iid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
@@ -124,7 +124,16 @@ internal static class ShellRecycle
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-    private static extern int SHCreateItemFromParsingName(string path, IntPtr bind, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out object item);
+    private static extern int SHCreateItemFromParsingName(string path, IntPtr bind, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IShellItem item);
+    [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItem
+    {
+        void BindToHandler(IntPtr bind, ref Guid handler, ref Guid iid, out IntPtr result);
+        void GetParent(out IShellItem parent);
+        void GetDisplayName(uint name, out IntPtr result);
+        void GetAttributes(uint mask, out uint attributes);
+        void Compare(IShellItem other, uint hint, out int order);
+    }
     [ComImport, Guid("3AD05575-8857-4850-9277-11B85BDB8E09")]
     private class FileOperation { }
     [ComImport, Guid("947AAB5F-0A5C-4C13-B4D6-4BF7836FC9F8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -145,7 +154,7 @@ internal static class ShellRecycle
         void MoveItems(IntPtr items, IntPtr destination);
         void CopyItem(IntPtr item, IntPtr destination, [MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr sink);
         void CopyItems(IntPtr items, IntPtr destination);
-        void DeleteItem([MarshalAs(UnmanagedType.Interface)] object item, IntPtr sink);
+        void DeleteItem([MarshalAs(UnmanagedType.Interface)] IShellItem item, IntPtr sink);
         void DeleteItems(IntPtr items);
         void NewItem(IntPtr destination, uint attributes, [MarshalAs(UnmanagedType.LPWStr)] string name, [MarshalAs(UnmanagedType.LPWStr)] string template, IntPtr sink);
         void PerformOperations();

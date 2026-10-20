@@ -73,7 +73,7 @@
         <Button Content="Réinitialiser" Click="ResetFilters_Click"/>
       </WrapPanel>
     </StackPanel>
-    <TabControl Grid.Row="1" x:Name="MainTabs">
+    <TabControl Grid.Row="1" x:Name="MainTabs" SelectionChanged="MainTabs_SelectionChanged">
       <TabItem Header="Vue d’ensemble">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -127,10 +127,11 @@
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel Margin="4,0,4,8">
             <ComboBox x:Name="CategorySummary" DisplayMemberPath="Label" SelectionChanged="CategorySummary_Changed" AutomationProperties.Name="Choisir une catégorie et voir son espace total"/>
+            <TextBlock x:Name="CategoryStatusText" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4"/>
             <TextBlock Text="Les 500 plus gros fichiers de chaque catégorie sont conservés, indépendamment du classement global. Les filtres portent sur cette liste ; l’Explorateur permet de poursuivre l’examen." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,0"/>
           </StackPanel>
           <DataGrid Grid.Row="1" x:Name="CategoryFilesGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single" MouseDoubleClick="RevealCategory_Click">
-            <DataGrid.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="8,14,8,8"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></DataGrid.GroupStyle>
+            <DataGrid.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><Button Content="{Binding Name}" Click="CategoryHeader_Click" HorizontalAlignment="Left"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></DataGrid.GroupStyle>
             <DataGrid.Columns>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Nom" Binding="{Binding Name}" Width="250" MinWidth="180"/>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille" Binding="{Binding DisplaySize}" Width="130" MinWidth="120"/>
@@ -170,12 +171,12 @@
       <TabItem Header="Applications et jeux">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <StackPanel><TextBlock Text="Désinstallation officielle · sauvegardes conservées par StorageScope · tailles déclarées ou mesurées après analyse, tailles inconnues en dernier." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/><ComboBox x:Name="ApplicationSourceFilter" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Filtrer les applications par source" Margin="4,0,4,8"/></StackPanel>
+          <StackPanel><TextBlock Text="Désinstallation officielle · sauvegardes conservées · tailles calculées en arrière-plan. L’espace réellement libéré dépend des composants partagés et du désinstalleur." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/><ComboBox x:Name="ApplicationSourceFilter" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Filtrer les applications par source" Margin="4,0,4,8"/></StackPanel>
           <DataGrid Grid.Row="1" x:Name="ApplicationsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
             <DataGrid.Columns>
                 <DataGridTemplateColumn Header="Application / jeu" Width="2*" MinWidth="180"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="4"><Image Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,10,0"/><TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                 <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Source" Binding="{Binding Source}" Width="140"/>
-                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille estimée" Binding="{Binding DisplaySize}" Width="125"/>
+                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille et fiabilité" Binding="{Binding DisplaySize}" Width="210" MinWidth="170"/>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Éditeur et version" Binding="{Binding Details}" Width="2*"/>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Emplacement" Binding="{Binding InstallLocation}" Width="3*"/>
             </DataGrid.Columns>

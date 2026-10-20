@@ -29,6 +29,11 @@ public partial class MainWindow : Window
     private IReadOnlyList<InstalledApplication> _allApplications = [];
     private UpdateManifest? _availableUpdate;
     private bool _busy;
+    private bool _scanning;
+    private bool _closing;
+    private CancellationTokenSource? _inventoryCancellation;
+    private int _inventoryGeneration;
+    private int _browseGeneration;
     internal bool IsPreviewMode { get; set; }
 
     public MainWindow()
@@ -42,19 +47,26 @@ public partial class MainWindow : Window
         CollectionViewSource.GetDefaultView(_cleanup).GroupDescriptions.Add(new PropertyGroupDescription(nameof(CleanupCandidate.Group)));
         CollectionViewSource.GetDefaultView(_categoryFiles).GroupDescriptions.Add(new PropertyGroupDescription(nameof(ScanEntry.CategoryName)));
         InitializeDisplayFilters();
+        InitializeContextActions();
+        Closing += (_, e) =>
+        {
+            if (_busy) { e.Cancel = true; MessageBox.Show("Annulez ou terminez l’opération en cours avant de fermer StorageScope.", "Opération en cours"); return; }
+            _closing = true; _inventoryCancellation?.Cancel(); _scanCancellation?.Cancel(); _browseCancellation?.Cancel();
+        };
         SizeChanged += (_, _) => UpdateResponsiveColumns();
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         if (IsPreviewMode) return;
-        RefreshDrives();
+        _ = Task.Run(UpdateService.CleanupDownloads);
+        _ = CheckForUpdatesAsync(false);
         try
         {
+            RefreshDrives();
             await ReloadApplicationsAsync();
         }
         catch (Exception error) { ShowError("Les applications installées n’ont pas pu être inventoriées.", error); }
-        _ = CheckForUpdatesAsync(false);
     }
 
     private void RefreshDrives()
@@ -69,6 +81,8 @@ public partial class MainWindow : Window
 
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_busy || _scanning) return;
+        Diagnostics.Action = "analyse"; Diagnostics.Write("action");
         if (DrivePicker.SelectedItem is not DriveChoice drive) return;
         _scanCancellation?.Cancel();
         _scanCancellation = new CancellationTokenSource();
@@ -127,6 +141,7 @@ public partial class MainWindow : Window
 
     private void SetScanning(bool scanning)
     {
+        _scanning = scanning;
         ScanButton.IsEnabled = !scanning;
         CancelButton.IsEnabled = scanning;
         DrivePicker.IsEnabled = !scanning;
@@ -139,7 +154,7 @@ public partial class MainWindow : Window
     {
         if (LargestFilesGrid is null) return;
         CheckUpdateButton.Visibility = HistoryButton.Visibility = ActualWidth >= 950 ? Visibility.Visible : Visibility.Collapsed;
-        OptionsButton.Visibility = ActualWidth < 950 ? Visibility.Visible : Visibility.Collapsed;
+        OptionsButton.Visibility = Visibility.Visible;
         ApplicationTitle.Visibility = WorkflowSteps.Visibility = ActualHeight >= 760 ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = PrivacyFooter.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
         CompactStatus.Visibility = ActualHeight < 620 ? Visibility.Visible : Visibility.Collapsed;
@@ -160,9 +175,8 @@ public partial class MainWindow : Window
     private void CancelButton_Click(object sender, RoutedEventArgs e) { _scanCancellation?.Cancel(); _operationCancellation?.Cancel(); }
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy) return;
-        RefreshDrives(); RefreshSpaceStatus();
-        try { await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
+        if (_busy || _scanning) return;
+        try { RefreshDrives(); RefreshSpaceStatus(); await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
     }
 
     private async void DrivePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -196,16 +210,20 @@ public partial class MainWindow : Window
     {
         _browseCancellation?.Cancel();
         _browseCancellation = new CancellationTokenSource();
+        var cancellation = _browseCancellation;
+        var generation = ++_browseGeneration;
         _currentDirectory = path;
         ExplorerPathBox.Text = path;
         try
         {
-            var entries = await DirectoryBrowser.BrowseAsync(path, _result?.DirectorySizes, _browseCancellation.Token);
+            var entries = await DirectoryBrowser.BrowseAsync(path, _result?.DirectorySizes, cancellation.Token);
+            if (_closing || generation != _browseGeneration || cancellation.IsCancellationRequested) return;
             _allExplorerItems = entries.ToList();
             ApplyExplorerFilter();
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) { ShowError("Impossible d’ouvrir ce dossier.", error); }
+        catch (Exception error) { if (!_closing && generation == _browseGeneration) ShowError("Impossible d’ouvrir ce dossier.", error); }
+        finally { if (ReferenceEquals(_browseCancellation, cancellation)) _browseCancellation = null; cancellation.Dispose(); }
     }
 
     private void ApplyExplorerFilter()
@@ -243,7 +261,7 @@ public partial class MainWindow : Window
 
     private void RevealSelection_Click(object sender, RoutedEventArgs e)
     {
-        if (ExplorerGrid.SelectedItem is ScanEntry item) ExplorerService.ShowInExplorer(item.Path);
+        if (ExplorerGrid.SelectedItem is ScanEntry item) SafeReveal(item.Path);
     }
 
     private async void TrashSelection_Click(object sender, RoutedEventArgs e)
@@ -255,7 +273,7 @@ public partial class MainWindow : Window
 
     private void RevealCleanup_Click(object sender, RoutedEventArgs e)
     {
-        if (CleanupGrid.SelectedItem is CleanupCandidate candidate) ExplorerService.ShowInExplorer(candidate.Path);
+        if (CleanupGrid.SelectedItem is CleanupCandidate candidate) SafeReveal(candidate.Path);
     }
 
     private async void TrashCleanup_Click(object sender, RoutedEventArgs e)
@@ -270,6 +288,7 @@ public partial class MainWindow : Window
     {
         if (_busy || _scanCancellation is { IsCancellationRequested: false } && !ScanButton.IsEnabled) return;
         SetBusy(true);
+        Diagnostics.Action = "nettoyage-corbeille"; Diagnostics.Write("action");
         _operationCancellation = new();
         try
         {
@@ -297,6 +316,8 @@ public partial class MainWindow : Window
             if (_currentDirectory is not null) await BrowseAsync(_currentDirectory);
             foreach (var item in succeeded)
             {
+                foreach (var entry in _largestFiles.Where(entry => DeletionSafetyPolicy.IsWithin(entry.Path, item.Path)).ToList()) _largestFiles.Remove(entry);
+                foreach (var entry in _categoryFiles.Where(entry => DeletionSafetyPolicy.IsWithin(entry.Path, item.Path)).ToList()) _categoryFiles.Remove(entry);
                 foreach (var candidate in _cleanup.Where(candidate => DeletionSafetyPolicy.IsWithin(candidate.Path, item.Path)).ToList()) _cleanup.Remove(candidate);
             }
             var failures = result.Where(item => item.Status != "corbeille").ToList();
@@ -312,14 +333,15 @@ public partial class MainWindow : Window
 
     private async void UninstallApplication_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy || ApplicationsGrid.SelectedItem is not InstalledApplication application) return;
-        var provider = _products.ProviderFor(application);
-        var plan = provider.Prepare(application);
-        if (!plan.CanProceed) { MessageBox.Show(plan.Explanation, "Désinstallation indisponible", MessageBoxButton.OK, MessageBoxImage.Information); return; }
-        if (MessageBox.Show($"Désinstaller « {application.Name} » ?\n\n{plan.Explanation}\n\nStorageScope ne supprime ni sauvegardes ni bibliothèques partagées.", "Vérifier la désinstallation", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (_busy || _scanning || ApplicationsGrid.SelectedItem is not InstalledApplication application) return;
         SetBusy(true); _operationCancellation = new();
         try
         {
+            Diagnostics.Action = "désinstallation"; Diagnostics.Write("action");
+            var provider = _products.ProviderFor(application);
+            var plan = provider.Prepare(application);
+            if (!plan.CanProceed) { MessageBox.Show(plan.Explanation, "Désinstallation indisponible", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            if (MessageBox.Show($"Désinstaller « {application.Name} » ?\n\nInstallation : {application.DisplaySize}.\nCette taille ne garantit pas l’espace libéré ; des composants peuvent être partagés.\n\n{plan.Explanation}\n\nLes sauvegardes restent conservées par StorageScope. Les résidus attribués seront proposés séparément.", "Vérifier la désinstallation", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             ScanStatusText.Text = "Désinstallation officielle en cours…";
             var result = await provider.ExecuteAsync(plan, _operationCancellation.Token);
             if (result.Verified)
@@ -348,11 +370,48 @@ public partial class MainWindow : Window
     }
     private async Task ReloadApplicationsAsync()
     {
-        _allApplications = await _products.DetectAsync(CancellationToken.None);
+        _inventoryCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource(); _inventoryCancellation = cancellation;
+        var generation = ++_inventoryGeneration;
+        var detected = await _products.DetectAsync(cancellation.Token);
+        if (_closing || generation != _inventoryGeneration) return;
+        _allApplications = detected;
         var selectedSource = ApplicationSourceFilter.SelectedItem as string;
         ApplicationSourceFilter.ItemsSource = new[] { "Toutes les sources" }.Concat(_allApplications.Select(item => item.Provider).Distinct().Order());
         ApplicationSourceFilter.SelectedItem = selectedSource is not null && _allApplications.Any(item => item.Provider == selectedSource) ? selectedSource : "Toutes les sources";
         ApplyApplicationFilter();
+        _ = EnrichApplicationsAsync(detected, generation, cancellation);
+    }
+    private async Task EnrichApplicationsAsync(IReadOnlyList<InstalledApplication> detected, int generation, CancellationTokenSource cancellation)
+    {
+        using var limit = new SemaphoreSlim(3);
+        try
+        {
+            await Task.WhenAll(detected.Select(async original =>
+            {
+                await limit.WaitAsync(cancellation.Token);
+                try
+                {
+                    var enriched = original with { Icon = await ApplicationEnrichment.IconAsync(original, cancellation.Token) };
+                    Publish(enriched);
+                    enriched = await Task.Run(() => ApplicationEnrichment.Measure(enriched, cancellation.Token), cancellation.Token);
+                    Publish(enriched);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception error) { Diagnostics.Write("inventaire-enrichissement", error); Publish(original with { SizeStatus = original.HasKnownSize ? "Taille déclarée" : "Indisponible" }); }
+                finally { limit.Release(); }
+                void Publish(InstalledApplication value)
+                {
+                    if (_closing || generation != _inventoryGeneration || cancellation.IsCancellationRequested) return;
+                    var all = _allApplications.ToList(); var index = all.FindIndex(item => item.Name == original.Name && item.ProductId == original.ProductId && item.InstallLocation == original.InstallLocation);
+                    if (index >= 0) { all[index] = value; _allApplications = all; }
+                    var displayed = _applications.Select((item, i) => (item, i)).FirstOrDefault(pair => pair.item.Name == original.Name && pair.item.ProductId == original.ProductId && pair.item.InstallLocation == original.InstallLocation);
+                    if (displayed.item is not null) _applications[displayed.i] = value;
+                }
+            }));
+        }
+        catch (OperationCanceledException) { }
+        finally { if (ReferenceEquals(_inventoryCancellation, cancellation)) _inventoryCancellation = null; cancellation.Dispose(); }
     }
     private void ApplyApplicationFilter()
     {
@@ -360,7 +419,7 @@ public partial class MainWindow : Window
         foreach (var application in _allApplications)
         {
             var measured = application.InstallLocation is string location && _result is not null && _result.DirectorySizes.TryGetValue(location.TrimEnd('\\'), out var bytes) ? (long?)bytes : null;
-            _applications.Add(measured is long size ? application with { EstimatedBytes = size } : application);
+            _applications.Add(measured is long size ? application with { EstimatedBytes = size, SizeStatus = "Mesurée pendant l’analyse" } : application);
         }
     }
     private void SelectRecommended_Click(object sender, RoutedEventArgs e) { CleanupGrid.SelectedItems.Clear(); foreach (var item in CleanupGrid.Items.OfType<CleanupCandidate>().Where(item => item.Recommended)) CleanupGrid.SelectedItems.Add(item); }
@@ -375,7 +434,7 @@ public partial class MainWindow : Window
     }
     private async void AnalyzeDuplicates_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy) return;
+        if (_busy || _scanning) return;
         var dialog = new OpenFolderDialog { Title = "Choisir un dossier personnel pour rechercher les doublons", InitialDirectory = Path.Combine(DeletionSafetyPolicy.Home, "Downloads") };
         if (dialog.ShowDialog(this) != true) return;
         SetBusy(true); _operationCancellation = new();
@@ -399,31 +458,47 @@ public partial class MainWindow : Window
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(true);
     private async Task CheckForUpdatesAsync(bool manual)
     {
+        if (!CheckUpdateButton.IsEnabled) return;
         CheckUpdateButton.IsEnabled = false;
         try
         {
             _availableUpdate = await _updates.CheckAsync(manual, CancellationToken.None);
             if (_availableUpdate is not null)
             {
-                UpdateText.Text = $"StorageScope {_availableUpdate.Version} est disponible.\n{_availableUpdate.Notes}";
+                UpdateText.Text = $"StorageScope {_availableUpdate.Version} est disponible.\n{_availableUpdate.Notes}" + (string.IsNullOrWhiteSpace(UpdateService.ExpectedPublisher) && string.IsNullOrWhiteSpace(_availableUpdate.AuthenticodePublisher) ? "\nPaquet vérifié par la clé de mise à jour StorageScope ; sans signature Authenticode Windows. Windows peut demander une confirmation." : "");
+                InstallUpdateButton.Content = "Mettre à jour et redémarrer";
                 UpdateBanner.Visibility = Visibility.Visible;
             }
-            else if (manual) MessageBox.Show("Vous disposez de la dernière version compatible publiée.", "Mises à jour");
+            else if (_updates.ManualDownloadUrl is not null)
+            {
+                UpdateText.Text = _updates.Status; InstallUpdateButton.Content = "Ouvrir la release officielle"; UpdateBanner.Visibility = Visibility.Visible;
+            }
+            else if (manual) MessageBox.Show(_updates.Status, "Mises à jour");
+            CheckUpdateButton.ToolTip = _updates.Status;
         }
-        catch (Exception error) { if (manual) MessageBox.Show("Vérification indisponible. Vous pouvez continuer à utiliser StorageScope hors ligne.\n\n" + error.Message, "Mises à jour"); }
+        catch (Exception error)
+        {
+            Diagnostics.Write("vérification-mise-à-jour", error);
+            CheckUpdateButton.ToolTip = "Vérification indisponible. Le logiciel reste utilisable hors ligne.";
+            if (manual) MessageBox.Show("Vérification indisponible. Vous pouvez continuer à utiliser StorageScope hors ligne.\n\n" + error.Message, "Mises à jour");
+        }
         finally { CheckUpdateButton.IsEnabled = true; }
     }
     private void DismissUpdate_Click(object sender, RoutedEventArgs e) => UpdateBanner.Visibility = Visibility.Collapsed;
     private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
     {
-        if (_busy || !ScanButton.IsEnabled || _availableUpdate is null) return;
+        if (_busy || _scanning) { MessageBox.Show("Terminez le nettoyage ou l’analyse avant la mise à jour.", "Mise à jour reportée"); return; }
+        if (_availableUpdate is null) { if (_updates.ManualDownloadUrl is string url) SafeOpen(url); return; }
+        var manifest = _availableUpdate;
         SetBusy(true); _operationCancellation = new();
         try
         {
-            var path = await _updates.DownloadVerifiedAsync(_availableUpdate, new Progress<double>(fraction => ScanStatusText.Text = $"Téléchargement vérifié : {fraction:P0}"), _operationCancellation.Token);
+            Diagnostics.Action = "mise-à-jour"; Diagnostics.Write("action");
+            var path = await _updates.DownloadVerifiedAsync(manifest, new Progress<double>(fraction => ScanStatusText.Text = $"Téléchargement : {fraction:P0}"), _operationCancellation.Token);
             using var guard = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            await Task.Run(() => UpdateService.VerifyInstaller(path, _availableUpdate), _operationCancellation.Token);
-            Process.Start(new ProcessStartInfo(path, "/UPDATE /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS") { UseShellExecute = false });
+            await Task.Run(() => UpdateService.VerifyInstaller(path, manifest), _operationCancellation.Token);
+            Process.Start(new ProcessStartInfo(path, "/UPDATE /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS") { UseShellExecute = true });
+            SetBusy(false);
             Application.Current.Shutdown();
         }
         catch (OperationCanceledException) { ScanStatusText.Text = "Mise à jour annulée. La version actuelle reste utilisable."; }
@@ -434,10 +509,17 @@ public partial class MainWindow : Window
     private static void SafeOpen(string path)
     {
         try { ExplorerService.Open(path); }
-        catch (Exception error) { MessageBox.Show(error.Message, "Impossible d’ouvrir l’élément", MessageBoxButton.OK, MessageBoxImage.Error); }
+        catch (Exception error) { ShowError("Impossible d’ouvrir l’élément.", error); }
     }
-
-    private static void ShowError(string title, Exception error) => MessageBox.Show($"{title}\n\n{error.Message}", "StorageScope", MessageBoxButton.OK, MessageBoxImage.Error);
+    private static void SafeReveal(string path)
+    {
+        try { ExplorerService.ShowInExplorer(path); } catch (Exception error) { ShowError("Explorateur indisponible.", error); }
+    }
+    private static void ShowError(string title, Exception error)
+    {
+        Diagnostics.Write(title, error);
+        MessageBox.Show($"{title}\n\n{error.Message}", "StorageScope", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
 }
 
 public sealed class DriveChoice

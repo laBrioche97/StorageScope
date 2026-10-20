@@ -10,7 +10,11 @@ using System.Text.Json;
 namespace StorageScope.Windows;
 
 public sealed record UpdateManifest(int SchemaVersion, string Version, int MinimumWindowsBuild, string Notes,
-    string DownloadUrl, string Sha256, long Size, string Architecture);
+    string DownloadUrl, string Sha256, long Size, string Architecture, string? AuthenticodePublisher = null)
+{
+    internal byte[]? SignedPayload { get; init; }
+    internal byte[]? Signature { get; init; }
+}
 
 public sealed class UpdateService
 {
@@ -30,33 +34,45 @@ public sealed class UpdateService
         }
     }
     public static string? ExpectedPublisher => Assembly.GetExecutingAssembly().GetCustomAttributes<AssemblyMetadataAttribute>().FirstOrDefault(item => item.Key == "UpdatePublisher")?.Value;
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(PublicKey) && !string.IsNullOrWhiteSpace(ExpectedPublisher);
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(PublicKey);
+    public string Status { get; private set; } = "Vérification non effectuée.";
+    public string? ManualDownloadUrl { get; private set; }
 
-    public UpdateService() { _http.DefaultRequestHeaders.UserAgent.ParseAdd("StorageScope/3.0"); }
+    public UpdateService() { _http.DefaultRequestHeaders.UserAgent.ParseAdd("StorageScope/" + CurrentVersion); }
 
     public async Task<UpdateManifest?> CheckAsync(bool manual, CancellationToken token)
     {
-        if (!IsConfigured) { if (manual) throw new IOException("Les mises à jour seront activées dans les versions signées de StorageScope. Cette version de développement fonctionne entièrement hors ligne."); return null; }
         if (!manual && File.Exists(_state) && DateTimeOffset.TryParse(await File.ReadAllTextAsync(_state, token), out var last) && DateTimeOffset.UtcNow - last < TimeSpan.FromDays(1)) return null;
-        Directory.CreateDirectory(Path.GetDirectoryName(_state)!);
-        await File.WriteAllTextAsync(_state, DateTimeOffset.UtcNow.ToString("O"), token);
+        Status = "Recherche d’une mise à jour…"; ManualDownloadUrl = null;
         var releaseBytes = await ReadLimitedAsync("https://api.github.com/repos/laBrioche97/StorageScope/releases/latest", 256 * 1024, token);
         using var release = JsonDocument.Parse(releaseBytes);
         var root = release.RootElement;
-        if (root.GetProperty("draft").GetBoolean() || root.GetProperty("prerelease").GetBoolean()) return null;
+        if (root.GetProperty("draft").GetBoolean() || root.GetProperty("prerelease").GetBoolean()) throw new IOException("Aucune release stable vérifiable.");
         var tag = root.GetProperty("tag_name").GetString() ?? "";
-        if (!Version.TryParse(tag.TrimStart('v'), out var version) || version <= CurrentVersion) return null;
+        if (!Version.TryParse(tag.TrimStart('v'), out var version)) throw new IOException("Version de release invalide.");
+        async Task Checked()
+        {
+            try { Directory.CreateDirectory(Path.GetDirectoryName(_state)!); await File.WriteAllTextAsync(_state, DateTimeOffset.UtcNow.ToString("O"), token); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Diagnostics.Write("état-mise-à-jour", error); }
+        }
+        if (version <= CurrentVersion) { Status = "Vous disposez de la dernière version compatible publiée."; await Checked(); return null; }
         var assets = root.GetProperty("assets").EnumerateArray().ToArray();
         string? Asset(string name) => assets.FirstOrDefault(item => item.GetProperty("name").GetString() == name).ValueKind == JsonValueKind.Undefined ? null
             : assets.First(item => item.GetProperty("name").GetString() == name).GetProperty("browser_download_url").GetString();
         var manifestUrl = Asset("windows-update.json");
         var signatureUrl = Asset("windows-update.json.sig");
-        if (manifestUrl is null || signatureUrl is null) return null;
+        if (!IsConfigured || manifestUrl is null || signatureUrl is null)
+        {
+            Status = $"StorageScope {version} est disponible. L’installation automatique n’est pas configurée pour cette distribution. Téléchargez l’installateur depuis la release officielle.";
+            ManualDownloadUrl = "https://github.com/laBrioche97/StorageScope/releases/tag/" + Uri.EscapeDataString(tag);
+            await Checked(); return null;
+        }
         if (!IsReleaseUrl(manifestUrl, tag, "windows-update.json") || !IsReleaseUrl(signatureUrl, tag, "windows-update.json.sig")) throw new IOException("Source de mise à jour inattendue.");
         var manifest = await ReadLimitedAsync(manifestUrl, 64 * 1024, token);
         var signature = await ReadLimitedAsync(signatureUrl, 1024, token);
         var validated = ValidateManifest(manifest, signature, PublicKey!, tag, CurrentVersion);
-        if (Environment.OSVersion.Version.Build < validated.MinimumWindowsBuild) return null;
+        if (Environment.OSVersion.Version.Build < validated.MinimumWindowsBuild) { Status = "La nouvelle version demande une version plus récente de Windows."; await Checked(); return null; }
+        Status = $"StorageScope {validated.Version} est disponible."; await Checked();
         return validated;
     }
 
@@ -66,11 +82,11 @@ public sealed class UpdateService
         rsa.ImportFromPem(publicKey);
         if (rsa.KeySize < 3072 || !rsa.VerifyData(bytes, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pss)) throw new CryptographicException("Signature du manifeste invalide.");
         var manifest = JsonSerializer.Deserialize<UpdateManifest>(bytes, JsonOptions) ?? throw new IOException("Manifeste absent.");
-        if (manifest.SchemaVersion != 1 || !Version.TryParse(manifest.Version, out var version) || version <= current || tag != "v" + manifest.Version
+        if (manifest.SchemaVersion is not (1 or 2) || !Version.TryParse(manifest.Version, out var version) || version <= current || tag != "v" + manifest.Version
             || manifest.Architecture != "universal" || manifest.MinimumWindowsBuild < 19041 || manifest.Size <= 0 || manifest.Size > 512L * 1024 * 1024
             || !System.Text.RegularExpressions.Regex.IsMatch(manifest.Sha256 ?? "", "^[a-fA-F0-9]{64}$")
-            || !IsReleaseUrl(manifest.DownloadUrl, tag, "StorageScope-Windows-Setup.exe")) throw new IOException("Métadonnées de mise à jour incompatibles.");
-        return manifest;
+            || !(IsReleaseUrl(manifest.DownloadUrl, tag, "StorageScope-Windows-Setup.exe") || manifest.SchemaVersion == 2 && IsReleaseUrl(manifest.DownloadUrl, tag, "StorageScope-Windows-Setup-DEVELOPMENT.exe"))) throw new IOException("Métadonnées de mise à jour incompatibles.");
+        return manifest with { SignedPayload = bytes.ToArray(), Signature = signature.ToArray() };
     }
 
     private static bool IsReleaseUrl(string url, string tag, string file) => url == Repository + Uri.EscapeDataString(tag) + "/" + file;
@@ -110,10 +126,46 @@ public sealed class UpdateService
 
     public static void VerifyInstaller(string path, UpdateManifest manifest)
     {
+        if (manifest.SignedPayload is null || manifest.Signature is null || PublicKey is null) throw new CryptographicException("Preuve de signature du manifeste absente.");
+        var verified = ValidateManifest(manifest.SignedPayload, manifest.Signature, PublicKey, "v" + manifest.Version, CurrentVersion);
+        if (!JsonSerializer.SerializeToUtf8Bytes(verified).SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(manifest))) throw new CryptographicException("Le manifeste a changé après sa vérification.");
+        VerifyContents(path, manifest);
+        var policyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StorageScope", "update-publisher.txt");
+        var pinnedPublisher = File.Exists(policyPath) ? File.ReadAllText(policyPath) : null;
+        var publisher = !string.IsNullOrWhiteSpace(ExpectedPublisher) ? ExpectedPublisher : !string.IsNullOrWhiteSpace(pinnedPublisher) ? pinnedPublisher : manifest.AuthenticodePublisher;
+        if (!string.IsNullOrWhiteSpace(publisher))
+        {
+            if (!string.IsNullOrWhiteSpace(manifest.AuthenticodePublisher) && manifest.AuthenticodePublisher != publisher) throw new CryptographicException("Changement d’éditeur refusé.");
+            Authenticode.Verify(path, publisher);
+            Directory.CreateDirectory(Path.GetDirectoryName(policyPath)!); File.WriteAllText(policyPath, publisher);
+        }
+        else if (manifest.SchemaVersion == 1) throw new CryptographicException("Identité de l’éditeur non configurée.");
+    }
+
+    internal static void VerifyContents(string path, UpdateManifest manifest)
+    {
         using var stream = File.OpenRead(path);
+        if (stream.Length != manifest.Size) throw new CryptographicException("Taille du paquet invalide.");
         var hash = Convert.ToHexString(SHA256.HashData(stream));
         if (!hash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase)) throw new CryptographicException("Intégrité du paquet invalide.");
-        Authenticode.Verify(path, ExpectedPublisher ?? throw new CryptographicException("Identité de l’éditeur non configurée."));
+    }
+
+    internal static void CleanupDownloads()
+    {
+        try
+        {
+            var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StorageScope", "Updates");
+            if (!Directory.Exists(root) || !ApplicationEnrichment.SafeLocal(root)) return;
+            foreach (var directory in Directory.EnumerateDirectories(root))
+            {
+                if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out _) || !ApplicationEnrichment.SafeLocal(directory)) continue;
+                foreach (var path in Directory.EnumerateFiles(directory))
+                    if (Path.GetFileName(path) == "StorageScope-Windows-Setup.exe" && ApplicationEnrichment.SafeLocal(path))
+                        try { File.Delete(path); } catch (IOException) { }
+                if (!Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { Diagnostics.Write("cache-mise-à-jour", error); }
     }
 
     private async Task<byte[]> ReadLimitedAsync(string url, int limit, CancellationToken token)

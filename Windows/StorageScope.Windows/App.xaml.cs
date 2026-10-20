@@ -1,4 +1,5 @@
 using System.Windows;
+using System.IO;
 using System.Windows.Media;
 using Microsoft.Win32;
 
@@ -11,16 +12,24 @@ public partial class App : Application
         ApplyTheme();
         if (e.Args.Contains("--verify-installation"))
         {
-            try { var window = new MainWindow(); window.Measure(new Size(1120, 800)); window.Arrange(new Rect(0, 0, 1120, 800)); Shutdown(0); }
-            catch { Shutdown(1); }
+            try
+            {
+                if (Environment.GetEnvironmentVariable("CI") == "true" && Environment.GetEnvironmentVariable("STORAGESCOPE_TEST_HEALTH_FAILURE") == "1") throw new IOException("Injected isolated-runner health failure.");
+                var window = new MainWindow(); window.Measure(new Size(1120, 800)); window.Arrange(new Rect(0, 0, 1120, 800)); Shutdown(0);
+            }
+            catch (Exception error) { Diagnostics.Write("installation-health", error); Shutdown(1); }
             return;
         }
         SystemEvents.UserPreferenceChanged += OnPreferenceChanged;
         base.OnStartup(e);
         new MainWindow().Show();
+        if (Diagnostics.PreviousCrash) MessageBox.Show("StorageScope s’est arrêté de façon inattendue lors de la session précédente. Les opérations interrompues ne sont pas relancées. Le menu ⋯ permet d’ouvrir ou d’exporter les diagnostics.", "Diagnostic de la session précédente");
     }
     protected override void OnExit(ExitEventArgs e) { SystemEvents.UserPreferenceChanged -= OnPreferenceChanged; base.OnExit(e); }
-    private void OnPreferenceChanged(object sender, UserPreferenceChangedEventArgs e) => Dispatcher.Invoke(ApplyTheme);
+    private void OnPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (!Dispatcher.HasShutdownStarted) Dispatcher.BeginInvoke(() => { if (!Dispatcher.HasShutdownStarted) ApplyTheme(); });
+    }
     private void ApplyTheme()
     {
         var dark = (Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1) as int?) == 0;

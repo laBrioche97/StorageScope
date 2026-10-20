@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using Microsoft.VisualBasic.FileIO;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace StorageScope.Windows;
 
@@ -36,6 +37,21 @@ public static class DirectoryBrowser
 
 public static class ExplorerService
 {
+    public static void Properties(string path)
+    {
+        var info = new ShellExecuteInfo { Size = Marshal.SizeOf<ShellExecuteInfo>(), Mask = 0x0000000C, Verb = "properties", File = path, Show = 1 };
+        if (!ShellExecuteEx(ref info)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+    }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ShellExecuteInfo
+    {
+        public int Size; public uint Mask; public IntPtr Window;
+        [MarshalAs(UnmanagedType.LPWStr)] public string Verb;
+        [MarshalAs(UnmanagedType.LPWStr)] public string File;
+        public IntPtr Parameters, Directory; public int Show; public IntPtr Instance, IdList, Class; public IntPtr ClassKey; public uint HotKey; public IntPtr Icon, Process;
+    }
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)] private static extern bool ShellExecuteEx(ref ShellExecuteInfo info);
     public static void ShowInExplorer(string path)
     {
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });

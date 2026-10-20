@@ -289,17 +289,29 @@ public sealed class InstalledProductCatalog
             try { result.AddRange(await provider.DetectAsync(token)); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException or COMException) { }
         }
+        return Merge(result);
+    }
+    internal static IReadOnlyList<InstalledApplication> Merge(List<InstalledApplication> result)
+    {
+        static string? Canonical(string? path)
+        {
+            try { return path is not null && Path.IsPathFullyQualified(path) ? Path.GetFullPath(path).TrimEnd('\\') : path; }
+            catch (ArgumentException) { return path; }
+        }
+        result = result.Select(item => item with { InstallLocation = Canonical(item.InstallLocation), ManifestPath = Canonical(item.ManifestPath) }).ToList();
         foreach (var manifest in result.Where(item => item.ManifestPath is not null).ToList())
         {
-            var registration = result.FirstOrDefault(item => item.RegistrationPath is not null && item.Provider == manifest.Provider && item.ProductId == manifest.ProductId
-                && (string.IsNullOrWhiteSpace(item.InstallLocation) || item.InstallLocation.TrimEnd('\\').Equals(manifest.InstallLocation?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)));
+            var registrations = result.Where(item => item.RegistrationPath is not null && item.Provider == manifest.Provider && string.Equals(item.ProductId, manifest.ProductId, StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrWhiteSpace(item.InstallLocation) || item.InstallLocation.TrimEnd('\\').Equals(manifest.InstallLocation?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))).ToList();
+            var registration = registrations.OrderByDescending(item => !string.IsNullOrWhiteSpace(item.IconLocation)).FirstOrDefault();
             if (registration is null) continue;
-            result.Remove(registration); result.Remove(manifest);
+            foreach (var item in registrations) result.Remove(item);
+            result.Remove(manifest);
             result.Add(registration with { ManifestPath = manifest.ManifestPath, ManifestSnapshot = manifest.ManifestSnapshot, InstallLocation = manifest.InstallLocation, EstimatedBytes = manifest.EstimatedBytes ?? registration.EstimatedBytes });
         }
         var unique = result.GroupBy(item => item.PackageFullName ?? (item.InstallLocation is { Length: > 0 } location && Path.IsPathFullyQualified(location) ? location.TrimEnd('\\') : item.Provider + ":" + item.ProductId + ":" + item.Name), StringComparer.OrdinalIgnoreCase)
             .Select(group => group.OrderByDescending(item => item.RegistrationPath is not null).First()).ToList();
-        return await Task.Run<IReadOnlyList<InstalledApplication>>(() => unique.Select(item => { token.ThrowIfCancellationRequested(); return item with { Icon = ApplicationIcons.Load(item) }; }).ToList(), token);
+        return unique;
     }
     public IInstalledProductProvider ProviderFor(InstalledApplication product) => product.PackageFullName is not null ? _providers[2] : product.RegistrationPath is not null ? _providers[0] : _providers[1];
 }

@@ -8,17 +8,22 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Windows.Data;
+using System.Windows.Automation.Peers;
 using StorageScope.Windows;
 
 internal static class Program
 {
     private static int _passed;
     private static string _root = "";
+    private static IReadOnlyList<InstalledApplication>? _auditedApplications;
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--probe-exit")) { Thread.Sleep(500); return unchecked((int)0xC0000005); }
         _root = Path.Combine(Environment.CurrentDirectory, ".test-data", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
+        // Every diagnostic written by the test process stays in its disposable fixture tree.
+        Diagnostics.TestDirectory = Path.Combine(_root, "diagnostics");
         try
         {
             Test("protected system and profile roots", () =>
@@ -147,6 +152,13 @@ internal static class Program
                 Check(!new RegisteredProductProvider().Prepare(product).CanProceed);
                 Check(!new RegisteredProductProvider().VerifyAsync(product, CancellationToken.None).GetAwaiter().GetResult());
             });
+            Test("Steam manifest merges mirrored 32 and 64 bit registrations once", () =>
+            {
+                var registration = new InstalledApplication("Game", "Steam", null, null, "steam://uninstall/123", "Steam", "Steam App 123", "CurrentUser|Registry64|Steam App 123", IconLocation: "C:/icon.ico");
+                var manifest = new InstalledApplication("Game", "Steam", null, Path.Combine(_root, "game"), "steam://uninstall/123", "Steam", "Steam App 123", ManifestPath: Path.Combine(_root, "appmanifest_123.acf"), EstimatedBytes: 1234);
+                var merged = InstalledProductCatalog.Merge([registration, registration with { RegistrationPath = "CurrentUser|Registry32|Steam App 123" }, manifest, manifest with { InstallLocation = manifest.InstallLocation!.Replace('\\', '/'), ManifestPath = manifest.ManifestPath!.Replace('\\', '/') }]);
+                Check(merged.Count == 1 && merged[0].ManifestPath == manifest.ManifestPath && merged[0].EstimatedBytes == 1234 && merged[0].IconLocation == registration.IconLocation);
+            });
             Test("replaced uninstaller is rejected before execution", () =>
             {
                 var executable = Fixture("fixture-uninstaller.exe","original fixture, never executed");
@@ -175,6 +187,41 @@ internal static class Program
                 }
             });
             Test("unsigned executable cannot be trusted", () => Throws(() => Authenticode.Verify(Fixture("unsigned.exe", "not an executable"), "CN=La Brioche")));
+            Test("package verification rejects altered bytes and incomplete downloads", () =>
+            {
+                var path = Fixture("package-fixture.exe", "signed package fixture");
+                var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+                var manifest = new UpdateManifest(2, "3.3.0", 19041, "", "https://github.com/laBrioche97/StorageScope/releases/download/v3.3.0/StorageScope-Windows-Setup-DEVELOPMENT.exe", hash, new FileInfo(path).Length, "universal");
+                UpdateService.VerifyContents(path, manifest);
+                File.WriteAllText(path, "altered package data!!"); Throws(() => UpdateService.VerifyContents(path, manifest));
+                File.WriteAllText(path, "partial"); Throws(() => UpdateService.VerifyContents(path, manifest));
+                Throws(() => UpdateService.VerifyInstaller(path, manifest));
+                using var rsa = RSA.Create(3072); var bytes = JsonSerializer.SerializeToUtf8Bytes(manifest);
+                Check(UpdateService.ValidateManifest(bytes, rsa.SignData(bytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pss), rsa.ExportSubjectPublicKeyInfoPem(), "v3.3.0", new Version(3,2,0)).SchemaVersion == 2);
+            });
+            Test("diagnostics rotate redact profile paths and detect native exit codes", () =>
+            {
+                Diagnostics.TestDirectory = Path.Combine(_root, "diagnostics");
+                try
+                {
+                    Directory.CreateDirectory(Diagnostics.DirectoryPath);
+                    File.WriteAllText(Diagnostics.LogPath, new string('x', 2 * 1024 * 1024));
+                    Diagnostics.Write("fixture", new IOException(Path.Combine(DeletionSafetyPolicy.Home, "private-name")));
+                    Check(File.Exists(Diagnostics.LogPath + ".1"));
+                    Check(!File.ReadAllText(Diagnostics.LogPath).Contains(DeletionSafetyPolicy.Home, StringComparison.OrdinalIgnoreCase));
+                    var session = Guid.NewGuid().ToString("N");
+                    File.WriteAllText(Path.Combine(Diagnostics.DirectoryPath, session + ".session"), "running");
+                    var probe = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
+                    if (string.Equals(Path.GetFileNameWithoutExtension(Environment.ProcessPath), "dotnet", StringComparison.OrdinalIgnoreCase)) probe.ArgumentList.Add(typeof(Program).Assembly.Location);
+                    probe.ArgumentList.Add("--probe-exit");
+                    using var process = System.Diagnostics.Process.Start(probe)!;
+                    var ticks = process.StartTime.ToUniversalTime().Ticks;
+                    Diagnostics.Watch(["--watch-session", process.Id.ToString(), ticks.ToString(), session]);
+                    Check(File.ReadAllText(Diagnostics.LogPath).Contains("0xC0000005"));
+                    Check(File.Exists(Path.Combine(Diagnostics.DirectoryPath, "previous-crash")));
+                }
+                finally { Diagnostics.TestDirectory = Path.Combine(_root, "diagnostics"); }
+            });
             Test("category files are retained independently and bounded per category", () =>
             {
                 var index = new CategoryFileIndex();
@@ -206,7 +253,63 @@ internal static class Program
                 Check(ReferenceEquals(ApplicationIcons.Load(new InstalledApplication("Bad",null,null,null,null,IconLocation:corrupt)),ApplicationIcons.Fallback));
                 Check(!ReferenceEquals(ApplicationIcons.Load(new InstalledApplication("StorageScope",null,null,null,null,IconLocation:Path.GetFullPath("Packaging/Branding/StorageScope.ico"))),ApplicationIcons.Fallback));
             });
-            Test("offline window construction and responsive rendering", () => Render(args.FirstOrDefault()));
+            Test("background decoded icons are safe for automation and UI access", () =>
+            {
+                var sample = new InstalledApplication("Background icon", null, null, null, null, IconLocation: Path.GetFullPath("Packaging/Branding/StorageScope.ico"));
+                var decoded = Task.Run(() => sample with { Icon = ApplicationIcons.Load(sample) }).GetAwaiter().GetResult();
+                Check(decoded.ToString() == "Background icon");
+                Check(decoded.Icon.IsFrozen && decoded.Icon is BitmapSource);
+                _ = decoded.Icon.ToString();
+                _ = new ListBoxItemAutomationPeer(decoded, new ListBoxAutomationPeer(new ListBox())).GetName();
+            });
+            Test("application sizes measure independently without inventing zero", () =>
+            {
+                var folder = Path.Combine(_root, "application-size"); Directory.CreateDirectory(folder);
+                File.WriteAllBytes(Path.Combine(folder, "data.bin"), new byte[4096]);
+                var app = ApplicationEnrichment.Measure(new InstalledApplication("Measured", null, null, folder, null), default);
+                Check(app.EstimatedBytes == 4096 && app.SizeStatus == "Mesurée");
+                var unknown = ApplicationEnrichment.Measure(new InstalledApplication("Unknown", null, null, null, null), default);
+                Check(!unknown.HasKnownSize && unknown.DisplaySize == "Indisponible");
+            });
+            if (args.Contains("--shell-integration")) Test("real isolated recycle worker and shell restoration", () =>
+            {
+                var path = Fixture("recycle-integration-" + Guid.NewGuid().ToString("N") + ".txt", "Disposable StorageScope test fixture");
+                RecycleWorker.Move(Select(path));
+                Check(!File.Exists(path));
+                dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application")!)!;
+                dynamic bin = shell.NameSpace(10);
+                var restored = false;
+                foreach (dynamic item in bin.Items())
+                {
+                    if ((string)item.Name != Path.GetFileName(path) && (string)item.Name != Path.GetFileNameWithoutExtension(path)) continue;
+                    if (!string.Equals((string)item.ExtendedProperty("System.Recycle.DeletedFrom"), Path.GetDirectoryName(path), StringComparison.OrdinalIgnoreCase)) continue;
+                    item.InvokeVerb("undelete"); restored = true; break;
+                }
+                Check(restored);
+                Check(SpinWait.SpinUntil(() => File.Exists(path), TimeSpan.FromSeconds(10)));
+            });
+            if (args.Contains("--inventory-audit")) Test("real local inventory resolves installed icons and independent footprints", () =>
+            {
+                _auditedApplications = Task.Run(async () =>
+                {
+                    var detected = await new InstalledProductCatalog().DetectAsync(default);
+                    using var slots = new SemaphoreSlim(3);
+                    return await Task.WhenAll(detected.Select(async (item, index) =>
+                    {
+                        await slots.WaitAsync();
+                        try
+                        {
+                            var enriched = item with { Icon = await ApplicationEnrichment.IconAsync(item, default) };
+                            return index < 8 || item.Provider == "Steam" ? await Task.Run(() => ApplicationEnrichment.Measure(enriched, default)) : enriched;
+                        }
+                        finally { slots.Release(); }
+                    }));
+                }).GetAwaiter().GetResult();
+                var resolved = _auditedApplications.Count(item => !ReferenceEquals(item.Icon, ApplicationIcons.Fallback));
+                Console.WriteLine(JsonSerializer.Serialize(new { installed = _auditedApplications.Count, logos = resolved, steamLogos = _auditedApplications.Count(item => item.Provider == "Steam" && !ReferenceEquals(item.Icon, ApplicationIcons.Fallback)), measured = _auditedApplications.Count(item => item.SizeStatus == "Mesurée"), sizesAvailable = _auditedApplications.Count(item => item.HasKnownSize) }));
+                Check(_auditedApplications.Count > 0 && resolved > 0);
+            });
+            Test("offline window construction and responsive rendering", () => Render(args.FirstOrDefault(arg => !arg.StartsWith("--"))));
             Console.WriteLine($"PASS: {_passed} Windows safety, update and rendering scenarios.");
             return 0;
         }
@@ -247,22 +350,41 @@ internal static class Program
             Check(categories.Items.OfType<ScanEntry>().Where(item => item.Category == StorageCategory.Images).First().Size == 800_000_000);
             Check(applications.Items.OfType<InstalledApplication>().First().Provider == "Steam");
             Check(!applications.Items.OfType<InstalledApplication>().Last().HasKnownSize);
+            tab.SelectedIndex = 4;
             ((ComboBox)window.FindName("ResultSort")).SelectedIndex = 1;
             Check(applications.Items.OfType<InstalledApplication>().First().Name == "StorageScope");
             Check(!applications.Items.OfType<InstalledApplication>().Last().HasKnownSize);
             ((ComboBox)window.FindName("ResultSort")).SelectedIndex = 0;
+            tab.SelectedIndex = 0;
         });
         Test("rendered filters refresh existing rows and preserve category boundaries", () => {
             var search = (TextBox)window.FindName("ListSearch"); search.Text = "projet";
             Check(largest.Items.OfType<ScanEntry>().Single().Name.Contains("Projet")); search.Clear();
             var size = (ComboBox)window.FindName("MinimumSizeFilter"); size.SelectedIndex = 3;
-            Check(largest.Items.OfType<ScanEntry>().Count() == 1 && applications.Items.OfType<InstalledApplication>().Count() == 1); size.SelectedIndex = 0;
+            Check(largest.Items.OfType<ScanEntry>().Count() == 1 && applications.Items.OfType<InstalledApplication>().Count() == 3); size.SelectedIndex = 0;
             var category = (ComboBox)window.FindName("CategoryFilter"); category.SelectedItem = category.Items.OfType<CategoryChoice>().Single(item => item.Category == StorageCategory.Images);
-            Check(categories.Items.OfType<ScanEntry>().Count() == 2 && largest.Items.OfType<ScanEntry>().Count() == 0); category.SelectedIndex = 0;
+            Check(categories.Items.OfType<ScanEntry>().Count() == 3 && largest.Items.OfType<ScanEntry>().Count() == 0); category.SelectedIndex = 0;
             var kind = (ComboBox)window.FindName("EntryKindFilter"); kind.SelectedIndex = 2;
             Check(largest.Items.OfType<ScanEntry>().Count() == 0); kind.SelectedIndex = 0;
         });
+        Test("category navigation clears incompatible filters and tabs retain their own search", () =>
+        {
+            tab.SelectedIndex = 4;
+            ((TextBox)window.FindName("ListSearch")).Text = "Steam";
+            tab.SelectedIndex = 2;
+            var summary = (ComboBox)window.FindName("CategorySummary");
+            summary.ItemsSource = new[] { new CategoryChoice("Toutes", null), new CategoryChoice("Images", StorageCategory.Images) };
+            ((TextBox)window.FindName("ListSearch")).Text = "missing";
+            ((ComboBox)window.FindName("EntryKindFilter")).SelectedIndex = 2;
+            summary.SelectedIndex = 1;
+            Check(categories.Items.OfType<ScanEntry>().Count() == 2);
+            Check(categories.Items.OfType<ScanEntry>().First().Size == 800_000_000);
+            tab.SelectedIndex = 4;
+            Check(((TextBox)window.FindName("ListSearch")).Text == "Steam");
+            ((TextBox)window.FindName("ListSearch")).Clear(); tab.SelectedIndex = 0;
+        });
         var content = (Grid)window.Content;
+        if (_auditedApplications is not null) { applicationSource.Clear(); foreach (var item in _auditedApplications) applicationSource.Add(item); }
         var drive = (ComboBox)window.FindName("DrivePicker");
         drive.ItemsSource = new[] { new DriveChoice(new DriveInfo(Path.GetPathRoot(_root)!)) }; drive.SelectedIndex = 0;
         window.Show();

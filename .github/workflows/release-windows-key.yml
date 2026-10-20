@@ -1,0 +1,94 @@
+name: Publish Windows release with verified update manifest
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable vX.Y.Z tag
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Build and test safety, automation and real recycle operation
+        shell: pwsh
+        run: |
+          dotnet build Windows/StorageScope.Windows -c Release -p:TreatWarningsAsErrors=true
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+          dotnet run --project Windows/StorageScope.Windows.Tests -c Release -- --shell-integration
+          if ($LASTEXITCODE -ne 0) { throw 'Safety tests failed.' }
+      - name: Prepare verified installer compiler
+        shell: pwsh
+        run: |
+          $download = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $download
+          if ((Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant() -ne '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') { throw 'Compiler checksum mismatch.' }
+          $compiler = Join-Path $env:RUNNER_TEMP 'inno'
+          $process = Start-Process $download -ArgumentList @('/PORTABLE=1','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$compiler+'"')) -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw 'Compiler preparation failed.' }
+          $compiler >> $env:GITHUB_PATH
+      - name: Build native x64 and ARM64 with signed update metadata
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          WINDOWS_UPDATE_PRIVATE_KEY_PEM_BASE64: ${{ secrets.WINDOWS_UPDATE_PRIVATE_KEY_PEM_BASE64 }}
+        run: ./scripts/build-windows-release.ps1 -Tag $env:RELEASE_TAG -KeySigned
+      - name: Test installation, rollback and replacement
+        shell: pwsh
+        run: ./scripts/test-windows-installation.ps1
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-windows-key
+          path: release-assets/*
+          if-no-files-found: error
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
+      - run: swift run --disable-sandbox StorageCoreTests
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-windows-key
+          path: release-assets
+      - name: Publish verified Windows packages together
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          for FILE in StorageScope-Windows-Setup-DEVELOPMENT.exe StorageScope-Windows-Setup-DEVELOPMENT.exe.sha256 windows-update.json windows-update.json.sig; do
+            [[ -s "release-assets/$FILE" && ! -L "release-assets/$FILE" ]]
+          done
+          (cd release-assets && sha256sum --check ./*.sha256)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then echo 'Release already exists; use a new version.' >&2; exit 1; fi
+          gh release create "$RELEASE_TAG" release-assets/* --draft --verify-tag --title "StorageScope ${RELEASE_TAG#v}" --notes-file RELEASE_NOTES.md
+          gh release edit "$RELEASE_TAG" --draft=false --latest

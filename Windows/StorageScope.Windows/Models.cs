@@ -66,8 +66,11 @@ public sealed record InstalledApplication(string Name, string? Publisher, string
     public string Source => Provider;
     public long SortSize => EstimatedBytes ?? 0;
     public bool HasKnownSize => EstimatedBytes.HasValue;
-    public string DisplaySize => EstimatedBytes is long size ? SizeFormatter.Format(size) : "Non disponible";
+    public string SizeStatus { get; init; } = EstimatedBytes.HasValue ? "Taille déclarée" : "Calcul en cours";
+    public string DisplaySize => EstimatedBytes is long size ? $"{SizeFormatter.Format(size)} · {SizeStatus}" : SizeStatus;
     public ImageSource Icon { get; init; } = ApplicationIcons.Fallback;
+    // UI Automation must never stringify a decoder owned by an inventory worker.
+    public override string ToString() => Name;
 }
 
 public sealed class ScanResult
