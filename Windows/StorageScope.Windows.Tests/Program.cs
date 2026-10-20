@@ -324,8 +324,6 @@ internal static class Program
     private static void Render(string? destination)
     {
         var app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
-        ScanResponsivenessTests.Run(_root, Test);
-        if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
         var window = new MainWindow { IsPreviewMode = true, ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000 };
         var tab = (TabControl)window.FindName("MainTabs");
         var largest = (DataGrid)window.FindName("LargestFilesGrid");
@@ -390,6 +388,9 @@ internal static class Program
         var drive = (ComboBox)window.FindName("DrivePicker");
         drive.ItemsSource = new[] { new DriveChoice(new DriveInfo(Path.GetPathRoot(_root)!)) }; drive.SelectedIndex = 0;
         window.Show();
+        window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+        ScanResponsivenessTests.Run(_root, Test);
+        if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
         foreach (var (name, width, height, index, scale, dark, contrast) in new[] { ("windows-overview",1120,800,0,1d,true,false), ("windows-cleanup-small",740,700,3,1d,true,false), ("windows-minimum",740,560,3,1d,true,false), ("windows-cleanup-200",1120,800,3,2d,true,false), ("windows-games-light",1120,800,4,1d,false,false), ("windows-categories",1120,800,2,1d,true,false), ("windows-games-small",740,560,4,1d,true,false), ("windows-filters",1120,800,4,1d,true,false), ("windows-contrast",1120,800,0,1d,false,true) })
         {
             app.ApplyPalette(dark,contrast);

@@ -37,8 +37,8 @@ internal static class ScanResponsivenessTests
             });
             Require(result?.FilesScanned == 4_001 && result.IdentifiedBytes == 4_001 * 7);
             Require(threads.Count > 0 && threads.All(thread => thread != uiThread) && finalizing);
-            Require(heartbeat.Ticks >= 10 && heartbeat.MaximumGap < TimeSpan.FromSeconds(1));
             Console.WriteLine($"Scan heartbeat: {heartbeat.Ticks} input ticks, max gap {heartbeat.MaximumGap.TotalMilliseconds:N0} ms.");
+            Require(heartbeat.Ticks >= 10 && heartbeat.MaximumGap < TimeSpan.FromSeconds(1));
         });
 
         test("cancellation interrupts an in-progress root scan without blocking input", () =>
@@ -61,6 +61,7 @@ internal static class ScanResponsivenessTests
                 try { await task; }
                 catch (OperationCanceledException) { cancelled = true; }
             });
+            Console.WriteLine($"Cancellation heartbeat: {heartbeat.Ticks} input ticks, max gap {heartbeat.MaximumGap.TotalMilliseconds:N0} ms.");
             Require(cancelled && heartbeat.Ticks >= 3 && heartbeat.MaximumGap < TimeSpan.FromSeconds(1));
             Require(File.Exists(Path.Combine(root, "item-00000.bin")));
         });
@@ -152,6 +153,9 @@ internal static class ScanResponsivenessTests
         public TimeSpan MaximumGap { get; private set; }
         public void Run(Func<Task> action)
         {
+            // Measure an operation in an already initialized application, not first-use
+            // creation of WPF's dispatcher window and render infrastructure on a cold runner.
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             var watch = Stopwatch.StartNew(); var last = TimeSpan.Zero;
             void Tick() { var now = watch.Elapsed; var gap = now - last; if (gap > MaximumGap) MaximumGap = gap; last = now; Ticks++; }
             var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(20) };
