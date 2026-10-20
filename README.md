@@ -2,20 +2,20 @@
 
 StorageScope est une application native pour **macOS et Windows**, locale et sans télémétrie, qui répond à une question simple : **qu’est-ce qui occupe réellement le stockage de cet ordinateur ?**
 
-La version 3.0 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
+La version 3.2 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
 
 ## Installer StorageScope 3
 
 Ouvrir [Téléchargements](https://labrioche.tech/telechargements) depuis un ordinateur compatible, puis cliquer sur **Télécharger StorageScope**. Le site ne propose aucun fichier si la plateforme n'est pas prise en charge ou si son installateur n'est pas publié.
 
-- **Windows 10 version 2004 ou ultérieur / Windows 11, x64 ou ARM64** : ouvrir `StorageScope-Windows-Setup.exe`. L'installateur choisit le processeur natif, installe le logiciel dans le profil utilisateur et crée son raccourci. .NET est inclus ; aucun téléchargement de runtime n'est nécessaire.
+- **Windows 10 version 2004 ou ultérieur / Windows 11, x64 ou ARM64** : ouvrir l’installateur proposé ; la distribution actuelle sans certificat Windows porte le nom `StorageScope-Windows-Setup-DEVELOPMENT.exe`. Il choisit le processeur natif, inclut .NET et conserve une seule version après validation du remplacement. Windows peut afficher SmartScreen.
 - **macOS 14 ou ultérieur, Intel ou Apple Silicon** : ouvrir `StorageScope-macOS-universal.pkg`. Le paquet universel installe le logiciel dans Applications. L'Accès complet au disque reste une permission explicite dans les réglages macOS.
 
-Le premier passage depuis une ancienne version ZIP se fait par cet installateur. Les versions 3 signées proposent ensuite leurs mises à jour dans l'application : nouveautés, acceptation, téléchargement vérifié, installation et redémarrage. **Plus tard** laisse la version actuelle utilisable. Le démarrage, l'analyse et le nettoyage n'exigent ni réseau ni compte.
+Le premier passage depuis une version 3.0/3.1 nécessite cet installateur. La version Windows 3.2 embarque une clé publique de mise à jour : nouveautés, acceptation, contrôle du manifeste signé et du paquet, installation puis redémarrage. **Plus tard** laisse la version actuelle utilisable. Le démarrage, l’analyse et le nettoyage n’exigent ni réseau ni compte. Aucun paquet macOS n’est annoncé tant que ses signatures et sa notarisation ne sont pas activées.
 
 ## Nettoyer et désinstaller
 
-La version 3.1 ajoute la recherche et les filtres de catégorie, taille minimale et type, ainsi qu’un filtre de source pour les applications Windows. Les listes commencent par les éléments les plus volumineux ; le tri croissant et le tri alphabétique restent disponibles. Sur Windows, la vue Catégories conserve indépendamment les 500 plus gros fichiers de chaque catégorie, avec ses totaux complets et un accès à l’Explorateur pour poursuivre l’examen. Les tailles d’applications déclarées ou mesurées après analyse servent au tri ; les tailles inconnues restent à la fin. Les icônes sont lues localement, sans téléchargement ; une icône neutre remplace les logos absents ou invalides.
+Les filtres et recherches sont indépendants par section ; le tri commence par les éléments les plus volumineux. Les catégories montrent leurs 500 plus gros fichiers et les totaux de l’analyse. Les tailles d’installations sont calculées dès l’inventaire : déclarées, mesurées, partielles ou indisponibles. Les logos locaux sont prioritaires, puis un cache du CDN officiel Steam est utilisé pour les identifiants Steam connus. Une icône neutre reste affichée sans source fiable. Le clic droit permet notamment d’ouvrir, de révéler l’emplacement, de consulter les propriétés et de préparer le nettoyage ou la désinstallation officielle.
 
 Le parcours est **Analyser → Choisir → Vérifier → Nettoyer**. Les fichiers personnels restent décochés. Les caches reconnus sont expliqués ; une confirmation précède leur mise à la Corbeille. Le bilan distingue les réussites, les éléments bloqués et l'espace récupérable après vidage.
 
@@ -25,7 +25,9 @@ StorageScope ne retire pas les sauvegardes par défaut. Les options du désinsta
 
 Les chemins système, données sensibles, liens/jonctions et emplacements cloud sont protégés. L'identité est revérifiée avant l'action ; l'historique reste local dans `LocalAppData/StorageScope/History` sur Windows et `~/Library/Application Support/StorageScope/History` sur Mac.
 
-La publication publique nécessite les signatures Windows et Apple, la notarisation et les clés de mise à jour décrites dans [DISTRIBUTION.md](DISTRIBUTION.md). Une build de développement n'est pas une distribution signée et ne propose pas de mise à jour automatique.
+Sous Windows, le menu **⋯** ouvre ou exporte les diagnostics locaux : `%LOCALAPPDATA%\StorageScope\Diagnostics\StorageScope-crashes.log`, avec cinq sauvegardes tournantes à environ 2 Mo. Exceptions et arrêts anormaux sont enregistrés sans transmission automatique. Le moteur de corbeille est isolé ; un résultat incertain n’est jamais réessayé automatiquement.
+
+La signature du manifeste de mise à jour n’est pas une signature Authenticode Windows. Les différents modes de publication et leurs garanties sont décrits dans [DISTRIBUTION.md](DISTRIBUTION.md).
 
 ## Ouvrir et lancer dans Xcode
 

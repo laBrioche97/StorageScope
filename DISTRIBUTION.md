@@ -15,11 +15,13 @@ swift run --disable-sandbox StorageCoreTests
 zsh scripts/build-app.sh
 ```
 
-Les builds de développement ne sont pas signées pour une distribution publique. La recherche de mises à jour y reste désactivée sans clé publique et identité d’éditeur. Ne jamais les annoncer comme exemptes de SmartScreen ou Gatekeeper.
+`-Development` construit un paquet de test sans manifeste signé. Depuis la version 3.2, `-KeySigned` construit une distribution Windows avec manifeste RSA-PSS signé et vérification d’intégrité, même en l’absence de certificat Authenticode. La clé publique doit être préalablement commitée et correspondre au secret de publication. Ne jamais annoncer ces paquets comme exempts de SmartScreen ou Gatekeeper.
+
+Pour publier Windows avec cette clé dédiée, lancer manuellement **Publish Windows release with verified update manifest** (`release-windows-key.yml`) avec le tag stable. Le workflow exige les tests Windows/macOS, la corbeille réelle sur fixtures, le remplacement échoué, le maintien de l’ancienne version, le remplacement réussi et le redémarrage. Il publie ensemble l’installateur `DEVELOPMENT`, son empreinte, `windows-update.json` et sa signature. Aucun paquet macOS incomplet n’est ajouté.
 
 ## Configurer les signatures avant la première publication
 
-Une distribution de test non signée peut être publiée séparément sous le nom explicite `StorageScope-Windows-Setup-DEVELOPMENT.exe`. Elle doit annoncer SmartScreen et les mises à jour manuelles ; elle ne contient aucun manifeste de mise à jour signé. Après configuration et validation de tous les certificats, activer la variable GitHub Actions `STORAGESCOPE_SIGNED_RELEASES_ENABLED=true` pour publier automatiquement les tags signés. Le lancement manuel du workflow signé reste possible et exige toujours tous les secrets.
+Une distribution sans clé ni manifeste doit annoncer les mises à jour manuelles. Une distribution `-KeySigned` annonce ses mises à jour vérifiées et l’absence de certificat Windows. Après activation des certificats Windows et Apple, activer `STORAGESCOPE_SIGNED_RELEASES_ENABLED=true` pour publier les deux plateformes via `release.yml`. Le workflow complet exige toujours les identités de signature et la notarisation.
 
 Configurer ces **secrets GitHub Actions**, sans les commiter :
 
@@ -35,7 +37,7 @@ Configurer ces **secrets GitHub Actions**, sans les commiter :
 
 Configurer également la **variable** GitHub Actions `SPARKLE_PUBLIC_KEY`, fournie par `generate_keys` de Sparkle. Générer les clés dans un environnement de confiance et sauvegarder leurs originaux de manière sécurisée. Les outils de génération des clés ne sont jamais lancés implicitement par la publication.
 
-Le script Windows dérive la clé publique RSA depuis la clé privée et l’embarque dans l’exécutable ; il embarque aussi le sujet exact du certificat Authenticode comme identité attendue pour les futures mises à jour. Le fichier PEM public généré ne contient aucun secret. La même identité doit rester stable lors du renouvellement du certificat ; un changement d’identité ou de clé requiert une stratégie de transition via une version encore approuvée, ou une réinstallation manuelle.
+Le script Windows vérifie que la clé privée correspond au PEM public commité et embarqué. Un build Authenticode embarque aussi le sujet exact de son certificat ; après activation de cette identité, le client refuse une rétrogradation vers un paquet non signé. La clé privée reste dans les secrets GitHub Actions. Un changement de clé nécessite une transition via une version encore approuvée ou une réinstallation manuelle.
 
 Le bundle macOS embarque `SUPublicEDKey`. Sparkle vérifie la signature EdDSA avant extraction ; les applications sont signées Developer ID et notariées. Les téléchargements automatiques sans consentement sont désactivés. Un redémarrage demandé par une mise à jour est reporté pendant une opération locale.
 
@@ -60,8 +62,8 @@ Le site ne propose que les installateurs effectivement présents dans la derniè
 
 ## Garanties et vérifications avant livraison
 
-- Windows télécharge le paquet uniquement après acceptation et vérifie le manifeste, la version, la taille, le SHA-256, Authenticode et l’identité d’éditeur avant exécution. Un paquet invalide est refusé.
-- L’installateur Windows place chaque version dans son propre dossier. Il vérifie hors ligne le chargement de l’interface avant de déclarer la version active ; un échec rétablit le raccourci précédent. Les anciennes versions ne sont pas effacées automatiquement.
+- Windows télécharge après acceptation et vérifie le manifeste signé, la version, la taille et le SHA-256 ; Authenticode et l’identité d’éditeur sont obligatoires dès leur activation. Un paquet invalide est refusé.
+- L’installateur Windows vérifie hors ligne l’interface avant de déclarer la version active. Un échec conserve la précédente, restaure son raccourci et renvoie un code d’échec. Après réussite, les anciennes versions gérées sont supprimées. Liens/jonctions et dossiers non reconnus ne sont jamais suivis pendant ce nettoyage.
 - Sparkle gère le remplacement de l’application macOS. La première migration depuis une version ancienne sans updater exige une installation manuelle.
 - Tester la première installation et une mise à jour sur Windows x64/ARM64 et Mac Intel/Apple Silicon ; tester aussi annulation, réseau interrompu, signature invalide et maintien de la version précédente.
 - La CI Windows vérifie les frontières de suppression, substitutions de fichiers, liens physiques, doublons, annulation, échecs partiels, signatures et rendus WPF. Les captures utilisent des données de test, pas une désinstallation réelle.
