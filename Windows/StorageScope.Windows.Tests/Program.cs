@@ -288,6 +288,7 @@ internal static class Program
                 Check(restored);
                 Check(SpinWait.SpinUntil(() => File.Exists(path), TimeSpan.FromSeconds(10)));
             });
+            if (args.Contains("--isolated-empty-bin")) Test("system recycle size, rejected confirmation and isolated permanent empty", () => RecycleBinTests.Run(_root));
             if (args.Contains("--inventory-audit")) Test("real local inventory resolves installed icons and independent footprints", () =>
             {
                 _auditedApplications = Task.Run(async () =>
@@ -393,7 +394,18 @@ internal static class Program
         window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         ScanResponsivenessTests.Run(_root, Test);
         if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
-        foreach (var (name, width, height, index, scale, dark, contrast) in new[] { ("windows-overview",1120,800,0,1d,true,false), ("windows-cleanup-small",740,700,3,1d,true,false), ("windows-minimum",740,560,3,1d,true,false), ("windows-cleanup-200",1120,800,3,2d,true,false), ("windows-games-light",1120,800,4,1d,false,false), ("windows-categories",1120,800,2,1d,true,false), ("windows-games-small",740,560,4,1d,true,false), ("windows-filters",1120,800,4,1d,true,false), ("windows-contrast",1120,800,0,1d,false,true) })
+        var bubbleRoot = Path.Combine(_root, "graph-display");
+        var bubbleSizes = new Dictionary<string, long> { [bubbleRoot] = 100_000_000_000 };
+        var names = new[] { "Applications", "Jeux", "Documents", "Vidéos", "Archives" };
+        for (var i = 0; i < names.Length; i++) {
+            var folder = Path.Combine(bubbleRoot, names[i]); var bytes = (5 - i) * 5_000_000_000L;
+            bubbleSizes[folder] = bytes; bubbleSizes[Path.Combine(folder, "Sous-dossier")] = bytes / 2;
+        }
+        var bubbleResult = new ScanResult { Root = bubbleRoot, DirectorySizes = bubbleSizes, LargestFiles = [], Categories = [], CleanupCandidates = [], IdentifiedBytes = 100_000_000_000, FilesScanned = 100, DirectoriesScanned = 10, AccessErrors = 0 };
+        var fixtureIndex = new FolderIndex(bubbleResult);
+        typeof(MainWindow).GetField("_folderFrame", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(window, fixtureIndex.Frame(bubbleRoot, default));
+        ((TextBlock)window.FindName("BubbleStatus")).Text = "100 Go identifiés · Cliquez sur un dossier pour l’ouvrir.";
+        foreach (var (name, width, height, index, scale, dark, contrast) in new[] { ("windows-overview",1120,800,0,1d,true,false), ("windows-cleanup-small",740,700,3,1d,true,false), ("windows-minimum",740,560,3,1d,true,false), ("windows-cleanup-200",1120,800,3,2d,true,false), ("windows-games-light",1120,800,4,1d,false,false), ("windows-categories",1120,800,2,1d,true,false), ("windows-games-small",740,560,4,1d,true,false), ("windows-filters",1120,800,4,1d,true,false), ("windows-contrast",1120,800,0,1d,false,true), ("windows-bubbles",1120,800,1,1d,true,false), ("windows-bubbles-small",740,560,1,1d,false,false), ("windows-bubbles-200",1120,800,1,2d,true,false) })
         {
             app.ApplyPalette(dark,contrast);
             content.Background = (Brush)app.Resources["PageBrush"];
@@ -403,6 +415,13 @@ internal static class Program
             window.UpdateLayout();
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
             window.UpdateLayout();
+            if (index == 1) {
+                typeof(MainWindow).GetMethod("RenderBubbles", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, null);
+                window.UpdateLayout();
+                Check(((Canvas)window.FindName("BubbleCanvas")).Children.Count == 10);
+                var bubble = (Button)((Canvas)window.FindName("BubbleCanvas")).Children[0];
+                Check(bubble.ActualWidth > 0 && !string.IsNullOrEmpty(new ButtonAutomationPeer(bubble).GetName()));
+            }
             Check(((SolidColorBrush)window.Foreground).Color == ((SolidColorBrush)app.Resources["TextBrush"]).Color);
             Check(content.ActualWidth > 600 && content.ActualHeight > 400);
             if (index == 3)

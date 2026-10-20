@@ -32,7 +32,7 @@ jobs:
         run: |
           dotnet build Windows/StorageScope.Windows -c Release -p:TreatWarningsAsErrors=true
           if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
-          dotnet run --project Windows/StorageScope.Windows.Tests -c Release -- --shell-integration
+          dotnet run --project Windows/StorageScope.Windows.Tests -c Release -- --shell-integration --isolated-empty-bin
           if ($LASTEXITCODE -ne 0) { throw 'Safety tests failed.' }
       - name: Prepare verified installer compiler
         shell: pwsh

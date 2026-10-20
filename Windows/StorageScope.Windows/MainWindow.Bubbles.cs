@@ -90,7 +90,7 @@ public partial class MainWindow
         var query = string.Join(' ', new[] { ListSearch.Text.Trim(), ExplorerSearchBox.Text.Trim() }.Where(s => s.Length > 0));
         foreach (var circle in _folderFrame.Circles.OrderBy(c => c.Depth))
         {
-            var button = new BubbleButton { Circle = circle, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null };
+            var button = new BubbleButton { Circle = circle, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
             var total = _folderFrame.Total;
             button.ToolTip = $"{circle.Name}\n{circle.Path}\n{SizeFormatter.Format(circle.Bytes)}" + (total > 0 ? $" · {circle.Bytes * 100d / total:N1} % du dossier affiché" : "") + (_folderFrame.Partial ? "\nAnalyse partielle" : "");
             AutomationProperties.SetName(button, circle.Name + " · " + SizeFormatter.Format(circle.Bytes));

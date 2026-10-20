@@ -74,7 +74,7 @@ jobs:
         run: dotnet build Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release -p:TreatWarningsAsErrors=true
 
       - name: Test deletion boundaries, duplicates, updates and responsive rendering
-        run: dotnet run --project Windows/StorageScope.Windows.Tests --configuration Release -- "$env:RUNNER_TEMP/storagescope-qa"
+        run: dotnet run --project Windows/StorageScope.Windows.Tests --configuration Release -- "$env:RUNNER_TEMP/storagescope-qa" --shell-integration --isolated-empty-bin
 
       - name: Validate self-contained x64 publication
         run: dotnet publish Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release --runtime win-x64 --self-contained true --output dist/windows-x64 -p:TreatWarningsAsErrors=true
