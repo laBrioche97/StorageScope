@@ -1,4 +1,14 @@
-StorageScope 3.2.0
+StorageScope 3.2.1
+
+• Correction du blocage « Ne répond pas » pendant une analyse Windows : l’énumération à la racine et le classement final s’exécutent entièrement en arrière-plan.
+• Affichage des résultats par lots : les tableaux triés et regroupés ne sont plus recalculés pour chaque fichier ajouté, y compris avec 10 000 propositions de nettoyage.
+• Annulation prise en compte pendant l’énumération des dossiers, sans afficher un résultat annulé ni réutiliser une ancienne progression.
+• Compteurs mis à jour pendant l’analyse et étapes de classement/affichage indiquées explicitement.
+• Tests supplémentaires de réactivité du fil d’interface, d’annulation et d’affichage de grands volumes.
+
+Depuis StorageScope 3.2.0, utilisez « Mises à jour », puis acceptez l’installation. Depuis les versions 3.0/3.1, une installation manuelle reste nécessaire. Le fonctionnement local ne nécessite pas Internet.
+
+Améliorations conservées depuis StorageScope 3.2.0 :
 
 • Correction du crash Windows au changement d’onglet lié aux icônes et à l’accessibilité.
 • Corbeille exécutée dans un processus isolé, interfaces Windows typées et vérification de l’identité juste avant l’action. Aucun effacement définitif de secours.

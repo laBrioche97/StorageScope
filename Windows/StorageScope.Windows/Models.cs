@@ -88,7 +88,7 @@ public sealed class ScanResult
     public IReadOnlyDictionary<StorageCategory, IReadOnlyList<ScanEntry>> CategoryFiles { get; init; } = new Dictionary<StorageCategory, IReadOnlyList<ScanEntry>>();
 }
 
-public sealed record ScanProgress(long Files, long Directories, long Bytes, long Errors, string CurrentPath, double Fraction);
+public sealed record ScanProgress(long Files, long Directories, long Bytes, long Errors, string CurrentPath, double Fraction, string? Stage = null);
 
 public static class SizeFormatter
 {

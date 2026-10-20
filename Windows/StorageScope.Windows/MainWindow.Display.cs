@@ -92,13 +92,17 @@ public partial class MainWindow
                 view.SortDescriptions.Add(new("Name", ListSortDirection.Ascending));
             }
         }
-        Refresh(_largestFiles, item => item is ScanEntry entry && SectionFilter(0).Matches(entry), 0);
-        Refresh(_explorer, item => item is ScanEntry entry && SectionFilter(1).Matches(entry), 1);
-        Refresh(_categoryFiles, item => item is ScanEntry entry && SectionFilter(2).Matches(entry), 2);
-        Refresh(_cleanup, item => item is CleanupCandidate candidate && SectionFilter(3).Matches(candidate), 3);
-        var appSource = MainTabs.SelectedIndex == 4 ? source : (_sectionFilters.GetValueOrDefault(4) ?? new()).Source;
-        Refresh(_applications, item => item is InstalledApplication app && SectionFilter(4).Matches(app) && (appSource is null or "Toutes les sources" || app.Provider == appSource), 4, true);
+        var overviewFilter = SectionFilter(0);
+        var explorerFilter = SectionFilter(1);
         var categoryFilter = SectionFilter(2);
+        var cleanupFilter = SectionFilter(3);
+        var applicationFilter = SectionFilter(4);
+        Refresh(_largestFiles, item => item is ScanEntry entry && overviewFilter.Matches(entry), 0);
+        Refresh(_explorer, item => item is ScanEntry entry && explorerFilter.Matches(entry), 1);
+        Refresh(_categoryFiles, item => item is ScanEntry entry && categoryFilter.Matches(entry), 2);
+        Refresh(_cleanup, item => item is CleanupCandidate candidate && cleanupFilter.Matches(candidate), 3);
+        var appSource = MainTabs.SelectedIndex == 4 ? source : (_sectionFilters.GetValueOrDefault(4) ?? new()).Source;
+        Refresh(_applications, item => item is InstalledApplication app && applicationFilter.Matches(app) && (appSource is null or "Toutes les sources" || app.Provider == appSource), 4, true);
         var count = CategoryFilesGrid.Items.OfType<ScanEntry>().Count();
         var total = _result?.Categories.Where(category => categoryFilter.Category is null || category.Category == categoryFilter.Category).Sum(category => category.FileCount) ?? 0;
         CategoryStatusText.Text = $"{(categoryFilter.Category is StorageCategory category ? CategoryLabels.Name(category) : "Toutes les catégories")} · {count:N0} affiché(s) / {total:N0} détecté(s) · 500 plus gros fichiers maximum par catégorie." + (count == 0 ? (_result is null ? " Lancez une analyse pour voir les fichiers." : " Aucun résultat : modifiez les filtres.") : "");

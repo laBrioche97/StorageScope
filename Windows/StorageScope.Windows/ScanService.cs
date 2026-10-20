@@ -9,8 +9,14 @@ public sealed class ScanService
     private const int LargestFileLimit = 2_000;
     private readonly record struct BranchResult(Dictionary<string, long> Directories, List<ScanEntry> LargestFiles);
 
-    public async Task<ScanResult> ScanAsync(string root, IProgress<ScanProgress> progress, CancellationToken cancellationToken)
+    // An async method still executes on its caller until its first incomplete await.
+    // Keep root enumeration AND final aggregation off the WPF dispatcher.
+    public Task<ScanResult> ScanAsync(string root, IProgress<ScanProgress> progress, CancellationToken cancellationToken) =>
+        Task.Run(() => ScanCoreAsync(root, progress, cancellationToken), cancellationToken);
+
+    private static async Task<ScanResult> ScanCoreAsync(string root, IProgress<ScanProgress> progress, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         root = Path.GetFullPath(root);
         var drive = new DriveInfo(Path.GetPathRoot(root)!);
         var expectedBytes = Math.Max(1, drive.TotalSize - drive.AvailableFreeSpace);
@@ -72,15 +78,23 @@ public sealed class ScanService
         };
 
         var rootLargest = new List<ScanEntry>();
-        IEnumerable<FileInfo> rootFiles;
-        try { rootFiles = new DirectoryInfo(root).EnumerateFiles("*", options).ToList(); }
-        catch (Exception error) when (error is UnauthorizedAccessException or IOException) { rootFiles = []; Interlocked.Increment(ref errors); }
-        foreach (var file in rootFiles) AccountFile(file, rootLargest);
+        try
+        {
+            foreach (var file in new DirectoryInfo(root).EnumerateFiles("*", options)) AccountFile(file, rootLargest);
+        }
+        catch (Exception error) when (error is UnauthorizedAccessException or IOException) { Interlocked.Increment(ref errors); }
         largestFiles.Add(rootLargest);
 
-        List<DirectoryInfo> roots;
-        try { roots = new DirectoryInfo(root).EnumerateDirectories("*", options).ToList(); }
-        catch (Exception error) when (error is UnauthorizedAccessException or IOException) { roots = []; Interlocked.Increment(ref errors); }
+        var roots = new List<DirectoryInfo>();
+        try
+        {
+            foreach (var directory in new DirectoryInfo(root).EnumerateDirectories("*", options))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                roots.Add(directory);
+            }
+        }
+        catch (Exception error) when (error is UnauthorizedAccessException or IOException) { Interlocked.Increment(ref errors); }
 
         var parallelOptions = new ParallelOptions
         {
@@ -93,8 +107,10 @@ public sealed class ScanService
             foreach (var pair in branch.Directories) allDirectorySizes[pair.Key] = pair.Value;
             largestFiles.Add(branch.LargestFiles);
             return ValueTask.CompletedTask;
-        });
+        }).ConfigureAwait(false);
 
+        cancellationToken.ThrowIfCancellationRequested();
+        progress.Report(new ScanProgress(files, directories, bytes, errors, root, 0.99, "Classement des résultats…"));
         var rootSize = Volatile.Read(ref bytes);
         allDirectorySizes[root] = rootSize;
         var categories = Enum.GetValues<StorageCategory>()
@@ -103,7 +119,8 @@ public sealed class ScanService
             .ToList();
         var topFiles = largestFiles.SelectMany(item => item).OrderByDescending(item => item.Size).Take(LargestFileLimit).ToList();
         var cleanup = cleanupAnalysis.Results();
-        progress.Report(new ScanProgress(files, directories, bytes, errors, root, 1));
+        cancellationToken.ThrowIfCancellationRequested();
+        progress.Report(new ScanProgress(files, directories, bytes, errors, root, 1, "Préparation de l’affichage…"));
         return new ScanResult
         {
             Root = root,
@@ -156,7 +173,11 @@ public sealed class ScanService
                     try { length = Math.Max(0, file.Length); } catch { length = 0; }
                     sizes[directory.FullName] = AddSafe(sizes.GetValueOrDefault(directory.FullName), length);
                 }
-                foreach (var child in directory.EnumerateDirectories("*", options)) stack.Push((child, false));
+                foreach (var child in directory.EnumerateDirectories("*", options))
+                {
+                    token.ThrowIfCancellationRequested();
+                    stack.Push((child, false));
+                }
             }
             catch (Exception error) when (error is UnauthorizedAccessException or IOException or System.Security.SecurityException)
             {

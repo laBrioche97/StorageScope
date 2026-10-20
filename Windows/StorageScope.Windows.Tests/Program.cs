@@ -323,7 +323,9 @@ internal static class Program
 
     private static void Render(string? destination)
     {
-        var app = new App(); app.InitializeComponent();
+        var app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
+        ScanResponsivenessTests.Run(_root, Test);
+        if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
         var window = new MainWindow { IsPreviewMode = true, ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000 };
         var tab = (TabControl)window.FindName("MainTabs");
         var largest = (DataGrid)window.FindName("LargestFilesGrid");

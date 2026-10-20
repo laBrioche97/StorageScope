@@ -15,6 +15,8 @@ Le premier passage depuis une version 3.0/3.1 nécessite cet installateur. La ve
 
 ## Nettoyer et désinstaller
 
+La version Windows 3.2.1 garde l’énumération et le classement de l’analyse en arrière-plan et charge les résultats par lots. Les compteurs progressent pendant le parcours, les étapes finales sont indiquées et l’annulation ne publie pas de résultat périmé.
+
 Les filtres et recherches sont indépendants par section ; le tri commence par les éléments les plus volumineux. Les catégories montrent leurs 500 plus gros fichiers et les totaux de l’analyse. Les tailles d’installations sont calculées dès l’inventaire : déclarées, mesurées, partielles ou indisponibles. Les logos locaux sont prioritaires, puis un cache du CDN officiel Steam est utilisé pour les identifiants Steam connus. Une icône neutre reste affichée sans source fiable. Le clic droit permet notamment d’ouvrir, de révéler l’emplacement, de consulter les propriétés et de préparer le nettoyage ou la désinstallation officielle.
 
 Le parcours est **Analyser → Choisir → Vérifier → Nettoyer**. Les fichiers personnels restent décochés. Les caches reconnus sont expliqués ; une confirmation précède leur mise à la Corbeille. Le bilan distingue les réussites, les éléments bloqués et l'espace récupérable après vidage.

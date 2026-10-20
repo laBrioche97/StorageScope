@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,11 +11,11 @@ namespace StorageScope.Windows;
 public partial class MainWindow : Window
 {
     private readonly ScanService _scanner = new();
-    private readonly ObservableCollection<ScanEntry> _largestFiles = [];
-    private readonly ObservableCollection<ScanEntry> _categoryFiles = [];
-    private readonly ObservableCollection<CleanupCandidate> _cleanup = [];
-    private readonly ObservableCollection<InstalledApplication> _applications = [];
-    private readonly ObservableCollection<ScanEntry> _explorer = [];
+    private readonly ResultCollection<ScanEntry> _largestFiles = [];
+    private readonly ResultCollection<ScanEntry> _categoryFiles = [];
+    private readonly ResultCollection<CleanupCandidate> _cleanup = [];
+    private readonly ResultCollection<InstalledApplication> _applications = [];
+    private readonly ResultCollection<ScanEntry> _explorer = [];
     private List<ScanEntry> _allExplorerItems = [];
     private ScanResult? _result;
     private CancellationTokenSource? _scanCancellation;
@@ -94,46 +93,62 @@ public partial class MainWindow : Window
         Diagnostics.Action = "analyse"; Diagnostics.Write("action");
         if (DrivePicker.SelectedItem is not DriveChoice drive) return;
         _scanCancellation?.Cancel();
-        _scanCancellation = new CancellationTokenSource();
+        var cancellation = new CancellationTokenSource();
+        _scanCancellation = cancellation;
+        _browseCancellation?.Cancel(); ++_browseGeneration;
         SetScanning(true);
         ClearResults();
         ScanStatusText.Text = "Préparation de l’analyse…";
         ScanProgressBar.Value = 0;
+        var acceptingProgress = true;
         var progress = new Progress<ScanProgress>(value =>
         {
+            if (!acceptingProgress || _closing || !_scanning || !ReferenceEquals(_scanCancellation, cancellation) || cancellation.IsCancellationRequested) return;
             ScanProgressBar.Value = value.Fraction * 100;
-            ScanStatusText.Text = $"{value.Files:N0} fichiers · {SizeFormatter.Format(value.Bytes)} identifiés · {value.Errors:N0} refus — {value.CurrentPath}";
+            ScanStatusText.Text = $"{value.Files:N0} fichiers · {SizeFormatter.Format(value.Bytes)} identifiés · {value.Errors:N0} refus — {value.Stage ?? value.CurrentPath}";
+            IdentifiedText.Text = SizeFormatter.Format(value.Bytes);
+            FilesText.Text = value.Files.ToString("N0");
+            DirectoriesText.Text = value.Directories.ToString("N0");
+            ErrorsText.Text = value.Errors.ToString("N0");
         });
         try
         {
-            _result = await _scanner.ScanAsync(drive.Root, progress, _scanCancellation.Token);
+            var result = await _scanner.ScanAsync(drive.Root, progress, cancellation.Token);
+            acceptingProgress = false;
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (_closing) return;
+            _result = result;
             PopulateResult(_result);
             ScanStatusText.Text = $"Analyse {(_result.AccessErrors > 0 ? "partielle" : "terminée")} : {_result.FilesScanned:N0} fichiers · {_result.AccessErrors:N0} accès non disponibles" + (_result.CleanupTruncated ? " · suggestions limitées à 10 000 éléments" : "") + " · Choisissez Nettoyage conseillé pour continuer.";
             await BrowseAsync(drive.Root);
         }
-        catch (OperationCanceledException) { ScanStatusText.Text = "Analyse annulée"; }
+        catch (OperationCanceledException) { ClearResults(); ScanStatusText.Text = "Analyse annulée. Aucun fichier modifié."; }
         catch (Exception error)
         {
             ScanStatusText.Text = "L’analyse a échoué";
             ShowError("Impossible de terminer l’analyse.", error);
         }
-        finally { SetScanning(false); RefreshSpaceStatus(); }
+        finally
+        {
+            acceptingProgress = false;
+            if (ReferenceEquals(_scanCancellation, cancellation)) _scanCancellation = null;
+            cancellation.Dispose();
+            SetScanning(false); RefreshSpaceStatus();
+        }
     }
 
     private void PopulateResult(ScanResult result)
     {
-        _largestFiles.Clear();
-        foreach (var item in result.LargestFiles) _largestFiles.Add(item);
-        _categoryFiles.Clear();
-        foreach (var item in result.CategoryFiles.Values.SelectMany(items => items)) _categoryFiles.Add(item);
+        _largestFiles.ReplaceAll(result.LargestFiles);
+        _categoryFiles.ReplaceAll(result.CategoryFiles.Values.SelectMany(items => items));
         PopulateCategorySummary(result);
-        _cleanup.Clear();
-        foreach (var candidate in result.CleanupCandidates) _cleanup.Add(candidate);
+        _cleanup.ReplaceAll(result.CleanupCandidates);
         IdentifiedText.Text = SizeFormatter.Format(result.IdentifiedBytes);
         FilesText.Text = result.FilesScanned.ToString("N0");
         DirectoriesText.Text = result.DirectoriesScanned.ToString("N0");
         ErrorsText.Text = result.AccessErrors.ToString("N0");
         ApplyApplicationFilter();
+        ApplyDisplayFilters();
     }
 
     private void ClearResults()
@@ -181,7 +196,11 @@ public partial class MainWindow : Window
         Show(ApplicationsGrid, 1, ActualWidth >= 850);
     }
 
-    private void CancelButton_Click(object sender, RoutedEventArgs e) { _scanCancellation?.Cancel(); _operationCancellation?.Cancel(); }
+    private void CancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        _scanCancellation?.Cancel(); _operationCancellation?.Cancel();
+        if (_scanning) ScanStatusText.Text = "Annulation de l’analyse en cours…";
+    }
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || _scanning) return;
@@ -238,9 +257,7 @@ public partial class MainWindow : Window
     private void ApplyExplorerFilter()
     {
         var query = ExplorerSearchBox.Text.Trim();
-        _explorer.Clear();
-        foreach (var item in _allExplorerItems.Where(item => query.Length == 0 || item.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) || item.Path.Contains(query, StringComparison.CurrentCultureIgnoreCase)))
-            _explorer.Add(item);
+        _explorer.ReplaceAll(_allExplorerItems.Where(item => query.Length == 0 || item.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) || item.Path.Contains(query, StringComparison.CurrentCultureIgnoreCase)));
     }
 
     private async void ExplorerGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -424,12 +441,11 @@ public partial class MainWindow : Window
     }
     private void ApplyApplicationFilter()
     {
-        _applications.Clear();
-        foreach (var application in _allApplications)
+        _applications.ReplaceAll(_allApplications.Select(application =>
         {
             var measured = application.InstallLocation is string location && _result is not null && _result.DirectorySizes.TryGetValue(location.TrimEnd('\\'), out var bytes) ? (long?)bytes : null;
-            _applications.Add(measured is long size ? application with { EstimatedBytes = size, SizeStatus = "Mesurée pendant l’analyse" } : application);
-        }
+            return measured is long size ? application with { EstimatedBytes = size, SizeStatus = "Mesurée pendant l’analyse" } : application;
+        }));
     }
     private void SelectRecommended_Click(object sender, RoutedEventArgs e) { CleanupGrid.SelectedItems.Clear(); foreach (var item in CleanupGrid.Items.OfType<CleanupCandidate>().Where(item => item.Recommended)) CleanupGrid.SelectedItems.Add(item); }
     private void ClearCleanup_Click(object sender, RoutedEventArgs e) => CleanupGrid.SelectedItems.Clear();
