@@ -51,7 +51,6 @@ Name: "{userprograms}\StorageScope"; Filename: "{app}\versions\{#AppVersion}\Sto
 
 [Run]
 Filename: "{app}\versions\{#AppVersion}\StorageScope.exe"; Description: "Lancer StorageScope"; Flags: nowait postinstall skipifsilent; Check: InstallationHealthy
-Filename: "{app}\versions\{#AppVersion}\StorageScope.exe"; Flags: nowait; Check: RestartAfterUpdate
 
 [Code]
 var PreviousVersion: String;
@@ -140,11 +139,6 @@ begin
   Result := Healthy and (ExpandConstant('{param:UPDATE|0}') <> '1');
 end;
 
-function RestartAfterUpdate: Boolean;
-begin
-  Result := Healthy and (ExpandConstant('{param:UPDATE|0}') = '1');
-end;
-
 function GetCustomSetupExitCode: Integer;
 begin
   if Healthy then Result := 0 else Result := 1;
@@ -184,4 +178,8 @@ begin
   end;
   RegWriteStringValue(HKCU, 'Software\LaBrioche\StorageScope', 'CurrentVersion', '{#AppVersion}');
   RemoveOldVersions;
+  { Ordinary [Run] entries execute before ssPostInstall. Restart only after the health check. }
+  if ExpandConstant('{param:UPDATE|0}') = '1' then
+    if not Exec(Target, '', ExtractFileDir(Target), SW_SHOWNORMAL, ewNoWait, ExitCode) then
+      Log('Installation verified, but automatic restart failed: ' + IntToStr(ExitCode));
 end;
