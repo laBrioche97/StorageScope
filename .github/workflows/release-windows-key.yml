@@ -6,10 +6,15 @@ on:
         description: Existing stable vX.Y.Z tag
         required: true
         type: string
+      recovery:
+        description: Separate lock only after cancelling an unresponsive prior run
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ inputs.tag }}${{ inputs.recovery && '-recovery' || '' }}
   cancel-in-progress: false
 jobs:
   windows:
