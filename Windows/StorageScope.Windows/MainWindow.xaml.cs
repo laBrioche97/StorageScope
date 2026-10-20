@@ -189,6 +189,7 @@ public partial class MainWindow : Window
         CheckUpdateButton.Visibility = HistoryButton.Visibility = ActualWidth >= 950 ? Visibility.Visible : Visibility.Collapsed;
         OptionsButton.Visibility = Visibility.Visible;
         ApplicationTitle.Visibility = WorkflowSteps.Visibility = ActualHeight >= 760 ? Visibility.Visible : Visibility.Collapsed;
+        VolumeTitle.Visibility = ActualWidth < 950 && ActualHeight < 760 ? Visibility.Collapsed : Visibility.Visible;
         StatusPanel.Visibility = PrivacyFooter.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
         CompactStatus.Visibility = ActualHeight < 620 ? Visibility.Visible : Visibility.Collapsed;
         CleanupIntro.Visibility = ActualHeight >= 620 ? Visibility.Visible : Visibility.Collapsed;
