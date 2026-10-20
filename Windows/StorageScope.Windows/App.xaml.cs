@@ -22,8 +22,9 @@ public partial class App : Application
         }
         SystemEvents.UserPreferenceChanged += OnPreferenceChanged;
         base.OnStartup(e);
-        new MainWindow().Show();
-        if (Diagnostics.PreviousCrash) MessageBox.Show("StorageScope s’est arrêté de façon inattendue lors de la session précédente. Les opérations interrompues ne sont pas relancées. Le menu ⋯ permet d’ouvrir ou d’exporter les diagnostics.", "Diagnostic de la session précédente");
+        var main = new MainWindow();
+        main.Show();
+        if (Diagnostics.PreviousCrash) main.ShowDiagnosticNotice();
     }
     protected override void OnExit(ExitEventArgs e) { SystemEvents.UserPreferenceChanged -= OnPreferenceChanged; base.OnExit(e); }
     private void OnPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)

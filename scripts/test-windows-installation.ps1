@@ -48,6 +48,12 @@ do {
 } until ($restarted -or [DateTime]::UtcNow -gt $deadline)
 if (-not $restarted) { throw 'Update did not restart the application.' }
 if (@(Get-ChildItem -LiteralPath (Join-Path $root 'versions') -Directory).Count -ne 1) { throw 'Old version remains after managed update.' }
-$null = $restarted.CloseMainWindow()
-if (-not $restarted.WaitForExit(15000)) { throw 'Restarted application could not close normally.' }
+Start-Sleep -Seconds 2
+$closed = $restarted.CloseMainWindow()
+if (-not $closed -or -not $restarted.WaitForExit(15000)) {
+    Write-Output ('Window title: ' + $restarted.MainWindowTitle + '; close accepted: ' + $closed)
+    $diagnostics = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'StorageScope/Diagnostics/StorageScope-crashes.log'
+    if (Test-Path -LiteralPath $diagnostics) { Get-Content -LiteralPath $diagnostics -Tail 12 | Write-Output }
+    throw 'Restarted application could not close normally.'
+}
 Write-Output 'PASS accepted update restarts StorageScope and leaves exactly one managed version.'

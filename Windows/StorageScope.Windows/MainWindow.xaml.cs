@@ -35,6 +35,11 @@ public partial class MainWindow : Window
     private int _inventoryGeneration;
     private int _browseGeneration;
     internal bool IsPreviewMode { get; set; }
+    internal void ShowDiagnosticNotice()
+    {
+        ScanStatusText.Text = "La session précédente a été interrompue. Aucune action relancée. Diagnostics disponibles dans le menu ⋯.";
+        ScanStatusText.ToolTip = ScanStatusText.Text;
+    }
 
     public MainWindow()
     {
@@ -66,7 +71,11 @@ public partial class MainWindow : Window
             RefreshDrives();
             await ReloadApplicationsAsync();
         }
-        catch (Exception error) { ShowError("Les applications installées n’ont pas pu être inventoriées.", error); }
+        catch (Exception error)
+        {
+            Diagnostics.Write("inventaire-au-démarrage", error);
+            ScanStatusText.Text = "Inventaire indisponible. Vous pouvez analyser les fichiers ou réessayer avec Actualiser. Détail dans les diagnostics.";
+        }
     }
 
     private void RefreshDrives()
