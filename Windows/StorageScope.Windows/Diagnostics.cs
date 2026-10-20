@@ -94,6 +94,8 @@ internal static class EntryPoint
     {
         if (args.FirstOrDefault() == "--watch-session") return Diagnostics.Watch(args);
         if (args.FirstOrDefault() == "--recycle-worker") return RecycleWorker.Run();
+        if (args.FirstOrDefault() == "--query-recycle-bin") return RecycleBinService.Worker(false);
+        if (args.FirstOrDefault() == "--empty-recycle-bin") return RecycleBinService.Worker(true);
         Diagnostics.Start();
         try
         {

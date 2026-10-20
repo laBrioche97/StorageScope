@@ -34,6 +34,7 @@
         <Button x:Name="CancelButton" Content="Annuler" Click="CancelButton_Click" IsEnabled="False"/>
         <Button Content="Actualiser" Click="RefreshButton_Click"/>
         <Button x:Name="CheckUpdateButton" Content="Mises à jour" Click="CheckUpdate_Click"/>
+        <Button x:Name="RecycleBinButton" Content="Corbeille · Calcul en cours" Click="RecycleBin_Click"/>
         <Button x:Name="HistoryButton" Content="Historique" Click="History_Click"/>
         <Button x:Name="OptionsButton" Content="⋯" ToolTip="Mises à jour et historique" AutomationProperties.Name="Options de StorageScope" Click="Options_Click" Visibility="Collapsed">
           <Button.ContextMenu><ContextMenu Background="{DynamicResource PanelBrush}" Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource BorderBrush}"><MenuItem Header="Filtres et tri" Click="ShowFilters_Click"/><MenuItem Header="Réinitialiser les filtres" Click="ResetFilters_Click"/><MenuItem Header="Rechercher des mises à jour" Click="CheckUpdate_Click"/><MenuItem Header="Historique local" Click="History_Click"/></ContextMenu></Button.ContextMenu>
@@ -73,8 +74,25 @@
         <Button Content="Réinitialiser" Click="ResetFilters_Click"/>
       </WrapPanel>
     </StackPanel>
-    <TabControl Grid.Row="1" x:Name="MainTabs" SelectionChanged="MainTabs_SelectionChanged">
-      <TabItem Header="Vue d’ensemble">
+    <TabControl Grid.Row="1" x:Name="MainTabs" SelectedIndex="0" SelectionChanged="MainTabs_SelectionChanged">
+      <TabItem x:Name="ApplicationsTab" Header="Applications et jeux" Tag="Applications">
+        <Grid Margin="12">
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <StackPanel><TextBlock Text="Désinstallation officielle · sauvegardes conservées · tailles calculées en arrière-plan. L’espace réellement libéré dépend des composants partagés et du désinstalleur." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/><ComboBox x:Name="ApplicationSourceFilter" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Filtrer les applications par source" Margin="4,0,4,8"/></StackPanel>
+          <DataGrid Grid.Row="1" x:Name="ApplicationsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="Application / jeu" Width="2*" MinWidth="180"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="4"><Image Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,10,0"/><TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Source" Binding="{Binding Source}" Width="140"/>
+                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille et fiabilité" Binding="{Binding DisplaySize}" Width="210" MinWidth="170"/>
+              <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Éditeur et version" Binding="{Binding Details}" Width="2*"/>
+              <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Emplacement" Binding="{Binding InstallLocation}" Width="3*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <Button Grid.Row="2" x:Name="UninstallButton" Content="Vérifier la désinstallation…" HorizontalAlignment="Right" Click="UninstallApplication_Click"/>
+        </Grid>
+      </TabItem>
+
+      <TabItem x:Name="OverviewTab" Header="Vue d’ensemble" Tag="Overview">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
           <WrapPanel Margin="0,0,0,12">
@@ -96,16 +114,17 @@
         </Grid>
       </TabItem>
 
-      <TabItem Header="Explorateur">
+      <TabItem x:Name="ExplorerTab" Header="Explorateur" Tag="Explorer">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="240"/></Grid.ColumnDefinitions>
-            <Button Content="← Parent" Click="ParentButton_Click"/>
+            <StackPanel Orientation="Horizontal"><Button Content="← Parent" Click="ParentButton_Click"/><Button Content="Racine" Click="ExplorerRoot_Click"/></StackPanel>
             <TextBox x:Name="ExplorerPathBox" Grid.Column="1" Margin="6,4" KeyDown="ExplorerPathBox_KeyDown"/>
             <TextBox x:Name="ExplorerSearchBox" Grid.Column="2" Margin="6,4" TextChanged="ExplorerSearchBox_TextChanged" ToolTip="Rechercher dans le dossier"/>
           </Grid>
-          <DataGrid Grid.Row="1" x:Name="ExplorerGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" MouseDoubleClick="ExplorerGrid_MouseDoubleClick" Margin="0,8">
+          <Grid Grid.Row="1" x:Name="BubblePanel" Margin="0,8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><TextBlock x:Name="BubbleStatus" Text="Préparation du graphique…" TextWrapping="Wrap"/><Canvas Grid.Row="1" x:Name="BubbleCanvas" ClipToBounds="True" SizeChanged="BubbleCanvas_SizeChanged" Background="Transparent"/></Grid>
+          <DataGrid Visibility="Collapsed" Grid.Row="1" x:Name="ExplorerGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Extended" MouseDoubleClick="ExplorerGrid_MouseDoubleClick" Margin="0,8">
             <DataGrid.Columns>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Nom" Binding="{Binding Name}" Width="2*" MinWidth="180"/>
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille" Binding="{Binding DisplaySize}" Width="120"/>
@@ -114,7 +133,8 @@
               <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Chemin" Binding="{Binding Path}" Width="3*"/>
             </DataGrid.Columns>
           </DataGrid>
-          <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+          <WrapPanel Grid.Row="2"><Button Content="Bulles" Click="ShowBubbles_Click"/><Button Content="Liste" Click="ShowExplorerList_Click"/><Button x:Name="DirectFilesButton" Content="Fichiers dans ce dossier — Voir la liste" Click="DirectFiles_Click"/><TextBlock Text="Les espaces entre bulles ne représentent pas l’espace libre." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4"/></WrapPanel>
+          <StackPanel Grid.Row="2" Visibility="Collapsed" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Ouvrir" Click="OpenSelection_Click"/>
             <Button Content="Afficher dans l’Explorateur" Click="RevealSelection_Click"/>
             <Button Content="Mettre à la Corbeille…" Click="TrashSelection_Click"/>
@@ -122,7 +142,7 @@
         </Grid>
       </TabItem>
 
-      <TabItem Header="Catégories">
+      <TabItem x:Name="CategoriesTab" Header="Catégories" Tag="Categories">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel Margin="4,0,4,8">
@@ -142,7 +162,7 @@
         </Grid>
       </TabItem>
 
-      <TabItem Header="Nettoyage conseillé">
+      <TabItem x:Name="CleanupTab" Header="Nettoyage conseillé" Tag="Cleanup">
         <Grid Margin="12">
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel>
@@ -168,22 +188,7 @@
         </Grid>
       </TabItem>
 
-      <TabItem Header="Applications et jeux">
-        <Grid Margin="12">
-          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-          <StackPanel><TextBlock Text="Désinstallation officielle · sauvegardes conservées · tailles calculées en arrière-plan. L’espace réellement libéré dépend des composants partagés et du désinstalleur." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4,4,4,6"/><ComboBox x:Name="ApplicationSourceFilter" SelectionChanged="DisplayFilter_Changed" AutomationProperties.Name="Filtrer les applications par source" Margin="4,0,4,8"/></StackPanel>
-          <DataGrid Grid.Row="1" x:Name="ApplicationsGrid" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single">
-            <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Application / jeu" Width="2*" MinWidth="180"><DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="4"><Image Source="{Binding Icon}" Width="32" Height="32" Margin="0,0,10,0"/><TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/></StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Source" Binding="{Binding Source}" Width="140"/>
-                <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Taille et fiabilité" Binding="{Binding DisplaySize}" Width="210" MinWidth="170"/>
-              <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Éditeur et version" Binding="{Binding Details}" Width="2*"/>
-              <DataGridTextColumn ElementStyle="{DynamicResource CellText}" Header="Emplacement" Binding="{Binding InstallLocation}" Width="3*"/>
-            </DataGrid.Columns>
-          </DataGrid>
-          <Button Grid.Row="2" x:Name="UninstallButton" Content="Vérifier la désinstallation…" HorizontalAlignment="Right" Click="UninstallApplication_Click"/>
-        </Grid>
-      </TabItem>
+
     </TabControl>
     </Grid>
 

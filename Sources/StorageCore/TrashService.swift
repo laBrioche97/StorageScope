@@ -123,6 +123,7 @@ public struct TrashInventoryItem: Identifiable, Hashable, Sendable {
 }
 
 public struct TrashInventory: Sendable {
+    public let id = UUID()
     public let items: [TrashInventoryItem]
     public let issues: [TrashInventoryIssue]
     public let generatedAt: Date
@@ -136,6 +137,12 @@ public struct TrashInventory: Sendable {
         self.generatedAt = generatedAt
         self.wasCancelled = wasCancelled
     }
+}
+
+public struct TrashEmptyAuthorization: Sendable {
+    fileprivate let inventoryID: UUID
+    /// Call only in the explicit destructive confirmation handler.
+    public static func confirm(_ inventory: TrashInventory) -> Self { Self(inventoryID: inventory.id) }
 }
 
 public enum EmptyTrashItemStatus: String, Codable, Sendable {
@@ -316,6 +323,7 @@ public actor TrashService {
             if Task.isCancelled { wasCancelled = true; break }
             guard FileManager.default.fileExists(atPath: root.path) else { continue }
             do {
+                guard trashRootIsSafe(root) else { throw TrashError.protectedItem(root.path) }
                 let children = try FileManager.default.contentsOfDirectory(
                     at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: []
                 )
@@ -344,13 +352,13 @@ public actor TrashService {
         )
     }
 
-    /// Permanently deletes inventoried trash children. The typed confirmation is also
-    /// enforced in the service so a UI programming error cannot bypass it.
+    /// Permanently deletes inventoried trash children. Explicit authorization is
+    /// bound to the reviewed inventory so a stale confirmation cannot authorize another one.
     public func emptyTrash(
-        _ inventory: TrashInventory, confirmation: String,
+        _ inventory: TrashInventory, authorization: TrashEmptyAuthorization,
         volumes: [StorageVolume] = StorageService.mountedVolumes()
     ) async -> EmptyTrashResult {
-        let accepted = confirmation == "VIDER"
+        let accepted = authorization.inventoryID == inventory.id
         let measuredVolumeIDs = Set(volumes.map(\.id))
         let before = importantAvailableBytes(for: volumes, restrictedTo: measuredVolumeIDs)
         guard accepted else {
@@ -358,7 +366,7 @@ public actor TrashService {
                 availableBytesBefore: before, availableBytesAfter: before)
         }
 
-        let liveRoots = Set(approvedTrashRoots(volumes: volumes).map { $0.standardizedFileURL.path })
+        let liveRoots = Set(approvedTrashRoots(volumes: volumes).filter { trashRootIsSafe($0) }.map { $0.standardizedFileURL.path })
         var results: [EmptyTrashItemResult] = []
         for item in inventory.items {
             if Task.isCancelled {
@@ -382,7 +390,9 @@ public actor TrashService {
                         errorDescription: "L’élément a changé depuis l’inventaire."))
                     continue
                 }
+                try OperationJournal.append(operation: "vidage corbeille", path: item.url.path, status: "préparé")
                 try FileManager.default.removeItem(at: item.url)
+                try? OperationJournal.append(operation: "vidage corbeille", path: item.url.path, status: "supprimé")
                 results.append(EmptyTrashItemResult(url: item.url, status: .deleted,
                     allocatedBytesUpperBound: item.allocatedBytesUpperBound))
             } catch {
@@ -464,12 +474,19 @@ public actor TrashService {
     private func approvedTrashRoots(volumes: [StorageVolume]) -> [URL] {
         var roots = [FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)]
         let uid = getuid()
-        for volume in volumes {
+        for volume in volumes where volume.isLocal {
             roots.append(volume.url.appendingPathComponent(".Trashes", isDirectory: true)
                 .appendingPathComponent(String(uid), isDirectory: true))
         }
         var seen: Set<String> = []
         return roots.filter { seen.insert($0.standardizedFileURL.path).inserted }
+    }
+
+    private func trashRootIsSafe(_ root: URL) -> Bool {
+        guard let values = try? root.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey]),
+              values.isDirectory == true, values.isSymbolicLink != true,
+              (try? ownerUID(at: root)) == getuid() else { return false }
+        return root.deletingLastPathComponent().lastPathComponent != ".Trashes" || !isSymbolicLink(at: root.deletingLastPathComponent())
     }
 
     private func allocatedBytesUpperBound(of root: URL) throws -> Int64 {
@@ -479,8 +496,9 @@ public actor TrashService {
         if rootValues.isDirectory != true { return Int64(rootValues.fileAllocatedSize ?? 0) }
 
         var total = Int64(rootValues.fileAllocatedSize ?? 0)
+        var enumerationError: Error?
         guard let enumerator = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: Array(keys), options: [], errorHandler: { _, _ in true }
+            at: root, includingPropertiesForKeys: Array(keys), options: [], errorHandler: { _, error in enumerationError = error; return false }
         ) else { return total }
         for case let url as URL in enumerator {
             if Task.isCancelled { throw CancellationError() }
@@ -488,6 +506,7 @@ public actor TrashService {
             if values.isSymbolicLink == true { enumerator.skipDescendants() }
             total += Int64(values.fileAllocatedSize ?? 0)
         }
+        if let enumerationError { throw enumerationError }
         return total
     }
 

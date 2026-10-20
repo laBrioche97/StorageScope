@@ -5,25 +5,33 @@ import SwiftUI
 struct EmptyTrashView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var confirming = false
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Label("Corbeille", systemImage: "trash.fill").font(.title2.bold())
                 Spacer()
-                Button("Fermer") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Fermer") { dismiss() }.disabled(model.emptyTrashStep == .running).keyboardShortcut(.cancelAction)
             }
             .padding(20)
             Divider()
             Group {
                 switch model.emptyTrashStep {
                 case .inventory: inventoryStep
-                case .confirmation: confirmationStep
+                case .confirmation: inventoryStep
                 case .running: runningStep
                 case .result: resultStep
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .interactiveDismissDisabled(model.emptyTrashStep == .running)
+        .alert("Vider définitivement la Corbeille ?", isPresented: $confirming) {
+            Button("Annuler", role: .cancel) {}
+            Button("Vider définitivement", role: .destructive) { model.emptyTrashPermanently() }
+        } message: {
+            Text("\(model.trashInventory?.items.count ?? 0) élément(s) · environ \(ByteCountFormatter.storage.string(fromByteCount: model.trashInventory?.totalAllocatedBytesUpperBound ?? 0)). Corbeilles de votre compte sur les volumes locaux montés. Cette suppression est définitive.")
         }
     }
 
@@ -40,7 +48,7 @@ struct EmptyTrashView: View {
                     Text("Première confirmation").font(.title.bold())
                     HStack(spacing: 18) {
                         metric("Éléments", value: inventory.items.count.formatted())
-                        metric("Borne haute", value: ByteCountFormatter.storage.string(fromByteCount: inventory.totalAllocatedBytesUpperBound))
+                        metric(inventory.issues.isEmpty && !inventory.wasCancelled ? "Taille estimée" : "Estimation partielle", value: ByteCountFormatter.storage.string(fromByteCount: inventory.totalAllocatedBytesUpperBound))
                         metric("Erreurs d’accès", value: inventory.issues.count.formatted())
                     }
                     Text("Vider la Corbeille est définitif. Vérifiez son contenu dans le Finder avant de continuer.")
@@ -61,33 +69,12 @@ struct EmptyTrashView: View {
                         }
                         Spacer()
                         Button("Continuer…", role: .destructive) { model.emptyTrashStep = .confirmation }
-                            .disabled(inventory.items.isEmpty)
+                            .disabled(inventory.items.isEmpty || model.operationsAreBusy)
                     }
                 }
                 .padding(24)
             }
         }
-    }
-
-    private var confirmationStep: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Confirmation définitive").font(.title.bold())
-            Text("Cette opération ne peut pas être annulée. Saisissez exactement VIDER pour autoriser la suppression permanente.")
-            TextField("VIDER", text: $model.emptyTrashConfirmation)
-                .textFieldStyle(.roundedBorder).font(.title3.monospaced()).frame(maxWidth: 300)
-            if let inventory = model.trashInventory {
-                Text("\(inventory.items.count) élément(s) · jusqu’à \(ByteCountFormatter.storage.string(fromByteCount: inventory.totalAllocatedBytesUpperBound))")
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            HStack {
-                Button("Retour") { model.emptyTrashStep = .inventory }
-                Spacer()
-                Button("Vider définitivement", role: .destructive) { model.emptyTrashPermanently() }
-                    .disabled(model.emptyTrashConfirmation != "VIDER")
-            }
-        }
-        .padding(26)
     }
 
     private var runningStep: some View {

@@ -309,6 +309,7 @@ internal static class Program
                 Console.WriteLine(JsonSerializer.Serialize(new { installed = _auditedApplications.Count, logos = resolved, steamLogos = _auditedApplications.Count(item => item.Provider == "Steam" && !ReferenceEquals(item.Icon, ApplicationIcons.Fallback)), measured = _auditedApplications.Count(item => item.SizeStatus == "Mesurée"), sizesAvailable = _auditedApplications.Count(item => item.HasKnownSize) }));
                 Check(_auditedApplications.Count > 0 && resolved > 0);
             });
+            Test("session logo cache, bounded bubbles and unknown directory sizes", () => ExplorerFeatureTests.Run(_root));
             Test("offline window construction and responsive rendering", () => Render(args.FirstOrDefault(arg => !arg.StartsWith("--"))));
             Console.WriteLine($"PASS: {_passed} Windows safety, update and rendering scenarios.");
             return 0;
@@ -326,6 +327,7 @@ internal static class Program
         var app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown }; app.InitializeComponent();
         var window = new MainWindow { IsPreviewMode = true, ShowActivated = false, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000 };
         var tab = (TabControl)window.FindName("MainTabs");
+        Check(((TabItem)tab.Items[0]).Name == "ApplicationsTab" && tab.SelectedIndex == 0);
         var largest = (DataGrid)window.FindName("LargestFilesGrid");
         var largestSource = (IList<ScanEntry>)largest.ItemsSource;
         largestSource.Add(Entry(Path.Combine(_root,"Documents","Projet personnel.zip")) with { Size = 650_000_000, Category = StorageCategory.ArchivesInstallers });
@@ -350,12 +352,12 @@ internal static class Program
             Check(categories.Items.OfType<ScanEntry>().Where(item => item.Category == StorageCategory.Images).First().Size == 800_000_000);
             Check(applications.Items.OfType<InstalledApplication>().First().Provider == "Steam");
             Check(!applications.Items.OfType<InstalledApplication>().Last().HasKnownSize);
-            tab.SelectedIndex = 4;
+            tab.SelectedItem = window.FindName("ApplicationsTab");
             ((ComboBox)window.FindName("ResultSort")).SelectedIndex = 1;
             Check(applications.Items.OfType<InstalledApplication>().First().Name == "StorageScope");
             Check(!applications.Items.OfType<InstalledApplication>().Last().HasKnownSize);
             ((ComboBox)window.FindName("ResultSort")).SelectedIndex = 0;
-            tab.SelectedIndex = 0;
+            tab.SelectedItem = window.FindName("OverviewTab");
         });
         Test("rendered filters refresh existing rows and preserve category boundaries", () => {
             var search = (TextBox)window.FindName("ListSearch"); search.Text = "projet";
@@ -369,9 +371,9 @@ internal static class Program
         });
         Test("category navigation clears incompatible filters and tabs retain their own search", () =>
         {
-            tab.SelectedIndex = 4;
+            tab.SelectedItem = window.FindName("ApplicationsTab");
             ((TextBox)window.FindName("ListSearch")).Text = "Steam";
-            tab.SelectedIndex = 2;
+            tab.SelectedItem = window.FindName("CategoriesTab");
             var summary = (ComboBox)window.FindName("CategorySummary");
             summary.ItemsSource = new[] { new CategoryChoice("Toutes", null), new CategoryChoice("Images", StorageCategory.Images) };
             ((TextBox)window.FindName("ListSearch")).Text = "missing";
@@ -379,9 +381,9 @@ internal static class Program
             summary.SelectedIndex = 1;
             Check(categories.Items.OfType<ScanEntry>().Count() == 2);
             Check(categories.Items.OfType<ScanEntry>().First().Size == 800_000_000);
-            tab.SelectedIndex = 4;
+            tab.SelectedItem = window.FindName("ApplicationsTab");
             Check(((TextBox)window.FindName("ListSearch")).Text == "Steam");
-            ((TextBox)window.FindName("ListSearch")).Clear(); tab.SelectedIndex = 0;
+            ((TextBox)window.FindName("ListSearch")).Clear(); tab.SelectedItem = window.FindName("OverviewTab");
         });
         var content = (Grid)window.Content;
         if (_auditedApplications is not null) { applicationSource.Clear(); foreach (var item in _auditedApplications) applicationSource.Add(item); }
@@ -396,7 +398,7 @@ internal static class Program
             app.ApplyPalette(dark,contrast);
             content.Background = (Brush)app.Resources["PageBrush"];
             window.Width = width; window.Height = height;
-            tab.SelectedIndex = index;
+            tab.SelectedItem = window.FindName(new[] { "OverviewTab", "ExplorerTab", "CategoriesTab", "CleanupTab", "ApplicationsTab" }[index]);
             ((System.Windows.FrameworkElement)window.FindName("ExtraFilters")).Visibility = name == "windows-filters" ? Visibility.Visible : Visibility.Collapsed;
             window.UpdateLayout();
             window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);

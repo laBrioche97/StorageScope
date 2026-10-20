@@ -10,9 +10,14 @@ struct StorageScopeApp: App {
             ContentView()
                 .environmentObject(model)
                 .environmentObject(updates)
-                .frame(minWidth: 780, minHeight: 560)
+                .frame(minWidth: 740, minHeight: 560)
                 .onChange(of: model.operationsAreBusy) { _, busy in updates.activityChanged(busy) }
-                .task { await model.restoreLastScan() }
+                .task {
+                    if model.isPreviewMode {
+                        do { try await NativeInterfaceValidation.run(); exit(0) }
+                        catch { print("Native interface validation failed: \(error)"); exit(1) }
+                    } else { await model.restoreLastScan() }
+                }
         }
         .commands {
             CommandGroup(after: .appInfo) {

@@ -77,6 +77,12 @@ jobs:
           ref: ${{ inputs.tag }}
       - run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
       - run: swift run --disable-sandbox StorageCoreTests
+      - run: swift run --disable-sandbox StorageScope --verify-interface "$RUNNER_TEMP/storagescope-ui"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: macos-native-interface
+          path: ${{ runner.temp }}/storagescope-ui/*.png
+          if-no-files-found: error
   publish:
     needs: [windows, macos]
     runs-on: ubuntu-latest

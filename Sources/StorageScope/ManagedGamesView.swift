@@ -37,7 +37,7 @@ struct ManagedGamesPanel: View {
                 }
                 Text("Steam, Epic et installations Battle.net reconnues localement. Les autres jeux macOS apparaissent aussi parmi les applications. Aucun launcher ni compte en ligne n’est nécessaire pour l’inventaire.")
                     .font(.callout).foregroundStyle(.secondary)
-                if loading { ProgressView() }
+                if loading && games.isEmpty { ProgressView() }
                 else if games.isEmpty { Text("Aucune bibliothèque reconnue sur ce Mac.").foregroundStyle(.secondary) }
                 Picker("Source", selection: $source) {
                     Text("Toutes les sources").tag("Toutes les sources")
@@ -72,12 +72,13 @@ struct ManagedGamesPanel: View {
     }
 
     @MainActor private func reload() async {
+        if model.isPreviewMode { loading = false; return }
         loading = true; games = await adapter.detect()
         for game in games {
             let bundle: URL?
             if game.installURL.pathExtension == "app" { bundle = game.installURL }
             else { bundle = (try? FileManager.default.contentsOfDirectory(at: game.installURL, includingPropertiesForKeys: [.isSymbolicLinkKey]))?.prefix(100).first(where: { $0.pathExtension == "app" && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true }) }
-            icons[game.id] = bundle.map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSImage(systemSymbolName: "gamecontroller.fill", accessibilityDescription: "Jeu")
+            icons[game.id] = bundle.map { model.iconCache.image(for: $0) } ?? NSImage(systemSymbolName: "gamecontroller.fill", accessibilityDescription: "Jeu")
         }
         loading = false
     }

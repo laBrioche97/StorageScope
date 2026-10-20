@@ -53,6 +53,7 @@ struct ContentView: View {
             }
             .navigationTitle(detailTitle)
         }
+        .task { model.refreshTrashSummary(force: true) }
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Nom, extension ou chemin")
         .toolbar { toolbar }
         .onChange(of: model.sidebar) { _, section in
@@ -61,7 +62,7 @@ struct ContentView: View {
             if section == .applications { model.loadApplications() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.refreshVolumes() }
+            if phase == .active { model.refreshVolumes(); model.refreshTrashSummary() }
         }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in
             model.refreshVolumes()
@@ -109,10 +110,10 @@ struct ContentView: View {
             }
             .frame(maxWidth: 190)
 
-            Button("Actualiser les volumes", systemImage: "arrow.clockwise") { model.refreshVolumes() }
+            Button("Actualiser", systemImage: "arrow.clockwise") { model.refreshVolumes(); model.refreshTrashSummary(force: true); model.loadApplications() }
                 .help("Actualiser l’espace disponible et les volumes montés")
 
-            Button("Corbeille", systemImage: "trash") { model.prepareEmptyTrash() }
+            Button(model.trashSummaryLabel, systemImage: "trash") { model.prepareEmptyTrash() }
                 .help("Inventorier ou vider définitivement la Corbeille")
             Button("Historique", systemImage: "clock.arrow.circlepath") {
                 let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/StorageScope/History", isDirectory: true)

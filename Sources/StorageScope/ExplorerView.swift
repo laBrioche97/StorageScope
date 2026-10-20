@@ -33,14 +33,18 @@ struct StorageExplorerView: View {
                     if model.isScanning { Text("Les tailles se précisent pendant l’analyse.").foregroundStyle(.secondary) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.explorerDisplayMode == .grid {
-                tileGrid
+            } else if model.explorerDisplayMode == .bubbles && model.explorerCategoryContext == nil {
+                FolderBubblesView()
             } else {
                 ExplorerListTable(items: model.explorerVisibleItems)
             }
             explorerSelectionBar
         }
+        .onChange(of: model.explorerDisplayMode) { _, mode in
+            if mode == .bubbles { model.ensureBubbleAnalysis() }
+        }
         .task {
+            model.ensureBubbleAnalysis()
             if model.explorerCategoryContext == nil,
                model.currentDirectory == nil || model.currentDirectory == model.selectedVolume?.url {
                 model.loadExplorerRoot()
@@ -82,7 +86,7 @@ struct StorageExplorerView: View {
                 }
                 Picker("Affichage", selection: $model.explorerDisplayMode) {
                     ForEach(ExplorerDisplayMode.allCases) { mode in
-                        Label(mode.rawValue, systemImage: mode == .grid ? "square.grid.3x3" : "list.bullet").tag(mode)
+                        Label(mode.rawValue, systemImage: mode == .bubbles ? "circle.hexagongrid.fill" : "list.bullet").tag(mode)
                     }
                 }
                 .pickerStyle(.segmented).frame(width: 180)
@@ -95,6 +99,7 @@ struct StorageExplorerView: View {
                 }
             }
 
+            if model.explorerDisplayMode == .list || model.explorerCategoryContext != nil {
             ResultFilters()
             HStack {
                 if let context = model.explorerCategoryContext {
@@ -114,6 +119,7 @@ struct StorageExplorerView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            }
             if let context = model.explorerCategoryContext {
                 HStack(spacing: 10) {
                     Image(systemName: context.reportIsComplete ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")

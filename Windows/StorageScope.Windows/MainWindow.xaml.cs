@@ -52,10 +52,11 @@ public partial class MainWindow : Window
         CollectionViewSource.GetDefaultView(_categoryFiles).GroupDescriptions.Add(new PropertyGroupDescription(nameof(ScanEntry.CategoryName)));
         InitializeDisplayFilters();
         InitializeContextActions();
+        Activated += (_, _) => { if (!IsPreviewMode) _ = RefreshRecycleBinAsync(false); };
         Closing += (_, e) =>
         {
             if (_busy) { e.Cancel = true; MessageBox.Show("Annulez ou terminez l’opération en cours avant de fermer StorageScope.", "Opération en cours"); return; }
-            _closing = true; _inventoryCancellation?.Cancel(); _scanCancellation?.Cancel(); _browseCancellation?.Cancel();
+            _closing = true; _bubbleCancellation?.Cancel(); _inventoryCancellation?.Cancel(); _scanCancellation?.Cancel(); _browseCancellation?.Cancel();
         };
         SizeChanged += (_, _) => UpdateResponsiveColumns();
     }
@@ -63,6 +64,7 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         if (IsPreviewMode) return;
+        _ = RefreshRecycleBinAsync(true);
         _ = Task.Run(UpdateService.CleanupDownloads);
         _ = CheckForUpdatesAsync(false);
         try
@@ -96,6 +98,8 @@ public partial class MainWindow : Window
         var cancellation = new CancellationTokenSource();
         _scanCancellation = cancellation;
         _browseCancellation?.Cancel(); ++_browseGeneration;
+        _autoScanAttempts.Add(drive.Root);
+        var destination = _currentDirectory;
         SetScanning(true);
         ClearResults();
         ScanStatusText.Text = "Préparation de l’analyse…";
@@ -117,10 +121,12 @@ public partial class MainWindow : Window
             acceptingProgress = false;
             cancellation.Token.ThrowIfCancellationRequested();
             if (_closing) return;
+            if ((DrivePicker.SelectedItem as DriveChoice)?.Root != drive.Root) return;
             _result = result;
+            _folderIndex = await Task.Run(() => new FolderIndex(result), cancellation.Token);
             PopulateResult(_result);
             ScanStatusText.Text = $"Analyse {(_result.AccessErrors > 0 ? "partielle" : "terminée")} : {_result.FilesScanned:N0} fichiers · {_result.AccessErrors:N0} accès non disponibles" + (_result.CleanupTruncated ? " · suggestions limitées à 10 000 éléments" : "") + " · Choisissez Nettoyage conseillé pour continuer.";
-            await BrowseAsync(drive.Root);
+            await BrowseAsync(destination is not null && Directory.Exists(destination) && DeletionSafetyPolicy.IsWithin(destination, drive.Root) ? destination : drive.Root);
         }
         catch (OperationCanceledException) { ClearResults(); ScanStatusText.Text = "Analyse annulée. Aucun fichier modifié."; }
         catch (Exception error)
@@ -153,7 +159,9 @@ public partial class MainWindow : Window
 
     private void ClearResults()
     {
-        _result = null;
+        _bubbleCancellation?.Cancel();
+        _result = null; _folderIndex = null; _folderFrame = null; ++_bubbleGeneration;
+        BubbleCanvas.Children.Clear();
         _largestFiles.Clear();
         _categoryFiles.Clear();
         PopulateCategorySummary(null);
@@ -170,7 +178,8 @@ public partial class MainWindow : Window
         CancelButton.IsEnabled = scanning;
         DrivePicker.IsEnabled = !scanning;
         ScanProgressBar.IsIndeterminate = false;
-        MainTabs.IsEnabled = !scanning;
+        MainTabs.IsEnabled = !_busy;
+        CleanButton.IsEnabled = UninstallButton.IsEnabled = DuplicateButton.IsEnabled = !scanning && !_busy;
         InstallUpdateButton.IsEnabled = !scanning;
     }
 
@@ -204,16 +213,18 @@ public partial class MainWindow : Window
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || _scanning) return;
-        try { RefreshDrives(); RefreshSpaceStatus(); await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
+        try { _ = RefreshRecycleBinAsync(true); RefreshDrives(); RefreshSpaceStatus(); await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
     }
 
     private async void DrivePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded || DrivePicker.SelectedItem is not DriveChoice drive) return;
         _scanCancellation?.Cancel();
+        if (string.Equals(_result?.Root, drive.Root, StringComparison.OrdinalIgnoreCase) || string.Equals(_currentDirectory, drive.Root, StringComparison.OrdinalIgnoreCase)) { UpdateVolumeHeader(); return; }
         ClearResults();
         UpdateVolumeHeader();
         await BrowseAsync(drive.Root);
+        EnsureBubbleAnalysis();
     }
 
     private void UpdateVolumeHeader()
@@ -248,6 +259,7 @@ public partial class MainWindow : Window
             if (_closing || generation != _browseGeneration || cancellation.IsCancellationRequested) return;
             _allExplorerItems = entries.ToList();
             ApplyExplorerFilter();
+            await LoadBubblesAsync(path);
         }
         catch (OperationCanceledException) { }
         catch (Exception error) { if (!_closing && generation == _browseGeneration) ShowError("Impossible d’ouvrir ce dossier.", error); }
@@ -278,7 +290,7 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter && Directory.Exists(ExplorerPathBox.Text)) await BrowseAsync(ExplorerPathBox.Text);
     }
 
-    private void ExplorerSearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyExplorerFilter();
+    private void ExplorerSearchBox_TextChanged(object sender, TextChangedEventArgs e) { ApplyExplorerFilter(); RenderBubbles(); }
 
     private void OpenSelection_Click(object sender, RoutedEventArgs e)
     {
@@ -312,7 +324,7 @@ public partial class MainWindow : Window
 
     private async Task TrashEntriesAsync(List<ScanEntry> entries, IReadOnlyList<CleanupCandidate>? candidates = null)
     {
-        if (_busy || _scanCancellation is { IsCancellationRequested: false } && !ScanButton.IsEnabled) return;
+        if (_busy || _scanning) return;
         SetBusy(true);
         Diagnostics.Action = "nettoyage-corbeille"; Diagnostics.Write("action");
         _operationCancellation = new();
@@ -339,6 +351,8 @@ public partial class MainWindow : Window
             foreach (var skipped in preparation.Skipped) { try { OperationHistory.Append(skipped); } catch (IOException) { } }
             var succeeded = result.Where(item => item.Status == "corbeille").ToList();
             _recoverableBytes += succeeded.Sum(item => item.Bytes);
+            _ = RefreshRecycleBinAsync(true);
+            _folderIndex = null; _folderFrame = null;
             if (_currentDirectory is not null) await BrowseAsync(_currentDirectory);
             foreach (var item in succeeded)
             {
@@ -401,12 +415,15 @@ public partial class MainWindow : Window
         var generation = ++_inventoryGeneration;
         var detected = await _products.DetectAsync(cancellation.Token);
         if (_closing || generation != _inventoryGeneration) return;
-        _allApplications = detected;
+        var prepared = await Task.Run(() => detected.Select(app => (App: app, Key: SessionIconCache.Key(app))).ToArray(), cancellation.Token);
+        if (_closing || generation != _inventoryGeneration) return;
+        _allApplications = prepared.Select(pair => pair.App with { Icon = _activeIcons.GetValueOrDefault(pair.Key) ?? _iconCache.Peek(pair.Key) ?? pair.App.Icon }).ToArray();
+        _activeIcons = prepared.Select((pair, i) => (pair.Key, Icon: _allApplications[i].Icon)).Where(pair => !ReferenceEquals(pair.Icon, ApplicationIcons.Fallback)).GroupBy(pair => pair.Key).ToDictionary(group => group.Key, group => group.First().Icon);
         var selectedSource = ApplicationSourceFilter.SelectedItem as string;
         ApplicationSourceFilter.ItemsSource = new[] { "Toutes les sources" }.Concat(_allApplications.Select(item => item.Provider).Distinct().Order());
         ApplicationSourceFilter.SelectedItem = selectedSource is not null && _allApplications.Any(item => item.Provider == selectedSource) ? selectedSource : "Toutes les sources";
         ApplyApplicationFilter();
-        _ = EnrichApplicationsAsync(detected, generation, cancellation);
+        _ = EnrichApplicationsAsync(_allApplications, generation, cancellation);
     }
     private async Task EnrichApplicationsAsync(IReadOnlyList<InstalledApplication> detected, int generation, CancellationTokenSource cancellation)
     {
@@ -418,7 +435,9 @@ public partial class MainWindow : Window
                 await limit.WaitAsync(cancellation.Token);
                 try
                 {
-                    var enriched = original with { Icon = await ApplicationEnrichment.IconAsync(original, cancellation.Token) };
+                    var key = await Task.Run(() => SessionIconCache.Key(original), cancellation.Token);
+                    var enriched = original with { Icon = await _iconCache.GetAsync(key, () => ApplicationEnrichment.IconAsync(original, CancellationToken.None)).WaitAsync(cancellation.Token) };
+                    if (generation == _inventoryGeneration && !cancellation.IsCancellationRequested && !ReferenceEquals(enriched.Icon, ApplicationIcons.Fallback)) _activeIcons[key] = enriched.Icon;
                     Publish(enriched);
                     enriched = await Task.Run(() => ApplicationEnrichment.Measure(enriched, cancellation.Token), cancellation.Token);
                     Publish(enriched);

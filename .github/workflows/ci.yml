@@ -47,6 +47,15 @@ jobs:
           TEST_BINARY="$(swift build --disable-sandbox --product StorageCoreTests --show-bin-path)/StorageCoreTests"
           "$TEST_BINARY"
 
+      - name: Verify native macOS rendering and session icons
+        run: swift run --disable-sandbox StorageScope --verify-interface "$RUNNER_TEMP/storagescope-ui"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: macos-native-interface
+          path: ${{ runner.temp }}/storagescope-ui/*.png
+          if-no-files-found: error
+
   windows-build:
     name: Windows .NET 10 safety and offline startup
     runs-on: windows-2025

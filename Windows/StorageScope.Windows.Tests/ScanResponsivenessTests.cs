@@ -82,7 +82,7 @@ internal static class ScanResponsivenessTests
             try
             {
                 window.Show();
-                var tabs = (TabControl)window.FindName("MainTabs"); tabs.SelectedIndex = 3;
+                var tabs = (TabControl)window.FindName("MainTabs"); tabs.SelectedItem = window.FindName("CleanupTab");
                 var grids = new[] { "LargestFilesGrid", "CategoryFilesGrid", "CleanupGrid" }.Select(name => (DataGrid)window.FindName(name)).ToArray();
                 var notifications = new List<NotifyCollectionChangedAction>();
                 foreach (var grid in grids) ((INotifyCollectionChanged)grid.ItemsSource).CollectionChanged += (_, change) => notifications.Add(change.Action);
@@ -93,7 +93,7 @@ internal static class ScanResponsivenessTests
                 {
                     typeof(MainWindow).GetMethod("PopulateResult", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [result]);
                     await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-                    tabs.SelectedIndex = 2;
+                    tabs.SelectedItem = window.FindName("CategoriesTab");
                     await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 });
                 elapsed.Stop();

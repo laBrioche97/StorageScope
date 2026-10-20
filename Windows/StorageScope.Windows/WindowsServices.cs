@@ -18,7 +18,7 @@ public static class DirectoryBrowser
             {
                 token.ThrowIfCancellationRequested();
                 if ((directory.Attributes & FileAttributes.ReparsePoint) != 0) continue;
-                result.Add(new ScanEntry(directory.FullName, directory.Name, sizes?.GetValueOrDefault(directory.FullName) ?? 0, true, SafeModified(directory), StorageCategory.Other));
+                result.Add(new ScanEntry(directory.FullName, directory.Name, sizes?.GetValueOrDefault(directory.FullName) ?? 0, true, SafeModified(directory), StorageCategory.Other) { HasKnownSize = sizes?.ContainsKey(directory.FullName) == true });
             }
             foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", options))
             {

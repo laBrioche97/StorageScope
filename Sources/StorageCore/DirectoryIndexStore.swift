@@ -226,15 +226,16 @@ public actor DirectoryIndexStore {
         return result
     }
 
-    public func children(of parentPath: String) throws -> [DirectorySummary] {
+    public func children(of parentPath: String, limit: Int? = nil) throws -> [DirectorySummary] {
         let normalizedParent = URL(fileURLWithPath: parentPath, isDirectory: true).standardizedFileURL.path
         try validatePath(normalizedParent)
         let database = try requireDatabase()
         let statement = try Self.prepare(
             """
             SELECT \(Self.summaryColumns) FROM directories
-            WHERE parent_path = ? AND path <> ?
+            WHERE parent_path = ? AND path <> ? \(limit == nil ? "" : "AND allocated_size > 0")
             ORDER BY allocated_size DESC, path COLLATE NOCASE ASC
+            \(limit.map { "LIMIT \(max(0, $0))" } ?? "")
             """,
             operation: "lecture des sous-dossiers",
             database: database
@@ -253,6 +254,18 @@ public actor DirectoryIndexStore {
             result.append(Self.decodeSummary(statement, volumeID: volumeID))
         }
         return result
+    }
+
+    public func bubbleChildTotals(of parentPath: String) throws -> (count: Int, bytes: Int64) {
+        let path = URL(fileURLWithPath: parentPath).standardizedFileURL.path
+        try validatePath(path)
+        let database = try requireDatabase()
+        let statement = try Self.prepare("SELECT COUNT(*), COALESCE(SUM(allocated_size), 0) FROM directories WHERE parent_path = ? AND path <> ? AND allocated_size > 0", operation: "total des sous-dossiers", database: database)
+        defer { sqlite3_finalize(statement) }
+        try Self.bindText(path, at: 1, to: statement, database: database)
+        try Self.bindText(path, at: 2, to: statement, database: database)
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw Self.sqliteError(operation: "total des sous-dossiers", database: database) }
+        return (Int(sqlite3_column_int64(statement, 0)), sqlite3_column_int64(statement, 1))
     }
 
     @discardableResult

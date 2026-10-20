@@ -70,7 +70,7 @@ private struct ApplicationCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: application.bundleURL.path))
+                Image(nsImage: model.applicationIcons[application.bundleURL.path] ?? model.iconCache.image(for: application.bundleURL, version: application.version))
                     .resizable().scaledToFit().frame(width: 52, height: 52)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(application.displayName).font(.headline).lineLimit(1)

@@ -30,7 +30,8 @@ public sealed record ScanEntry(
     DateTime? Modified,
     StorageCategory Category)
 {
-    public string DisplaySize => SizeFormatter.Format(Size);
+    public bool HasKnownSize { get; init; } = true;
+    public string DisplaySize => HasKnownSize ? SizeFormatter.Format(Size) : "Taille inconnue";
     public string Type => IsDirectory ? "Dossier" : CategoryLabels.Name(Category);
     public string CategoryName => CategoryLabels.Name(Category);
 }
