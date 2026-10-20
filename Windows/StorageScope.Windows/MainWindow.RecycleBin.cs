@@ -58,6 +58,7 @@ public partial class MainWindow
                 var result = await RecycleBinService.EmptyAsync(new(roots, true));
                 _recycleSummary = result.Summary;
                 var complete = result.Errors.Count == 0 && result.Summary.Available && !result.Summary.Partial && result.Summary.Items == 0;
+                if (complete) _recoverableBytes = 0;
                 var historyWarning = "";
                 try { OperationHistory.Append(new CleanupOutcome("Corbeille du compte courant", complete ? "vidée" : "vidage partiel", Math.Max(0, current.Bytes - result.Summary.Bytes), string.Join("\n", result.Errors))); }
                 catch (Exception error) { Diagnostics.Write("historique-vidage", error); historyWarning = "\nLe bilan n’a pas pu être enregistré dans l’historique local."; }

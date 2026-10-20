@@ -40,6 +40,9 @@ struct StorageExplorerView: View {
             }
             explorerSelectionBar
         }
+        .onChange(of: model.isScanning) { _, scanning in
+            if !scanning { model.ensureBubbleAnalysis() }
+        }
         .onChange(of: model.explorerDisplayMode) { _, mode in
             if mode == .bubbles { model.ensureBubbleAnalysis() }
         }
@@ -55,6 +58,7 @@ struct StorageExplorerView: View {
     private var explorerHeader: some View {
         VStack(spacing: 10) {
             HStack(spacing: 6) {
+                ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 6) {
                 if let volume = model.selectedVolume {
                     Button {
                         model.loadExplorerDirectory(volume.url)
@@ -79,7 +83,7 @@ struct StorageExplorerView: View {
                         }
                     }
                 }
-                Spacer()
+                } }.frame(maxWidth: .infinity, alignment: .leading)
                 if model.isScanning {
                     Label("Analyse en cours", systemImage: "waveform.path.ecg")
                         .font(.caption.bold()).foregroundStyle(.orange)

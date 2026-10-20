@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace StorageScope.Windows;
 
-public sealed record FileSnapshot(uint Volume, ulong FileId, long Length, long LastWrite, bool IsDirectory, string TreeDigest = "");
+public sealed record FileSnapshot(uint Volume, ulong FileId, long Length, long LastWrite, bool IsDirectory, string TreeDigest = "") { public long? ContentBytes { get; init; } }
 
 public static class DeletionSafetyPolicy
 {
@@ -78,6 +78,7 @@ public static class DeletionSafetyPolicy
         if (reason is not null) throw new IOException(reason);
         var root = ReadIdentity(path);
         if (!root.IsDirectory) return root;
+        long contentBytes = 0;
         using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var stack = new Stack<string>();
         stack.Push(path);
@@ -86,14 +87,16 @@ public static class DeletionSafetyPolicy
             token.ThrowIfCancellationRequested();
             foreach (var child in Directory.EnumerateFileSystemEntries(directory).Order(StringComparer.OrdinalIgnoreCase))
             {
+                token.ThrowIfCancellationRequested();
                 reason = BlockReason(child, gameCache: gameCache);
                 if (reason is not null) throw new IOException(reason);
                 var identity = ReadIdentity(child);
                 digest.AppendData(Encoding.UTF8.GetBytes($"{child}\0{identity.Volume}:{identity.FileId}:{identity.Length}:{identity.LastWrite}\n"));
                 if (identity.IsDirectory) stack.Push(child);
+                else contentBytes = checked(contentBytes + identity.Length);
             }
         }
-        return root with { TreeDigest = Convert.ToHexString(digest.GetHashAndReset()) };
+        return root with { TreeDigest = Convert.ToHexString(digest.GetHashAndReset()), ContentBytes = contentBytes };
     }
 
     public static void Revalidate(string path, FileSnapshot expected, CancellationToken token = default, GameCacheAuthorization? gameCache = null)

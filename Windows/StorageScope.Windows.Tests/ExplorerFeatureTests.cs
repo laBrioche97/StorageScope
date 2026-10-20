@@ -53,6 +53,9 @@ internal static class ExplorerFeatureTests
         Require(ReferenceEquals(cache.GetAsync(failedKey, () => Task.FromResult<ImageSource>(drawing)).Result, drawing));
         var unknown = new ScanEntry(root, "unknown", 0, true, null, StorageCategory.Other) { HasKnownSize = false };
         Require(unknown.DisplaySize == "Taille inconnue");
+        Directory.CreateDirectory(root); File.WriteAllBytes(Path.Combine(root, "payload"), new byte[4096]);
+        var preparation = CleanupOperations.Prepare([unknown], null, default);
+        Require(preparation.Ready.Single().Entry.HasKnownSize && preparation.Ready.Single().Entry.Size == 4096);
     }
     private static void Require(bool condition) { if (!condition) throw new Exception("Explorer/cache feature regression."); }
 }

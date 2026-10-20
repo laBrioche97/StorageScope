@@ -109,6 +109,7 @@ struct ContentView: View {
                 ForEach(model.volumes) { Text($0.name).tag($0.id) }
             }
             .frame(maxWidth: 190)
+            .disabled(model.operationsAreBusy && !model.isScanning)
 
             Button("Actualiser", systemImage: "arrow.clockwise") { model.refreshVolumes(); model.refreshTrashSummary(force: true); model.loadApplications() }
                 .help("Actualiser l’espace disponible et les volumes montés")

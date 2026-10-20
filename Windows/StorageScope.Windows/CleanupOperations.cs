@@ -42,7 +42,7 @@ public static class CleanupOperations
                 var candidate = candidates?.FirstOrDefault(item => item.Path.Equals(entry.Path,StringComparison.OrdinalIgnoreCase));
                 var identity = DeletionSafetyPolicy.Capture(entry.Path,token,candidate?.GameCache);
                 if (candidate?.Snapshot is not null && candidate.Snapshot != identity) throw new IOException("L’élément a changé depuis l’analyse ; examinez-le de nouveau.");
-                ready.Add(new(entry with { Size = identity.IsDirectory ? entry.Size : identity.Length },identity,candidate?.DuplicateKeeper,candidate?.KeeperSnapshot,candidate?.GameCache));
+                ready.Add(new(entry with { Size = identity.IsDirectory ? identity.ContentBytes ?? entry.Size : identity.Length, HasKnownSize = !identity.IsDirectory || identity.ContentBytes.HasValue || entry.HasKnownSize },identity,candidate?.DuplicateKeeper,candidate?.KeeperSnapshot,candidate?.GameCache));
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             { skipped.Add(new(entry.Path,"exclu à la vérification",0,error.Message)); }

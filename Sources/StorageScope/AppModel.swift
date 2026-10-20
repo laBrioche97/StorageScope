@@ -364,6 +364,8 @@ final class AppModel: ObservableObject {
         showingTrashConfirmation = false
         explorerCategoryContext = nil
         directoryIndexStore = nil
+        bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
+        bubbleMessage = "Préparation du graphique…"
         snapshot = nil
         liveSummary = nil
         validatedCleanupReport = nil
@@ -380,6 +382,7 @@ final class AppModel: ObservableObject {
                   restored?.volumeID == id else { return }
             snapshot = restored
         }
+        if sidebar == .explorer { loadExplorerRoot() }
     }
 
     func refreshVolumes() {
