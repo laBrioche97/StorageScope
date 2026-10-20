@@ -139,6 +139,7 @@ final class AppModel: ObservableObject {
     @Published var duplicateError: String?
     @Published var showingEmptyTrash = false
     @Published var emptyTrashStep: EmptyTrashStep = .inventory
+    @Published private(set) var trashSummaryIsLoading = false
     @Published var trashSummary: TrashInventory?
     @Published var trashInventory: TrashInventory?
     @Published var emptyTrashConfirmation = ""
@@ -1091,7 +1092,8 @@ extension AppModel {
     }
 
     var trashSummaryLabel: String {
-        guard let summary = trashSummary else { return trashRefreshTask == nil ? "Corbeille · Indisponible" : "Corbeille · Calcul en cours" }
+        guard let summary = trashSummary else { return trashSummaryIsLoading ? "Corbeille · Calcul en cours" : "Corbeille · Indisponible" }
+        if summary.items.isEmpty && !summary.issues.isEmpty { return "Corbeille · Indisponible" }
         let partial = !summary.issues.isEmpty || summary.wasCancelled
         return "Corbeille · " + (partial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
     }
@@ -1100,10 +1102,12 @@ extension AppModel {
         if isPreviewMode { return }
         if trashRefreshTask != nil { if force { trashNeedsRefresh = true }; return }
         guard force || Date().timeIntervalSince(trashCheckedAt) >= 30 else { return }
+        trashSummaryIsLoading = true
         trashRefreshTask = Task { [weak self] in
             guard let self else { return }
             trashSummary = await trashService.inventoryTrash(volumes: volumes)
             trashCheckedAt = Date()
+            trashSummaryIsLoading = false
             trashRefreshTask = nil
             if trashNeedsRefresh { trashNeedsRefresh = false; refreshTrashSummary(force: true) }
         }

@@ -57,9 +57,11 @@ public partial class MainWindow
             {
                 var result = await RecycleBinService.EmptyAsync(new(roots, true));
                 _recycleSummary = result.Summary;
-                var complete = result.Errors.Count == 0 && result.Summary.Available && result.Summary.Items == 0;
-                OperationHistory.Append(new CleanupOutcome("Corbeille du compte courant", complete ? "vidée" : "vidage partiel", Math.Max(0, current.Bytes - result.Summary.Bytes), string.Join("\n", result.Errors)));
-                MessageBox.Show(this, (complete ? "Corbeille vidée." : "Vidage partiel : certains éléments restent dans la corbeille.") + $"\n\nTaille retirée estimée : {SizeFormatter.Format(Math.Max(0, current.Bytes - result.Summary.Bytes))}\nEspace libre : {(result.ObservedFreeChange is long gain ? (gain < 0 ? "variation négative de " : "variation observée de ") + SizeFormatter.Format(Math.Abs(gain)) : "variation indisponible")}\n\n" + string.Join("\n", result.Errors.Take(5)), "Bilan du vidage");
+                var complete = result.Errors.Count == 0 && result.Summary.Available && !result.Summary.Partial && result.Summary.Items == 0;
+                var historyWarning = "";
+                try { OperationHistory.Append(new CleanupOutcome("Corbeille du compte courant", complete ? "vidée" : "vidage partiel", Math.Max(0, current.Bytes - result.Summary.Bytes), string.Join("\n", result.Errors))); }
+                catch (Exception error) { Diagnostics.Write("historique-vidage", error); historyWarning = "\nLe bilan n’a pas pu être enregistré dans l’historique local."; }
+                MessageBox.Show(this, (complete ? "Corbeille vidée." : "Vidage à vérifier : éléments restants ou volumes inaccessibles.") + $"\n\nTaille retirée estimée : {SizeFormatter.Format(Math.Max(0, current.Bytes - result.Summary.Bytes))}\nEspace libre : {(result.ObservedFreeChange is long gain ? (gain < 0 ? "variation négative de " : "variation observée de ") + SizeFormatter.Format(Math.Abs(gain)) : "variation indisponible")}\n\n" + string.Join("\n", result.Errors.Take(5)) + historyWarning, "Bilan du vidage");
             }
             catch (Exception error) { ShowError("Vidage interrompu. Vérifiez la corbeille ; aucune action ne sera relancée automatiquement.", error); }
             finally { ScanProgressBar.IsIndeterminate = false; SetBusy(false); await RefreshRecycleBinAsync(true); RefreshSpaceStatus(); }
