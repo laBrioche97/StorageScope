@@ -100,7 +100,6 @@ public partial class MainWindow : Window
         _scanCancellation = cancellation;
         _browseCancellation?.Cancel(); ++_browseGeneration;
         _autoScanAttempts.Add(drive.Root);
-        var destination = _currentDirectory;
         SetScanning(true);
         SetExplorerLoading(true, "Analyse du disque…");
         ClearResults();
@@ -129,7 +128,7 @@ public partial class MainWindow : Window
             _folderIndex = await Task.Run(() => new FolderIndex(result), cancellation.Token);
             PopulateResult(_result);
             ScanStatusText.Text = $"Analyse {(_result.AccessErrors > 0 ? "partielle" : "terminée")} : {_result.FilesScanned:N0} fichiers · {_result.AccessErrors:N0} accès non disponibles" + (_result.CleanupTruncated ? " · suggestions limitées à 10 000 éléments" : "") + " · Choisissez Nettoyage conseillé pour continuer.";
-            await BrowseAsync(destination is not null && Directory.Exists(destination) && DeletionSafetyPolicy.IsWithin(destination, drive.Root) ? destination : drive.Root);
+            await RefreshExplorerAfterScanAsync(drive.Root);
         }
         catch (OperationCanceledException) { ClearResults(); ScanStatusText.Text = "Analyse annulée. Aucun fichier modifié."; }
         catch (Exception error)
@@ -143,7 +142,7 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_scanCancellation, cancellation)) _scanCancellation = null;
             cancellation.Dispose();
             SetScanning(false); RefreshSpaceStatus();
-            if (_folderIndex is null && _currentDirectory is not null) await LoadBubblesAsync(_currentDirectory);
+            if (_folderIndex is null && _currentDirectory is not null && ExplorerShowsGraph) await LoadBubblesAsync(_currentDirectory);
         }
     }
 
@@ -277,6 +276,12 @@ public partial class MainWindow : Window
             SpaceStatusText.ToolTip = _recoverableBytes > 0 ? $"{SizeFormatter.Format(_recoverableBytes)} déplacés vers la Corbeille pendant cette session. L’espace dépend du vidage de la Corbeille." : "Espace libre mesuré sur le disque.";
         }
         catch { SpaceStatusText.Text = "Espace disponible inconnu"; }
+    }
+
+    private Task RefreshExplorerAfterScanAsync(string root)
+    {
+        var destination = _currentDirectory;
+        return BrowseAsync(destination is not null && Directory.Exists(destination) && DeletionSafetyPolicy.IsWithin(destination, root) ? destination : root);
     }
 
     private async Task BrowseAsync(string path, bool addHistory = true)

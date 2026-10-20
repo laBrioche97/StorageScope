@@ -82,6 +82,13 @@ internal static class NavigationAndEpicTests
                 Require(((TextBlock)window.FindName("BubbleEmptyState")).Text.Contains("pas pu être lu"));
                 Require((bool)Get("_bubbleMode")! && ((Grid)window.FindName("BubblePanel")).Visibility == Visibility.Visible);
             });
+            test("scan completion refreshes the latest folder instead of the scan starting location", () => {
+                Set("_result", result); Set("_folderIndex", new FolderIndex(result));
+                Browse(directory); Browse(child); Browse(grandchild);
+                var completion = (Task)Invoke("RefreshExplorerAfterScanAsync", directory)!;
+                Pump(() => completion.IsCompleted); completion.GetAwaiter().GetResult();
+                Require((string?)Get("_currentDirectory") == grandchild && (bool)Get("_bubbleMode")!);
+            });
         }
         finally { Set("_result", oldResult); Set("_folderIndex", oldIndex); Click("ExplorerCombinedButton"); tabs.SelectedItem = window.FindName("OverviewTab"); SynchronizationContext.SetSynchronizationContext(previous); }
         EpicTests(root, test);

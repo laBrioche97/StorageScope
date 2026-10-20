@@ -8,6 +8,7 @@ struct ManagedGamesPanel: View {
     @State private var selected: ManagedGame?
     @State private var message: String?
     @State private var loading = true
+    @State private var uninstallTask: Task<Void, Never>?
     @State private var source = "Toutes les sources"
     @State private var icons: [String: NSImage] = [:]
     private let adapter = LocalGameLibraryAdapter()
@@ -60,13 +61,19 @@ struct ManagedGamesPanel: View {
                         Text(game.installURL.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     }.padding(.vertical, 6)
                 }
-                if model.gameUninstallIsWorking { ProgressView("En attente de la désinstallation officielle…") }
+                if model.gameUninstallIsWorking {
+                    HStack {
+                        ProgressView("En attente de la désinstallation officielle…")
+                        Button("Arrêter le suivi") { uninstallTask?.cancel() }
+                    }
+                    Text("Arrêter le suivi n’annule pas une désinstallation déjà acceptée dans le launcher.").font(.caption).foregroundStyle(.secondary)
+                }
                 if let message { Text(message).font(.callout).textSelection(.enabled) }
             }.padding(8)
         }
         .task { await reload() }
         .alert("Désinstallation du jeu", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
-            if let game = selected, game.canUninstall { Button("Continuer avec le moteur officiel") { Task { await uninstall(game) } } }
+            if let game = selected, game.canUninstall { Button("Continuer avec le moteur officiel") { uninstallTask = Task { await uninstall(game) } } }
             Button("Fermer", role: .cancel) { selected = nil }
         } message: { Text(selected?.explanation ?? "") }
     }
@@ -91,7 +98,7 @@ struct ManagedGamesPanel: View {
         defer { model.gameUninstallIsWorking = false }
         do { try OperationJournal.append(operation: "désinstallation officielle", path: game.installURL.path, status: "préparé") }
         catch { message = "L’historique local n’est pas accessible. Aucun désinstalleur n’a été lancé."; return }
-        guard await adapter.execute(game) else { message = "Le launcher officiel n’a pas pu être ouvert. Aucun fichier n’a été supprimé."; return }
+        guard await adapter.execute(game) else { message = Task.isCancelled ? "Suivi annulé. Aucun fichier n’a été supprimé par StorageScope." : "Le launcher officiel n’a pas pu être ouvert. Aucun fichier n’a été supprimé."; return }
         for _ in 0..<150 {
             try? await Task.sleep(for: .seconds(2))
             if Task.isCancelled { break }
@@ -103,7 +110,7 @@ struct ManagedGamesPanel: View {
                 return
             }
         }
-        message = "Le moteur officiel a été ouvert ; la désinstallation n’est pas encore confirmée. Terminez-la puis actualisez la liste."
-        try? OperationJournal.append(operation: "désinstallation officielle", path: game.installURL.path, status: "à vérifier")
+        message = Task.isCancelled ? "Suivi annulé. Une désinstallation déjà acceptée dans le launcher peut continuer ; actualisez ensuite l’inventaire." : "Le moteur officiel a été ouvert ; la désinstallation n’est pas encore confirmée. Terminez-la puis actualisez la liste."
+        try? OperationJournal.append(operation: "désinstallation officielle", path: game.installURL.path, status: Task.isCancelled ? "suivi annulé" : "à vérifier")
     }
 }

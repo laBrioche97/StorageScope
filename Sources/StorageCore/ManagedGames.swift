@@ -103,8 +103,8 @@ public actor LocalGameLibraryAdapter: GameLibraryAdapter {
     }
 
     public func execute(_ game: ManagedGame) async -> Bool {
-        guard await prepare(game), let url = game.uninstallURL else { return false }
-        return await MainActor.run { NSWorkspace.shared.open(url) }
+        guard !Task.isCancelled, await prepare(game), let url = game.uninstallURL else { return false }
+        return await MainActor.run { !Task.isCancelled && NSWorkspace.shared.open(url) }
     }
 
     private func steamGames() -> [ManagedGame] {

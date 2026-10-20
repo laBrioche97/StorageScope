@@ -1,6 +1,7 @@
 # StorageScope 3.4.2
 
 - L’Explorateur conserve le mode choisi en ouvrant un dossier depuis les bulles, la liste ou l’historique. Le mode préféré reste visible.
+- La fin d’une analyse conserve le dernier dossier ouvert, sans revenir au dossier depuis lequel l’analyse a commencé.
 - « Autres éléments » et « Voir les fichiers » ouvrent une liste temporaire ; la navigation suivante retrouve votre mode préféré.
 - Le graphique conserve son panneau et le chargement Brioche. Les dossiers vides, inaccessibles ou de taille inconnue affichent un état explicite.
 - Les jeux Epic conservent leurs identifiants et manifestes pour préparer et vérifier leur désinstallation.
