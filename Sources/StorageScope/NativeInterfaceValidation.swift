@@ -15,9 +15,12 @@ enum NativeInterfaceValidation {
         precondition(first === model.iconCache.image(for: source), "Session logo cache must reuse decoded images")
         let weights: [Double] = [40, 25, 15, 10, 5]
         let circles = CirclePacking.pack(weights)
-        let nodes = circles.enumerated().map { index, circle in
+        var nodes = circles.enumerated().map { index, circle in
             FolderBubble(path: "/Volumes/Test/Folder-\(index)", name: ["Applications", "Documents", "Jeux", "Vidéos", "Archives"][index], bytes: Int64(weights[index] * 1_073_741_824), circle: PackedCircle(x: circle.x * 0.9, y: circle.y * 0.9, radius: circle.radius * 0.9), depth: 0)
         }
+        let parent = nodes[0]
+        let childCircle = PackedCircle(x: parent.circle.x, y: parent.circle.y, radius: parent.circle.radius * 0.63)
+        nodes.append(FolderBubble(path: parent.path + "/Sous-dossier", name: "Sous-dossier", bytes: parent.bytes / 2, circle: childCircle, depth: 1, parentBytes: parent.bytes))
         model.bubbleFrame = FolderBubbleFrame(folders: nodes, totalBytes: 100 * 1_073_741_824, directFileBytes: 5 * 1_073_741_824, isPartial: false, updatedAt: Date())
         model.bubbleMessage = "Tailles identifiées · Cliquez sur un dossier pour l’ouvrir."
         model.currentDirectory = URL(fileURLWithPath: "/Volumes/Test")
@@ -26,15 +29,18 @@ enum NativeInterfaceValidation {
                 let view = FolderBubblesView().environmentObject(model)
                     .environment(\.colorScheme, dark ? .dark : .light)
                     .frame(width: 740, height: 560)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .scaleEffect(scale, anchor: .topLeading)
+                    .frame(width: 740 * scale, height: 560 * scale, alignment: .topLeading)
                 let hosting = NSHostingView(rootView: view)
-                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 560), styleMask: [.titled], backing: .buffered, defer: false)
+                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740 * scale, height: 560 * scale), styleMask: [.titled], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false
+                window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
                 window.contentView = hosting
-                hosting.frame = NSRect(x: 0, y: 0, width: 740, height: 560)
+                hosting.frame = NSRect(x: 0, y: 0, width: 740 * scale, height: 560 * scale)
                 hosting.layoutSubtreeIfNeeded()
-                await Task.yield()
-                guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(740 * scale), pixelsHigh: Int(560 * scale), bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { throw CocoaError(.fileWriteUnknown) }
-                bitmap.size = NSSize(width: 740, height: 560)
+                try await Task.sleep(for: .milliseconds(100))
+                guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { throw CocoaError(.fileWriteUnknown) }
                 hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
                 guard let data = bitmap.representation(using: .png, properties: [:]), !data.isEmpty else { throw CocoaError(.fileWriteUnknown) }
                 try data.write(to: destination.appendingPathComponent("macos-bubbles-\(dark ? "dark" : "light")-\(Int(scale * 100)).png"))
