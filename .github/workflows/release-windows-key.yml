@@ -49,6 +49,13 @@ jobs:
         timeout-minutes: 5
         shell: pwsh
         run: ./scripts/test-windows-installation.ps1
+      - name: Preserve installation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: installation-diagnostics
+          path: ${{ runner.temp }}/storagescope-installation-*.log
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v5
         with:
           name: release-windows-key

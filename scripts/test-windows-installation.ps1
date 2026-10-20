@@ -1,5 +1,18 @@
 $ErrorActionPreference = 'Stop'
 if ($env:CI -ne 'true' -or -not $env:RUNNER_TEMP) { throw 'Installation regression tests require an isolated CI runner.' }
+function Invoke-FixtureProcess([string]$Label, [string]$File, [string[]]$Arguments, [string]$Log = '') {
+    Write-Host "START $Label"
+    $process = Start-Process -FilePath $File -ArgumentList $Arguments -WindowStyle Hidden -PassThru
+    # Wait only for the process under test. -Wait also tracks descendants, which
+    # may include the application's crash monitor or an intentionally restarted UI.
+    if (-not $process.WaitForExit(120000)) {
+        if ($Log -and (Test-Path -LiteralPath $Log)) { Get-Content -LiteralPath $Log -Tail 60 | ForEach-Object { Write-Host $_ } }
+        try { $process.Kill($true) } catch { }
+        throw "$Label exceeded two minutes (process $($process.Id))."
+    }
+    Write-Host "END $Label : $($process.ExitCode)"
+    return $process
+}
 $root = Join-Path $env:RUNNER_TEMP 'storagescope-installation-regression'
 $current = 'HKCU:/Software/LaBrioche/StorageScope'
 if (Test-Path -LiteralPath $current) { throw 'Existing StorageScope installation found. Refusing to alter it.' }
@@ -12,18 +25,20 @@ New-ItemProperty -LiteralPath $current -Name CurrentVersion -Value '3.1.0' -Forc
 $installer = Join-Path $PWD 'release-assets/StorageScope-Windows-Setup-DEVELOPMENT.exe'
 $arguments = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$root+'"'))
 $env:STORAGESCOPE_TEST_HEALTH_FAILURE = '1'
-$failed = Start-Process $installer -ArgumentList $arguments -WindowStyle Hidden -PassThru -Wait
+$failureLog = Join-Path $env:RUNNER_TEMP 'storagescope-installation-failure.log'
+$failed = Invoke-FixtureProcess 'injected failure and rollback' $installer ($arguments + ('/LOG="'+$failureLog+'"')) $failureLog
 if ($failed.ExitCode -eq 0) { throw ('Injected replacement failure was accepted. CurrentVersion=' + (Get-ItemProperty -LiteralPath $current).CurrentVersion) }
 if (-not (Test-Path -LiteralPath (Join-Path $old 'StorageScope.exe'))) { throw 'Previous version lost after failure.' }
 if ((Get-ItemProperty -LiteralPath $current).CurrentVersion -ne '3.1.0') { throw 'Failed version became current.' }
 Remove-Item Env:/STORAGESCOPE_TEST_HEALTH_FAILURE
-$success = Start-Process $installer -ArgumentList $arguments -WindowStyle Hidden -PassThru -Wait
+$successLog = Join-Path $env:RUNNER_TEMP 'storagescope-installation-success.log'
+$success = Invoke-FixtureProcess 'successful replacement' $installer ($arguments + ('/LOG="'+$successLog+'"')) $successLog
 if ($success.ExitCode -ne 0) { throw "Replacement failed: $($success.ExitCode)" }
 $versions = @(Get-ChildItem -LiteralPath (Join-Path $root 'versions') -Directory)
 if ($versions.Count -ne 1 -or $versions[0].Name -ne $version) { throw 'More than one managed version remains after replacement.' }
 $application = Join-Path $versions[0].FullName 'StorageScope.exe'
 $env:HTTP_PROXY = 'http://127.0.0.1:9'; $env:HTTPS_PROXY = 'http://127.0.0.1:9'
-$health = Start-Process $application -ArgumentList '--verify-installation' -WindowStyle Hidden -PassThru -Wait
+$health = Invoke-FixtureProcess 'offline health check' $application @('--verify-installation')
 if ($health.ExitCode -ne 0) { throw 'Offline installation verification failed.' }
 $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'StorageScope.lnk'
 if (Test-Path -LiteralPath $shortcut) {
@@ -36,9 +51,8 @@ Write-Output 'PASS failed replacement preserves old version; successful replacem
 New-Item -ItemType Directory -Path $old -Force | Out-Null
 Copy-Item -Path 'dist/win-x64/*' -Destination $old -Recurse
 Set-ItemProperty -LiteralPath $current -Name CurrentVersion -Value '3.1.0'
-$updated = Start-Process $installer -ArgumentList ($arguments + @('/UPDATE=1')) -WindowStyle Hidden -PassThru
-# Start-Process -Wait includes descendants: it would wait forever for the restarted GUI.
-if (-not $updated.WaitForExit(120000)) { throw 'Managed installer did not finish within two minutes.' }
+$updateLog = Join-Path $env:RUNNER_TEMP 'storagescope-installation-update.log'
+$updated = Invoke-FixtureProcess 'managed update and restart' $installer ($arguments + @('/UPDATE=1',('/LOG="'+$updateLog+'"'))) $updateLog
 if ($updated.ExitCode -ne 0) { throw 'Managed update failed.' }
 $deadline = [DateTime]::UtcNow.AddSeconds(20)
 $restarted = $null
