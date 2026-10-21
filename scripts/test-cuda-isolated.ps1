@@ -27,7 +27,7 @@ $env:STORAGESCOPE_CUDA_DISPOSABLE = '12.1'
 dotnet run --project Windows/StorageScope.Windows.Tests -c Release -- --cuda-isolated-uninstall | Tee-Object -FilePath (Join-Path $report 'result.log')
 if ($LASTEXITCODE -ne 0) { throw 'CUDA official uninstall verification failed.' }
 $driverAfter = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object DriverProviderName -Match 'NVIDIA' | Select-Object DeviceID,DriverVersion) | ConvertTo-Json -Compress
-$driverBefore = (Get-Content (Join-Path $report 'drivers-before.json') -Raw).Trim()
-if ($driverBefore -ne $driverAfter) { throw 'Graphics driver inventory changed.' }
+$driverBefore = [string](Get-Content (Join-Path $report 'drivers-before.json') -Raw)
+if ($driverBefore.Trim() -ne ([string]$driverAfter).Trim()) { throw 'Graphics driver inventory changed.' }
 @{ cudaDevelopmentRemoved=$true; otherComponentsPreserved=$true; graphicsDriversUnchanged=$true; runner=$env:ImageOS } | ConvertTo-Json | Set-Content (Join-Path $report 'validation.json')
 }
