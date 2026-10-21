@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _operationCancellation;
     private IReadOnlyList<InstalledApplication> _allApplications = [];
     private UpdateManifest? _availableUpdate;
+    private bool _checkingUpdate;
+    private bool _installingUpdate;
     private bool _busy;
     private bool _scanning;
     private bool _closing;
@@ -65,12 +67,13 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         if (IsPreviewMode) return;
+        ObserveStorageChanges();
         _ = RefreshRecycleBinAsync(true);
         _ = Task.Run(UpdateService.CleanupDownloads);
         _ = CheckForUpdatesAsync(false);
         try
         {
-            RefreshDrives();
+            await RefreshDrivesAsync();
             await ReloadApplicationsAsync();
         }
         catch (Exception error)
@@ -80,21 +83,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RefreshDrives()
-    {
-        var selectedRoot = (DrivePicker.SelectedItem as DriveChoice)?.Root;
-        var drives = DriveInfo.GetDrives().Where(drive => drive.IsReady && drive.DriveType is DriveType.Fixed or DriveType.Removable)
-            .Select(drive => new DriveChoice(drive)).ToList();
-        DrivePicker.ItemsSource = drives;
-        DrivePicker.SelectedItem = drives.FirstOrDefault(item => string.Equals(item.Root, selectedRoot, StringComparison.OrdinalIgnoreCase)) ?? drives.FirstOrDefault(item => item.Root.Equals(@"C:\", StringComparison.OrdinalIgnoreCase)) ?? drives.FirstOrDefault();
-        UpdateVolumeHeader();
-    }
-
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || _scanning) return;
         Diagnostics.Action = "analyse"; Diagnostics.Write("action");
         if (DrivePicker.SelectedItem is not DriveChoice drive) return;
+        var storageGeneration = _storageGeneration;
+        _storageIdentity = drive.Identity;
         _scanCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
         _scanCancellation = cancellation;
@@ -123,14 +118,14 @@ public partial class MainWindow : Window
             acceptingProgress = false;
             cancellation.Token.ThrowIfCancellationRequested();
             if (_closing) return;
-            if ((DrivePicker.SelectedItem as DriveChoice)?.Root != drive.Root) return;
+            if ((DrivePicker.SelectedItem as DriveChoice)?.Identity != drive.Identity || storageGeneration != _storageGeneration) return;
             _result = result;
             _folderIndex = await Task.Run(() => new FolderIndex(result), cancellation.Token);
             PopulateResult(_result);
             ScanStatusText.Text = $"Analyse {(_result.AccessErrors > 0 ? "partielle" : "terminée")} : {_result.FilesScanned:N0} fichiers · {_result.AccessErrors:N0} accès non disponibles" + (_result.CleanupTruncated ? " · suggestions limitées à 10 000 éléments" : "") + " · Choisissez Nettoyage conseillé pour continuer.";
             await RefreshExplorerAfterScanAsync(drive.Root);
         }
-        catch (OperationCanceledException) { ClearResults(); ScanStatusText.Text = "Analyse annulée. Aucun fichier modifié."; }
+        catch (OperationCanceledException) { if (storageGeneration == _storageGeneration) { ClearResults(); ScanStatusText.Text = "Analyse annulée. Aucun fichier modifié."; } }
         catch (Exception error)
         {
             ScanStatusText.Text = "L’analyse a échoué";
@@ -142,6 +137,7 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_scanCancellation, cancellation)) _scanCancellation = null;
             cancellation.Dispose();
             SetScanning(false); RefreshSpaceStatus();
+            if (storageGeneration != _storageGeneration) EnsureBubbleAnalysis();
             if (_folderIndex is null && _currentDirectory is not null && ExplorerShowsGraph) await LoadBubblesAsync(_currentDirectory);
         }
     }
@@ -186,6 +182,7 @@ public partial class MainWindow : Window
         MainTabs.IsEnabled = !_busy;
         CleanButton.IsEnabled = UninstallButton.IsEnabled = DuplicateButton.IsEnabled = SelectRecommendedButton.IsEnabled = !scanning && !_busy;
         InstallUpdateButton.IsEnabled = !scanning;
+        RefreshUpdateStatus();
         UpdateResponsiveColumns();
     }
 
@@ -245,19 +242,13 @@ public partial class MainWindow : Window
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || _scanning) return;
-        try { _ = RefreshRecycleBinAsync(true); RefreshDrives(); RefreshSpaceStatus(); await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
+        try { _ = RefreshRecycleBinAsync(true); await RefreshDrivesAsync(); RefreshSpaceStatus(); await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
     }
 
     private async void DrivePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLoaded || DrivePicker.SelectedItem is not DriveChoice drive) return;
-        _scanCancellation?.Cancel();
-        if (string.Equals(_result?.Root, drive.Root, StringComparison.OrdinalIgnoreCase) || string.Equals(_currentDirectory, drive.Root, StringComparison.OrdinalIgnoreCase)) { UpdateVolumeHeader(); return; }
-        _browseHistory.Clear(); _historyPosition = -1;
-        ClearResults();
-        UpdateVolumeHeader();
-        await BrowseAsync(drive.Root);
-        EnsureBubbleAnalysis();
+        if (!IsLoaded || _refreshingDrives || DrivePicker.SelectedItem is not DriveChoice drive) return;
+        await OpenStorageRootAsync(drive);
     }
 
     private void UpdateVolumeHeader()
@@ -454,16 +445,18 @@ public partial class MainWindow : Window
             var plan = await Task.Run(() => provider.Prepare(application), _operationCancellation.Token);
             plan = plan with { Progress = new Progress<string>(message => ScanStatusText.Text = message) };
             if (!plan.CanProceed) { MessageBox.Show(plan.Explanation, "Désinstallation indisponible", MessageBoxButton.OK, MessageBoxImage.Information); return; }
-            if (MessageBox.Show($"Désinstaller « {application.Name} » ?\n\nInstallation : {application.DisplaySize}.\nCette taille ne garantit pas l’espace libéré ; des composants peuvent être partagés.\n\n{plan.Explanation}\n\nLes sauvegardes restent conservées par StorageScope. Les résidus attribués seront proposés séparément.", "Vérifier la désinstallation", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            if (!plan.EpicGuided && MessageBox.Show($"Désinstaller « {application.Name} » ?\n\nInstallation : {application.DisplaySize}.\nCette taille ne garantit pas l’espace libéré ; des composants peuvent être partagés.\n\n{plan.Explanation}\n\nLes sauvegardes restent conservées par StorageScope. Les résidus attribués seront proposés séparément.", "Vérifier la désinstallation", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             ScanStatusText.Text = plan.EpicGuided ? "Ouverture d’Epic pour confirmer la désinstallation…" : "Désinstallation officielle en cours…";
-            var result = await provider.ExecuteAsync(plan, _operationCancellation.Token);
+            var result = plan.EpicGuided
+                ? await new EpicGuideWindow(application.Name + " · " + application.DisplaySize, provider, plan, _operationCancellation.Token) { Owner = this }.ShowGuideAsync()
+                : await provider.ExecuteAsync(plan, _operationCancellation.Token);
             if (result.Verified)
             {
                 var residuals = await GameResiduals.FindAsync(application);
                 foreach (var residual in residuals) _cleanup.Add(residual);
                 if (residuals.Count > 0) MessageBox.Show($"{residuals.Count} cache(s) attribué(s) à ce jeu peuvent être examinés dans Nettoyage conseillé. Les sauvegardes restent conservées.", "Résidus du jeu");
             }
-            MessageBox.Show(result.Message, result.Verified ? "Désinstallation confirmée" : "Vérification nécessaire", MessageBoxButton.OK, result.Verified ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            if (!plan.EpicGuided) MessageBox.Show(result.Message, result.Verified ? "Désinstallation confirmée" : "Vérification nécessaire", MessageBoxButton.OK, result.Verified ? MessageBoxImage.Information : MessageBoxImage.Warning);
             await ReloadApplicationsAsync();
             RefreshSpaceStatus();
             ScanStatusText.Text = result.Verified ? "Désinstallation confirmée." : result.Message;
@@ -482,6 +475,7 @@ public partial class MainWindow : Window
         DrivePicker.IsEnabled = !busy;
         CancelButton.IsEnabled = busy;
         InstallUpdateButton.IsEnabled = !busy;
+        RefreshUpdateStatus();
     }
     private async Task ReloadApplicationsAsync()
     {
@@ -609,7 +603,8 @@ public partial class MainWindow : Window
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(true);
     private async Task CheckForUpdatesAsync(bool manual)
     {
-        if (!CheckUpdateButton.IsEnabled) return;
+        if (_checkingUpdate || _installingUpdate) return;
+        _updateError = null; _checkingUpdate = true; RefreshUpdateStatus();
         CheckUpdateButton.IsEnabled = false;
         try
         {
@@ -618,7 +613,7 @@ public partial class MainWindow : Window
             {
                 UpdateText.Text = $"StorageScope {_availableUpdate.Version} est disponible.\n{_availableUpdate.Notes}" + (string.IsNullOrWhiteSpace(UpdateService.ExpectedPublisher) && string.IsNullOrWhiteSpace(_availableUpdate.AuthenticodePublisher) ? "\nPaquet vérifié par la clé de mise à jour StorageScope ; sans signature Authenticode Windows. Windows peut demander une confirmation." : "");
                 InstallUpdateButton.Content = "Mettre à jour et redémarrer";
-                UpdateBanner.Visibility = Visibility.Visible;
+                UpdateBanner.Visibility = manual ? Visibility.Visible : Visibility.Collapsed;
             }
             else if (_updates.ManualDownloadUrl is not null)
             {
@@ -629,11 +624,12 @@ public partial class MainWindow : Window
         }
         catch (Exception error)
         {
+            _updateError = "Vérification impossible · réessayer. " + error.Message;
             Diagnostics.Write("vérification-mise-à-jour", error);
             CheckUpdateButton.ToolTip = "Vérification indisponible. Le logiciel reste utilisable hors ligne.";
             if (manual) MessageBox.Show("Vérification indisponible. Vous pouvez continuer à utiliser StorageScope hors ligne.\n\n" + error.Message, "Mises à jour");
         }
-        finally { CheckUpdateButton.IsEnabled = true; }
+        finally { _checkingUpdate = false; CheckUpdateButton.IsEnabled = true; RefreshUpdateStatus(); }
     }
     private void DismissUpdate_Click(object sender, RoutedEventArgs e) => UpdateBanner.Visibility = Visibility.Collapsed;
     private async void InstallUpdate_Click(object sender, RoutedEventArgs e)
@@ -641,10 +637,13 @@ public partial class MainWindow : Window
         if (_busy || _scanning) { MessageBox.Show("Terminez le nettoyage ou l’analyse avant la mise à jour.", "Mise à jour reportée"); return; }
         if (_availableUpdate is null) { if (_updates.ManualDownloadUrl is string url) SafeOpen(url); return; }
         var manifest = _availableUpdate;
+        _installingUpdate = true;
         SetBusy(true); _operationCancellation = new();
         try
         {
             Diagnostics.Action = "mise-à-jour"; Diagnostics.Write("action");
+            ScanStatusText.Text = "Vérification de la version et de sa signature…";
+            manifest = await _updates.RevalidateAsync(manifest, _operationCancellation.Token);
             var path = await _updates.DownloadVerifiedAsync(manifest, new Progress<double>(fraction => ScanStatusText.Text = $"Téléchargement : {fraction:P0}"), _operationCancellation.Token);
             using var guard = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             await Task.Run(() => UpdateService.VerifyInstaller(path, manifest), _operationCancellation.Token);
@@ -654,7 +653,29 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException) { ScanStatusText.Text = "Mise à jour annulée. La version actuelle reste utilisable."; }
         catch (Exception error) { ShowError("Mise à jour refusée ou interrompue. La version actuelle reste en place.", error); }
-        finally { SetBusy(false); _operationCancellation.Dispose(); _operationCancellation = null; }
+        finally { _installingUpdate = false; SetBusy(false); _operationCancellation.Dispose(); _operationCancellation = null; RefreshUpdateStatus(); }
+    }
+
+    private string? _updateError;
+    private void RefreshUpdateStatus()
+    {
+        if (UpdateStatusButton is null) return;
+        var text = _installingUpdate ? "Mise à jour en cours · Annuler dans la barre d’actions"
+            : _checkingUpdate ? "Recherche de mises à jour…"
+            : _updateError ?? (_availableUpdate is not null ? $"Mettre à jour vers {_availableUpdate.Version} et redémarrer"
+                + (_updates.UsingCachedOffer ? " · offre de la dernière vérification, connexion requise" : "") : _updates.Status);
+        if (_availableUpdate is not null && (_busy || _scanning) && !_installingUpdate) text += " · Disponible après l’analyse ou l’opération en cours.";
+        UpdateStatusButton.Content = _installingUpdate || _checkingUpdate ? "↻" : _availableUpdate is not null ? "⬆" : _updates.IsOffline || _updateError is not null ? "☁" : "✓";
+        UpdateStatusButton.ToolTip = text;
+        System.Windows.Automation.AutomationProperties.SetName(UpdateStatusButton, text);
+        UpdateStatusButton.IsEnabled = !_checkingUpdate && !_installingUpdate && !(_availableUpdate is not null && (_busy || _scanning));
+        InstallUpdateButton.IsEnabled = !_busy && !_scanning && !_installingUpdate;
+    }
+
+    private async void UpdateStatus_Click(object sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is not null) InstallUpdate_Click(sender, e);
+        else { _updateError = null; await CheckForUpdatesAsync(true); }
     }
 
     private static void SafeOpen(string path)
@@ -673,12 +694,3 @@ public partial class MainWindow : Window
     }
 }
 
-public sealed class DriveChoice
-{
-    private readonly DriveInfo _drive;
-    public DriveChoice(DriveInfo drive) => _drive = drive;
-    public string Root => _drive.RootDirectory.FullName;
-    public long AvailableBytes => _drive.AvailableFreeSpace;
-    public string VolumeLabel => string.IsNullOrWhiteSpace(_drive.VolumeLabel) ? $"Disque local ({Root.TrimEnd('\\')})" : $"{_drive.VolumeLabel} ({Root.TrimEnd('\\')})";
-    public string FreeLabel => $"{SizeFormatter.Format(_drive.AvailableFreeSpace)} libres";
-}

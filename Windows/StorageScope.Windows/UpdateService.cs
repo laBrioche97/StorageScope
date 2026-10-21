@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -22,6 +24,8 @@ public sealed class UpdateService
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(12) };
     private readonly string _state = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StorageScope", "update-check.txt");
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private readonly string? _testVerificationKey;
+    private string? VerificationKey => _testVerificationKey ?? PublicKey;
     public static Version CurrentVersion => Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
     public static string? PublicKey
     {
@@ -38,13 +42,58 @@ public sealed class UpdateService
     public string Status { get; private set; } = "Vérification non effectuée.";
     public string? ManualDownloadUrl { get; private set; }
 
+    public bool IsOffline { get; private set; }
+    public bool UsingCachedOffer { get; private set; }
+    public DateTimeOffset? LastVerified { get; private set; }
+    private sealed record CachedOffer(byte[] Payload, byte[] Signature, DateTimeOffset Verified);
     public UpdateService() { _http.DefaultRequestHeaders.UserAgent.ParseAdd("StorageScope/" + CurrentVersion); }
+
+    internal UpdateService(HttpClient client, string state, string? verificationKey = null) { _http = client; _state = state; _testVerificationKey = verificationKey; _http.DefaultRequestHeaders.UserAgent.ParseAdd("StorageScope/" + CurrentVersion); }
 
     public async Task<UpdateManifest?> CheckAsync(bool manual, CancellationToken token)
     {
-        if (!manual && File.Exists(_state) && DateTimeOffset.TryParse(await File.ReadAllTextAsync(_state, token), out var last) && DateTimeOffset.UtcNow - last < TimeSpan.FromDays(1)) return null;
+        IsOffline = UsingCachedOffer = false;
+        try { return await CheckOnlineAsync(token); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !token.IsCancellationRequested)
+        {
+            IsOffline = true;
+            var cached = await LoadOfferAsync(token);
+            UsingCachedOffer = cached is not null;
+            Status = cached is null ? "Connexion indisponible · réessayer lorsque vous serez en ligne."
+                : $"StorageScope {cached.Version} disponible · dernière vérification le {LastVerified:g}. Connexion requise pour revalider avant installation.";
+            return cached;
+        }
+    }
+
+    private string OfferPath => _state + ".offer.json";
+    private async Task<UpdateManifest?> LoadOfferAsync(CancellationToken token)
+    {
+        try
+        {
+            if (!File.Exists(OfferPath) || new FileInfo(OfferPath).Length > 100 * 1024) return null;
+            var cached = JsonSerializer.Deserialize<CachedOffer>(await File.ReadAllBytesAsync(OfferPath, token));
+            if (cached is null || VerificationKey is null) return null;
+            var version = JsonSerializer.Deserialize<UpdateManifest>(cached.Payload, JsonOptions)?.Version ?? "";
+            var offer = ValidateManifest(cached.Payload, cached.Signature, VerificationKey, "v" + version, CurrentVersion);
+            if (Environment.OSVersion.Version.Build < offer.MinimumWindowsBuild) return null;
+            LastVerified = cached.Verified;
+            return offer;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or CryptographicException) { Diagnostics.Write("offre-mise-à-jour", error); return null; }
+    }
+
+    public async Task<UpdateManifest> RevalidateAsync(UpdateManifest offered, CancellationToken token)
+    {
+        var fresh = await CheckOnlineAsync(token);
+        if (fresh is null || fresh.Version != offered.Version || fresh.Sha256 != offered.Sha256 || fresh.DownloadUrl != offered.DownloadUrl)
+            throw new IOException("L’offre a changé. Recherchez à nouveau les mises à jour avant de l’installer.");
+        return fresh;
+    }
+
+    private async Task<UpdateManifest?> CheckOnlineAsync(CancellationToken token)
+    {
         Status = "Recherche d’une mise à jour…"; ManualDownloadUrl = null;
-        var releaseBytes = await ReadLimitedAsync("https://api.github.com/repos/laBrioche97/StorageScope/releases/latest", 256 * 1024, token);
+        var releaseBytes = await ReadReleaseAsync(token);
         using var release = JsonDocument.Parse(releaseBytes);
         var root = release.RootElement;
         if (root.GetProperty("draft").GetBoolean() || root.GetProperty("prerelease").GetBoolean()) throw new IOException("Aucune release stable vérifiable.");
@@ -52,10 +101,11 @@ public sealed class UpdateService
         if (!Version.TryParse(tag.TrimStart('v'), out var version)) throw new IOException("Version de release invalide.");
         async Task Checked()
         {
+            LastVerified = DateTimeOffset.UtcNow;
             try { Directory.CreateDirectory(Path.GetDirectoryName(_state)!); await File.WriteAllTextAsync(_state, DateTimeOffset.UtcNow.ToString("O"), token); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Diagnostics.Write("état-mise-à-jour", error); }
         }
-        if (version <= CurrentVersion) { Status = "Vous disposez de la dernière version compatible publiée."; await Checked(); return null; }
+        if (version <= CurrentVersion) { Status = "Vous disposez de la dernière version compatible publiée."; await Checked(); TryDeleteOffer(); return null; }
         var assets = root.GetProperty("assets").EnumerateArray().ToArray();
         string? Asset(string name) => assets.FirstOrDefault(item => item.GetProperty("name").GetString() == name).ValueKind == JsonValueKind.Undefined ? null
             : assets.First(item => item.GetProperty("name").GetString() == name).GetProperty("browser_download_url").GetString();
@@ -70,10 +120,38 @@ public sealed class UpdateService
         if (!IsReleaseUrl(manifestUrl, tag, "windows-update.json") || !IsReleaseUrl(signatureUrl, tag, "windows-update.json.sig")) throw new IOException("Source de mise à jour inattendue.");
         var manifest = await ReadLimitedAsync(manifestUrl, 64 * 1024, token);
         var signature = await ReadLimitedAsync(signatureUrl, 1024, token);
-        var validated = ValidateManifest(manifest, signature, PublicKey!, tag, CurrentVersion);
+        var validated = ValidateManifest(manifest, signature, VerificationKey!, tag, CurrentVersion);
         if (Environment.OSVersion.Version.Build < validated.MinimumWindowsBuild) { Status = "La nouvelle version demande une version plus récente de Windows."; await Checked(); return null; }
         Status = $"StorageScope {validated.Version} est disponible."; await Checked();
+        try { await File.WriteAllBytesAsync(OfferPath, JsonSerializer.SerializeToUtf8Bytes(new CachedOffer(manifest, signature, LastVerified!.Value)), token); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Diagnostics.Write("cache-offre", error); }
         return validated;
+    }
+
+    private void TryDeleteOffer() { try { File.Delete(OfferPath); } catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Diagnostics.Write("cache-offre", error); } }
+
+    private async Task<byte[]> ReadReleaseAsync(CancellationToken token)
+    {
+        var path = _state + ".release.json";
+        var etagPath = _state + ".etag";
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/laBrioche97/StorageScope/releases/latest");
+        if (File.Exists(path) && new FileInfo(path).Length <= 256 * 1024 && File.Exists(etagPath) && new FileInfo(etagPath).Length < 512
+            && EntityTagHeaderValue.TryParse(await File.ReadAllTextAsync(etagPath, token), out var tag)) request.Headers.IfNoneMatch.Add(tag);
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+        if (response.StatusCode == HttpStatusCode.NotModified) return await File.ReadAllBytesAsync(path, token);
+        response.EnsureSuccessStatusCode();
+        var bytes = await ReadBodyAsync(response, 256 * 1024, token);
+        // Cache only well-formed release JSON. The offer still needs its own signature.
+        using var parsed = JsonDocument.Parse(bytes);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_state)!);
+            await File.WriteAllBytesAsync(path, bytes, token);
+            if (response.Headers.ETag is not null) await File.WriteAllTextAsync(etagPath, response.Headers.ETag.ToString(), token);
+            else File.Delete(etagPath);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { Diagnostics.Write("cache-release", error); }
+        return bytes;
     }
 
     public static UpdateManifest ValidateManifest(byte[] bytes, byte[] signature, string publicKey, string tag, Version current)
@@ -174,11 +252,16 @@ public sealed class UpdateService
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         response.EnsureSuccessStatusCode();
-        await using var input = await response.Content.ReadAsStreamAsync(timeout.Token);
+        return await ReadBodyAsync(response, limit, timeout.Token);
+    }
+
+    private static async Task<byte[]> ReadBodyAsync(HttpResponseMessage response, int limit, CancellationToken token)
+    {
+        await using var input = await response.Content.ReadAsStreamAsync(token);
         using var output = new MemoryStream();
         var buffer = new byte[8192];
         int count;
-        while ((count = await input.ReadAsync(buffer, timeout.Token)) > 0)
+        while ((count = await input.ReadAsync(buffer, token)) > 0)
         {
             if (output.Length + count > limit) throw new IOException("Réponse de mise à jour trop volumineuse.");
             output.Write(buffer, 0, count);

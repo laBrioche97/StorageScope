@@ -118,6 +118,7 @@ fi
 /bin/cp "$PROJECT_DIRECTORY/Packaging/Info.plist" "$STAGING_APPLICATION/Contents/Info.plist"
 /bin/cp "$PROJECT_DIRECTORY/Packaging/Branding/StorageScope.icns" "$STAGING_APPLICATION/Contents/Resources/StorageScope.icns"
 /bin/cp "$PROJECT_DIRECTORY/Packaging/PrivacyInfo.xcprivacy" "$STAGING_APPLICATION/Contents/Resources/PrivacyInfo.xcprivacy"
+/usr/bin/ditto "$BINARY_DIRECTORY/StorageScope_StorageScope.bundle" "$STAGING_APPLICATION/Contents/Resources/StorageScope_StorageScope.bundle"
 
 # Sparkle is embedded locally: launching and using the app never downloads a runtime.
 SPARKLE_FRAMEWORK=$(/usr/bin/find "$SWIFTPM_BUILD_DIRECTORY" -type d -path '*/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework' -print -quit)

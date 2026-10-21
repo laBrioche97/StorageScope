@@ -11,6 +11,7 @@ struct ManagedGamesPanel: View {
     @State private var uninstallTask: Task<Void, Never>?
     @State private var source = "Toutes les sources"
     @State private var icons: [String: NSImage] = [:]
+    @State private var epicGuide: EpicGuideController?
     private let adapter = LocalGameLibraryAdapter()
 
     private var filteredGames: [ManagedGame] {
@@ -55,7 +56,12 @@ struct ManagedGamesPanel: View {
                             }
                             Spacer()
                             Button("Examiner") { NSWorkspace.shared.activateFileViewerSelecting([game.installURL]) }
-                            Button(game.provider == .epic ? "Désinstaller avec Epic…" : game.canUninstall ? "Désinstaller…" : "Voir la méthode") { selected = game }
+                            Button(game.provider == .epic ? "Désinstaller avec Epic…" : game.canUninstall ? "Désinstaller…" : "Voir la méthode") {
+                                if game.provider == .epic {
+                                    let guide = EpicGuideController(game: game, model: model)
+                                    epicGuide = guide; guide.showWindow(nil)
+                                } else { selected = game }
+                            }
                                 .disabled(model.operationsAreBusy)
                         }
                         Text(game.installURL.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)

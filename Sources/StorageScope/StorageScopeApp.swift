@@ -11,7 +11,8 @@ struct StorageScopeApp: App {
                 .environmentObject(model)
                 .environmentObject(updates)
                 .frame(minWidth: 740, minHeight: 560)
-                .onChange(of: model.operationsAreBusy) { _, busy in updates.activityChanged(busy) }
+                .onChange(of: model.localOperationsAreBusy) { _, busy in updates.activityChanged(busy) }
+                .onChange(of: updates.installing) { _, busy in model.updateIsWorking = busy }
                 .task {
                     if model.isPreviewMode {
                         do { try await NativeInterfaceValidation.run(); exit(0) }

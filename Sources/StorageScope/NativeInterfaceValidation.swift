@@ -10,6 +10,16 @@ enum NativeInterfaceValidation {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let model = AppModel()
         precondition(model.sidebar == .applications && SidebarSection.allCases.first == .applications)
+        for asset in ["classic-library", "classic-menu", "new-library", "new-game"] {
+            precondition(Bundle.module.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide") != nil, "Offline Epic guide asset missing")
+        }
+        let storageModel = AppModel()
+        let fixture = StorageVolume(id: "fixture", url: URL(fileURLWithPath: "/Volumes/Fixture"), name: "Disque de démonstration", capacity: 0, available: 0, isLocal: true, isInternal: false, statisticsAvailable: false)
+        storageModel.volumes = [fixture]; storageModel.selectedVolumeID = fixture.id; storageModel.sidebar = .explorer
+        storageModel.explorerDisplayMode = .bubbles; storageModel.searchText = "masqué"
+        storageModel.openExplorerStorage(id: fixture.id)
+        precondition(storageModel.currentDirectory == fixture.url && storageModel.searchText.isEmpty && storageModel.explorerDisplayMode == .bubbles)
+        storageModel.showExplorerStorages(); precondition(storageModel.choosingExplorerStorage)
         let source = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
         let first = model.iconCache.image(for: source)
         precondition(first === model.iconCache.image(for: source), "Session logo cache must reuse decoded images")

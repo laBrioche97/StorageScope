@@ -40,7 +40,7 @@ public partial class MainWindow
         }
         finally { _viewsReady = true; }
         ApplyDisplayFilters();
-        if (CurrentSection == Section.Explorer) EnsureBubbleAnalysis();
+        if (CurrentSection == Section.Explorer && !IsPreviewMode) _ = EnterExplorerAsync();
         UpdateBubbleFilters();
         UpdateResponsiveColumns();
         RefreshSectionHeading();

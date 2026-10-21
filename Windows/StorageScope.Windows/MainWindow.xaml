@@ -18,6 +18,7 @@
         <StackPanel x:Name="ApplicationTitle" Orientation="Horizontal">
           <Image Source="/StorageScope;component/Resources/Logo.png" Width="36" Height="36" Margin="0,0,10,0" AutomationProperties.Name="Logo La Brioche"/>
           <TextBlock Text="{x:Static local:AppIdentity.Title}" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <Button x:Name="UpdateStatusButton" Content="↻" Margin="10,0,0,0" MinWidth="36" Click="UpdateStatus_Click" ToolTipService.ShowOnDisabled="True" ToolTip="Recherche de mises à jour au démarrage" AutomationProperties.Name="Recherche de mises à jour au démarrage"/>
         </StackPanel>
         <TextBlock x:Name="VolumeTitle" Text="Vue d’ensemble — choisissez un volume" Foreground="{DynamicResource MutedBrush}" FontSize="14"/>
         <TextBlock Visibility="Collapsed" x:Name="WorkflowSteps" Text="1. Analyser   →   2. Choisir   →   3. Vérifier   →   4. Nettoyer" Margin="0,8,0,0" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap"/>
@@ -133,7 +134,7 @@
           <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <Grid x:Name="ExplorerNavigationBar">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="0"/></Grid.ColumnDefinitions>
-            <StackPanel Orientation="Horizontal"><Button Content="←" Click="ExplorerBack_Click" AutomationProperties.Name="Dossier précédent"/><Button Content="→" Click="ExplorerForward_Click" AutomationProperties.Name="Dossier suivant"/><Button Content="↑ Parent" Click="ParentButton_Click"/><Button Content="Racine" Click="ExplorerRoot_Click"/></StackPanel>
+            <StackPanel Orientation="Horizontal"><Button Content="←" Click="ExplorerBack_Click" AutomationProperties.Name="Dossier précédent"/><Button Content="→" Click="ExplorerForward_Click" AutomationProperties.Name="Dossier suivant"/><Button Content="↑ Parent" Click="ParentButton_Click"/><Button Content="Racine" Click="ExplorerRoot_Click"/><Button Content="Stockages" Click="ChangeStorage_Click" ToolTip="Changer de stockage" AutomationProperties.Name="Changer de stockage"/></StackPanel>
             <TextBox x:Name="ExplorerPathBox" Grid.Column="1" Margin="6,4" KeyDown="ExplorerPathBox_KeyDown"/>
             <TextBox x:Name="ExplorerSearchBox" Visibility="Collapsed" Grid.Column="1" Text="{Binding Text,ElementName=ListSearch,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" Margin="6,4" TextChanged="ExplorerSearchBox_TextChanged" ToolTip="Rechercher dans le dossier" AutomationProperties.Name="Rechercher dans ce dossier"/>
             <Button x:Name="ExplorerCompactFiltersButton" Grid.Column="2" Content="Filtres" Click="ShowFilters_Click" Visibility="Collapsed" ToolTip="Afficher les filtres et le tri"/>
@@ -163,6 +164,11 @@
             <Button Content="Afficher dans l’Explorateur" Click="RevealSelection_Click"/>
             <Button Content="Mettre à la Corbeille…" Click="TrashSelection_Click"/>
           </StackPanel>
+          <Border x:Name="StorageChooser" Grid.RowSpan="3" Visibility="Collapsed" Background="{DynamicResource PanelBrush}" Padding="12">
+            <DockPanel><StackPanel DockPanel.Dock="Top"><TextBlock Text="Choisir un stockage" FontSize="24" FontWeight="SemiBold"/><TextBlock x:Name="StorageChooserMessage" Text="Ouvrez un stockage pour explorer sa racine." TextWrapping="Wrap" Margin="0,8"/><Button Content="Actualiser les stockages" Click="ChangeStorage_Click" HorizontalAlignment="Left"/></StackPanel>
+              <ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsControl x:Name="StorageChoices"><ItemsControl.ItemTemplate><DataTemplate><Button Click="StorageChoice_Click" HorizontalContentAlignment="Stretch" Margin="0,5" Padding="16"><StackPanel><StackPanel Orientation="Horizontal"><TextBlock Text="&#xEDA2;" FontFamily="Segoe MDL2 Assets" FontSize="26" Margin="0,0,12,0"/><TextBlock Text="{Binding VolumeLabel}" FontSize="18" TextWrapping="Wrap"/></StackPanel><TextBlock Text="{Binding Root}" Margin="0,8,0,0"/><TextBlock Text="{Binding CapacityLabel}"/><TextBlock Text="{Binding FreeLabel}"/></StackPanel></Button></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+            </DockPanel>
+          </Border>
         </Grid>
       </TabItem>
 

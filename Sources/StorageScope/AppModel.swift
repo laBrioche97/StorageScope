@@ -107,7 +107,9 @@ final class AppModel: ObservableObject {
     let isPreviewMode = CommandLine.arguments.contains("--verify-interface")
     @Published var trashIsWorking = false
     @Published var gameUninstallIsWorking = false
-    var operationsAreBusy: Bool {
+    @Published var updateIsWorking = false
+    var operationsAreBusy: Bool { updateIsWorking || localOperationsAreBusy }
+    var localOperationsAreBusy: Bool {
         isScanning || cleanupIsAnalyzing || duplicateIsAnalyzing || uninstallIsWorking || trashIsWorking || gameUninstallIsWorking || emptyTrashStep == .running
     }
     private struct SectionFilters {
@@ -126,6 +128,8 @@ final class AppModel: ObservableObject {
     }
     @Published var volumes: [StorageVolume]
     @Published var selectedVolumeID: String
+    @Published var choosingExplorerStorage = false
+    @Published var storageChoiceMessage = "Choisissez un stockage pour ouvrir sa racine."
     @Published var snapshot: ScanSnapshot?
     @Published var liveSummary: ScanLiveSummary?
     @Published var isScanning = false
@@ -380,7 +384,11 @@ final class AppModel: ObservableObject {
     }
 
     func selectVolume(id: String) {
-        guard id != selectedVolumeID, volumes.contains(where: { $0.id == id }) else { return }
+        guard volumes.contains(where: { $0.id == id }), !operationsAreBusy || isScanning else { return }
+        if id == selectedVolumeID {
+            if sidebar == .explorer { openExplorerStorage(id: id) }
+            return
+        }
         if isScanning { stopScan() }
         let generation = UUID()
         scanGeneration = generation
@@ -390,6 +398,7 @@ final class AppModel: ObservableObject {
         selectedIDs.removeAll()
         currentDirectory = nil
         browseTask?.cancel()
+        browseGeneration = UUID()
         explorerItems = []
         explorerIssues = []
         encounteredApplicationURLs.removeAll()
@@ -416,16 +425,46 @@ final class AppModel: ObservableObject {
                   restored?.volumeID == id else { return }
             snapshot = restored
         }
-        if sidebar == .explorer { loadExplorerRoot() }
+        if sidebar == .explorer { openExplorerStorage(id: id) }
     }
 
     func refreshVolumes() {
         refreshTrashSummary()
         let refreshed = StorageService.mountedVolumes()
         volumes = refreshed
-        if !refreshed.contains(where: { $0.id == selectedVolumeID }), let fallback = refreshed.first {
-            selectVolume(id: fallback.id)
+        if !refreshed.contains(where: { $0.id == selectedVolumeID }) {
+            stopScan(); browseTask?.cancel(); browseGeneration = UUID()
+            bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
+            currentDirectory = nil; explorerItems = []; snapshot = nil; liveSummary = nil
+            choosingExplorerStorage = true
+            storageChoiceMessage = "Le stockage actif a été déconnecté. Choisissez un autre stockage."
         }
+    }
+
+    func enterExplorer() {
+        refreshVolumes()
+        let local = volumes.filter(\.isLocal)
+        if local.count == 1, let volume = local.first { openExplorerStorage(id: volume.id) }
+        else { showExplorerStorages() }
+    }
+
+    func showExplorerStorages() {
+        browseTask?.cancel(); browseGeneration = UUID()
+        bubbleTask?.cancel(); bubbleGeneration = UUID()
+        explorerIsLoading = false; bubbleIsLoading = false
+        choosingExplorerStorage = true
+        storageChoiceMessage = volumes.contains(where: \.isLocal) ? "Choisissez un stockage pour ouvrir sa racine." : "Aucun stockage local accessible. Branchez un disque puis actualisez."
+    }
+
+    func openExplorerStorage(id: String) {
+        guard !operationsAreBusy || isScanning, let volume = volumes.first(where: { $0.id == id && $0.isLocal }) else { return }
+        if id != selectedVolumeID { selectVolume(id: id); return }
+        choosingExplorerStorage = false
+        explorerHistory = []; explorerHistoryPosition = -1
+        resetSectionFilters(); resetExplorerTemporaryList()
+        storageChoiceMessage = "Racine ouverte · historique et filtres de l’explorateur réinitialisés."
+        currentDirectory = volume.url
+        loadExplorerRoot()
     }
 
     func loadApplications() {
@@ -1082,7 +1121,7 @@ private final class QuickLookPresenter: NSObject, @preconcurrency QLPreviewPanel
 extension AppModel {
     func ensureBubbleAnalysis() {
         if isPreviewMode { return }
-        guard explorerShowsGraph, sidebar == .explorer,
+        guard !choosingExplorerStorage, explorerShowsGraph, sidebar == .explorer,
               let volume = selectedVolume else { return }
         do {
             let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)

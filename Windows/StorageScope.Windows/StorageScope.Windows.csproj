@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>StorageScope</AssemblyName>
     <RootNamespace>StorageScope.Windows</RootNamespace>
-    <Version>3.4.2</Version>
+    <Version>3.4.3</Version>
     <StartupObject>StorageScope.Windows.EntryPoint</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>../../Packaging/Branding/StorageScope.ico</ApplicationIcon>
@@ -20,6 +20,7 @@
   <ItemGroup>
     <Resource Include="../../Packaging/Branding/StorageScope.ico" Link="Resources/AppIcon.ico" />
     <Resource Include="../../Packaging/Branding/logo-brioche.png" Link="Resources/Logo.png" />
+    <Resource Include="../../Sources/StorageScope/Resources/EpicGuide/*.png" Link="Resources/EpicGuide/%(Filename)%(Extension)" />
     <InternalsVisibleTo Include="StorageScope.Windows.Tests" />
     <AssemblyMetadata Include="UpdatePublisher" Value="$(StorageScopePublisher)" />
     <EmbeddedResource Include="../../Packaging/windows-update-public-key.pem" Condition="Exists('../../Packaging/windows-update-public-key.pem')" LogicalName="StorageScope.UpdatePublicKey" />

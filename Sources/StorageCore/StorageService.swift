@@ -8,6 +8,7 @@ public struct StorageVolume: Identifiable, Hashable, Sendable {
     public let available: Int64
     public let isLocal: Bool
     public let isInternal: Bool
+    public let statisticsAvailable: Bool
 
     public var used: Int64 { max(0, capacity - available) }
 
@@ -18,7 +19,8 @@ public struct StorageVolume: Identifiable, Hashable, Sendable {
         capacity: Int64,
         available: Int64,
         isLocal: Bool,
-        isInternal: Bool
+        isInternal: Bool,
+        statisticsAvailable: Bool = true
     ) {
         self.id = id
         self.url = url
@@ -27,6 +29,7 @@ public struct StorageVolume: Identifiable, Hashable, Sendable {
         self.available = available
         self.isLocal = isLocal
         self.isInternal = isInternal
+        self.statisticsAvailable = statisticsAvailable
     }
 }
 
@@ -48,7 +51,8 @@ public enum StorageService {
                 capacity: Int64(values.volumeTotalCapacity ?? 0),
                 available: values.volumeAvailableCapacityForImportantUsage ?? 0,
                 isLocal: values.volumeIsLocal ?? true,
-                isInternal: values.volumeIsInternal ?? (url.path == "/")
+                isInternal: values.volumeIsInternal ?? (url.path == "/"),
+                statisticsAvailable: values.volumeTotalCapacity != nil && values.volumeAvailableCapacityForImportantUsage != nil
             )
         }.sorted { lhs, rhs in
             if lhs.url.path == "/" { return true }

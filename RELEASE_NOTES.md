@@ -1,16 +1,13 @@
-# StorageScope 3.4.2
+# StorageScope 3.4.3
 
-- L’Explorateur conserve le mode choisi en ouvrant un dossier depuis les bulles, la liste ou l’historique. Le mode préféré reste visible.
-- La fin d’une analyse conserve le dernier dossier ouvert, sans revenir au dossier depuis lequel l’analyse a commencé.
-- « Autres éléments » et « Voir les fichiers » ouvrent une liste temporaire ; la navigation suivante retrouve votre mode préféré.
-- Le graphique conserve son panneau et le chargement Brioche. Les dossiers vides, inaccessibles ou de taille inconnue affichent un état explicite.
-- Les jeux Epic conservent leurs identifiants et manifestes pour préparer et vérifier leur désinstallation.
-- Lorsqu’une commande officielle est enregistrée pour le jeu, StorageScope l’utilise. Sinon, « Désinstaller avec Epic » ouvre le launcher et indique comment confirmer dans sa bibliothèque ; StorageScope suit ensuite le résultat.
-- L’ouverture d’Epic seule n’est jamais annoncée comme une désinstallation réussie. L’absence du launcher, l’annulation du suivi et les résultats non confirmés sont explicités.
-- Aucun dossier de jeu ni sauvegarde n’est supprimé directement. Les protections de nettoyage et le fonctionnement hors ligne sont conservés.
+- Recherche des mises à jour à chaque ouverture, en arrière-plan, avec une icône permanente à côté de la version. L’offre vérifiée reste visible hors ligne ; elle est revalidée avant installation.
+- Un clic sur l’icône de mise à jour lance le téléchargement, les vérifications, l’installation et le redémarrage. Progression et annulation sont disponibles ; l’installation attend la fin des analyses et opérations de nettoyage.
+- L’Explorateur propose les stockages locaux lorsqu’il y en a plusieurs et ouvre exactement la racine choisie, même si le disque était déjà sélectionné. Historique et filtres de l’explorateur sont réinitialisés ; le mode Liste et bulles reste conservé. Les stockages déconnectés et résultats obsolètes sont gérés.
+- Nouvelle fenêtre Epic avec étapes illustrées disponibles hors ligne, sélecteur d’interface classique/nouvelle, captures officielles agrandissables, ouverture du launcher, vérification immédiate et arrêt du suivi. Le menu de désinstallation illustré est celui de l’interface classique ; les variantes de présentation sont expliquées. La confirmation dans Epic reste nécessaire lorsqu’aucun désinstalleur officiel du jeu n’est enregistré.
+- Seule la vérification des enregistrements et manifestes locaux confirme la désinstallation. Aucun dossier de jeu ni sauvegarde n’est supprimé directement. Aucun moteur tiers ni compte supplémentaire n’est ajouté.
 
-## Installation et mises à jour
+## Installation et confiance
 
-Téléchargez l’installateur Windows depuis https://labrioche.tech/telechargements puis ouvrez-le. Il sélectionne la version native x64 ou ARM64. Les versions compatibles déjà configurées proposent cette mise à jour après vérification du manifeste signé ; son installation demande votre accord.
+Téléchargez l’installateur Windows depuis https://labrioche.tech/telechargements puis ouvrez-le. Il sélectionne la version native x64 ou ARM64. Depuis 3.4.2, recherchez cette mise à jour dans Plus → Rechercher des mises à jour ; les contrôles de signature du manifeste et du paquet restent applicables. À partir de 3.4.3, la détection visible se fait à chaque ouverture.
 
-Le paquet et ses métadonnées de mise à jour sont vérifiés par la clé StorageScope. L’installateur Windows reste sans signature Authenticode d’éditeur : Windows peut afficher un avertissement SmartScreen. Aucun paquet macOS non validé et non signé/notarié n’est annoncé.
+Le paquet et ses métadonnées sont vérifiés par la clé de mise à jour StorageScope. L’installateur Windows reste sans signature Authenticode d’éditeur : Windows peut afficher un avertissement SmartScreen. Aucun paquet macOS non validé et non signé/notarié n’est annoncé.

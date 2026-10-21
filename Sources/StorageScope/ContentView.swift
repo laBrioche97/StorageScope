@@ -35,6 +35,13 @@ struct ContentView: View {
                 Button("Afficher la navigation", systemImage: "sidebar.left") { navigationVisibility = navigationVisibility == .detailOnly ? .all : .detailOnly }.labelStyle(.iconOnly)
                 BriocheMark().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)).frame(width: 32, height: 32).accessibilityHidden(true)
                 Text(AppIdentity.title).font(.title3.bold()).lineLimit(1)
+                Button { updates.activate() } label: { Image(systemName: updates.symbol) }
+                    .help(updates.status).accessibilityLabel(updates.status)
+                    .disabled(updates.checking || updates.installing || (updates.availableVersion != nil && model.operationsAreBusy))
+                if updates.installing {
+                    ProgressView(value: updates.progress).frame(width: 70)
+                    if updates.canCancel { Button("Annuler") { updates.cancel() } }
+                }
                 Spacer()
             }.padding(.horizontal, 16).padding(.vertical, 8)
             NavigationSplitView(columnVisibility: $navigationVisibility) {
@@ -56,7 +63,13 @@ struct ContentView: View {
                 if model.sidebar == .volumes {
                     VolumesView()
                 } else if model.sidebar == .explorer {
-                    StorageExplorerView()
+                    if model.choosingExplorerStorage { ExplorerStorageChooser() }
+                    else {
+                        VStack(alignment: .leading) {
+                            HStack { Button("Changer de stockage", systemImage: "externaldrive") { model.showExplorerStorages() }.disabled(model.operationsAreBusy); Text(model.storageChoiceMessage).font(.caption).foregroundStyle(.secondary) }.padding(.horizontal)
+                            StorageExplorerView()
+                        }
+                    }
                 } else if model.sidebar == .applications {
                     ApplicationsView()
                 } else if model.sidebar == .cleanup {
@@ -81,7 +94,7 @@ struct ContentView: View {
 
         .toolbar { toolbar }
         .onChange(of: model.sidebar) { _, section in
-            if section == .explorer, model.explorerCategoryContext == nil { model.loadExplorerRoot() }
+            if section == .explorer, model.explorerCategoryContext == nil, !model.isPreviewMode { model.enterExplorer() }
             else { model.navigate(to: nil) }
             if section == .applications { model.loadApplications() }
         }
@@ -161,6 +174,32 @@ struct ContentView: View {
                 Button("Analyser le disque", systemImage: "play.fill") { model.startScan() }
                     .keyboardShortcut("r", modifiers: .command)
             }
+        }
+    }
+}
+
+private struct ExplorerStorageChooser: View {
+    @EnvironmentObject private var model: AppModel
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Choisir un stockage").font(.title.bold())
+                Text(model.storageChoiceMessage).foregroundStyle(.secondary)
+                Button("Actualiser les stockages") { model.refreshVolumes() }
+                ForEach(model.volumes.filter(\.isLocal)) { volume in
+                    Button { model.openExplorerStorage(id: volume.id) } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: volume.isInternal ? "internaldrive.fill" : "externaldrive.fill").font(.largeTitle)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(volume.name).font(.headline)
+                                Text(volume.url.path).font(.caption)
+                                Text(volume.statisticsAvailable ? "Capacité : \(ByteCountFormatter.storage.string(fromByteCount: volume.capacity)) · \(ByteCountFormatter.storage.string(fromByteCount: volume.available)) libres" : "Capacité et espace libre indisponibles")
+                            }
+                            Spacer(); Image(systemName: "chevron.right")
+                        }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    }.buttonStyle(.bordered).disabled(model.operationsAreBusy && !model.isScanning)
+                }
+            }.padding(20)
         }
     }
 }

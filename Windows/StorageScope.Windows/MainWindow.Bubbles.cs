@@ -30,7 +30,7 @@ public partial class MainWindow
 
     private void EnsureBubbleAnalysis()
     {
-        if (!IsLoaded || IsPreviewMode || CurrentSection != Section.Explorer || !_bubbleMode || _result is not null || _scanning || _busy || DrivePicker.SelectedItem is not DriveChoice drive) return;
+        if (!IsLoaded || IsPreviewMode || _choosingStorage || CurrentSection != Section.Explorer || !_bubbleMode || _result is not null || _scanning || _busy || DrivePicker.SelectedItem is not DriveChoice drive) return;
         if (_autoScanAttempts.Contains(drive.Root))
         {
             BubbleStatus.Text = "Analyse non disponible. Cliquez sur Analyser pour réessayer, ou utilisez la Liste.";
