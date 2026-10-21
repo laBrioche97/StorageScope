@@ -574,6 +574,7 @@ struct StorageCoreTests {
             ("Classification des refus d’accès", { try testAccessIssueClassification() }),
             ("Scanner, fichiers cachés et symlinks", { try await testScanner() }),
             ("Cache local", { try await testCache() }),
+            ("Cache explorateur, budget et états de navigation", { try testExplorerSessionCache() }),
             ("Caches isolés par volume", { try await testVolumeCacheIsolation() }),
             ("Normalisation de sélection", { try testSelectionNormalization() }),
             ("Suggestions conservatrices", { try testCleanupSuggestions() }),
@@ -608,6 +609,29 @@ func testCloudAndGameBoundaries() throws {
         try expect(DeletionSafetyPolicy.isProtectedForUserSelection(URL(fileURLWithPath: path), isDirectory: true), "Chemin géré ou synchronisé autorisé : \(path)")
     }
     try expect(!DeletionSafetyPolicy.isManagedGamePath("/Users/me/Documents/steamapps-not-a-library/file"), "Les frontières de composants doivent être respectées")
+}
+
+func testExplorerSessionCache() throws {
+    var cache = ExplorerSessionCache()
+    let items = (0..<1000).map { FileSystemItem(url: URL(fileURLWithPath: "/fixture/item-\($0)"), logicalSize: Int64($0), allocatedSize: Int64($0), isDirectory: false) }
+    let view = ExplorerViewSnapshot(items: items, frame: nil, layout: "volume:index:800:2", selection: [items[10].id], scroll: 123)
+    for index in 0..<32 { cache.put("volume:index:\(index)", view) }
+    let first = cache.get("volume:index:0")
+    try expect(first?.selection == [items[10].id] && first?.scroll == 123, "Sélection et défilement doivent rester en mémoire")
+    cache.put("volume:index:32", view)
+    try expect(cache.count == 32 && cache.get("volume:index:1") == nil, "Le dossier le moins récent doit sortir du cache")
+    try expect(cache.get("other-volume:index:0") == nil && cache.get("volume:new-index:0") == nil, "Les volumes et générations doivent rester isolés")
+    let large = ExplorerViewSnapshot(items: Array(repeating: items[0], count: 200_000), frame: nil, layout: "large")
+    cache.put("large", large)
+    try expect(cache.bytes <= ExplorerSessionCache.capacity && cache.count <= 32, "Le budget de 64 Mio doit rester borné")
+    cache.clear()
+    try expect(cache.count == 0 && cache.bytes == 0, "L’invalidation doit libérer le cache")
+    cache.put("warm", view)
+    let clock = ContinuousClock()
+    let start = clock.now
+    for _ in 0..<1000 { _ = cache.get("warm") }
+    let elapsed = start.duration(to: clock.now)
+    try expect(elapsed < .milliseconds(50), "La consultation de 1 000 éléments en cache doit être immédiate")
 }
 
 func testManagedGameLibrary() async throws {

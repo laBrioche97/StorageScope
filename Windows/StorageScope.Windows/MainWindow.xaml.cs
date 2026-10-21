@@ -293,10 +293,19 @@ public partial class MainWindow : Window
             view.Filter = value => value is ScanEntry entry && filter.Matches(entry);
             view.SortDescriptions.Clear();
             var order = (ResultSort.SelectedItem as SortChoice)?.Order ?? ResultOrder.Largest;
-            if (order != ResultOrder.Name) view.SortDescriptions.Add(new(nameof(ScanEntry.Size), order == ResultOrder.Smallest ? System.ComponentModel.ListSortDirection.Ascending : System.ComponentModel.ListSortDirection.Descending));
-            view.SortDescriptions.Add(new(nameof(ScanEntry.Name), System.ComponentModel.ListSortDirection.Ascending));
+            if (view is ListCollectionView list) list.CustomSort = new ExplorerEntryComparer(order);
         }
         RefreshSectionHeading();
+    }
+
+    private sealed class ExplorerEntryComparer(ResultOrder order) : System.Collections.IComparer
+    {
+        public int Compare(object? x, object? y)
+        {
+            if (x is not ScanEntry a || y is not ScanEntry b) return 0;
+            var size = order == ResultOrder.Name ? 0 : order == ResultOrder.Smallest ? a.Size.CompareTo(b.Size) : b.Size.CompareTo(a.Size);
+            return size != 0 ? size : StringComparer.CurrentCultureIgnoreCase.Compare(a.Name, b.Name);
+        }
     }
 
     private async void ExplorerGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)

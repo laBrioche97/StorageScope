@@ -66,13 +66,13 @@ public partial class MainWindow
         if (cancelScan) { ++_volumeGeneration; _scanCancellation?.Cancel(); }
         _browseCancellation?.Cancel(); _bubbleCancellation?.Cancel();
         ++_browseGeneration; ++_bubbleGeneration;
-        SetExplorerLoading(false);
+        SetNavigationPending(false); SetExplorerLoading(false);
     }
     private void ShowStorageChooser(string message)
     {
         _choosingStorage = true;
         _browseCancellation?.Cancel(); _bubbleCancellation?.Cancel(); ++_browseGeneration; ++_bubbleGeneration;
-        SetExplorerLoading(false);
+        SetNavigationPending(false); SetExplorerLoading(false);
         StorageChooserMessage.Text = message;
         StorageChooser.Visibility = Visibility.Visible;
         StorageChoices.ItemsSource = DrivePicker.ItemsSource;

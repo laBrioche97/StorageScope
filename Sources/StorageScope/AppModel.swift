@@ -886,7 +886,7 @@ final class AppModel: ObservableObject {
             let browser = DirectoryBrowserService(volumeID: volume.id, root: volume.url, indexStore: store)
             browseTask = Task { [weak self] in
                 guard let self else { return }
-                func isCurrent() -> Bool { !Task.isCancelled && selectedVolumeID == volume.id && browseGeneration == generation }
+                @MainActor func isCurrent() -> Bool { !Task.isCancelled && selectedVolumeID == volume.id && browseGeneration == generation }
                 defer { if browseGeneration == generation { explorerIsLoading = false; explorerLoaderVisible = false; explorerPendingDirectory = nil; loaderTask?.cancel() } }
                 if let cached, cached.layout == layout {
                     publishExplorerView(cached, directory: directory, back: back, animate: true, recordHistory: recordHistory)

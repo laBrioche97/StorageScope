@@ -419,6 +419,7 @@ internal static class Program
         window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         GuidedInterfaceTests.Run(window, _root, Test);
         NavigationAndEpicTests.Run(window, _root, Test);
+        ExplorerCacheTests.Run(window, _root, destination, Test);
         VisibleUpdateAndStorageTests.Interface(_root, destination, Test);
         ScanResponsivenessTests.Run(_root, Test);
         if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
