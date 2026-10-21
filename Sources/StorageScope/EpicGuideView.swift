@@ -2,6 +2,15 @@ import AppKit
 import StorageCore
 import SwiftUI
 
+enum EpicGuideResources {
+    static let bundle: Bundle = {
+        // Packaged apps keep SwiftPM resources inside Contents/Resources. The
+        // generated accessor otherwise only checks the executable's bundle root.
+        if let url = Bundle.main.url(forResource: "StorageScope_StorageScope", withExtension: "bundle"), let bundle = Bundle(url: url) { return bundle }
+        return Bundle.module
+    }()
+}
+
 @MainActor
 final class EpicGuideController: NSWindowController, NSWindowDelegate, ObservableObject {
     @Published var status = "Prêt · ouvrez Epic, puis suivez les trois étapes."
@@ -95,7 +104,7 @@ struct EpicGuideView: View {
         }.padding(18)
         .sheet(isPresented: Binding(get: { enlarged != nil }, set: { if !$0 { enlarged = nil } })) {
             VStack {
-                if let enlarged { ScrollView([.horizontal, .vertical]) { Image(enlarged, bundle: .module) } }
+                if let enlarged { ScrollView([.horizontal, .vertical]) { Image(enlarged, bundle: EpicGuideResources.bundle) } }
                 Button("Fermer l’agrandissement") { enlarged = nil }.keyboardShortcut(.cancelAction)
             }.padding().frame(minWidth: 600, minHeight: 420)
         }
@@ -114,7 +123,7 @@ private struct GuideScreenshot: View {
     let asset: String
     let highlight: CGRect
     var body: some View {
-        if let url = Bundle.module.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide"),
+        if let url = EpicGuideResources.bundle.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide"),
            let image = NSImage(contentsOf: url), let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
             let crop = asset == "classic-library" ? CGRect(x: 0, y: 95, width: 700, height: 600)
                 : asset == "new-library" ? CGRect(x: 300, y: 250, width: 1250, height: 1000)

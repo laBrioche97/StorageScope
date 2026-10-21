@@ -18,7 +18,7 @@ enum NativeInterfaceValidation {
         precondition(updates.status.contains("Connexion indisponible"))
         precondition(model.sidebar == .applications && SidebarSection.allCases.first == .applications)
         for asset in ["classic-library", "classic-menu", "new-library", "new-game"] {
-            precondition(Bundle.module.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide") != nil, "Offline Epic guide asset missing")
+            precondition(EpicGuideResources.bundle.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide") != nil, "Offline Epic guide asset missing")
         }
         let storageModel = AppModel()
         let fixture = StorageVolume(id: "fixture", url: URL(fileURLWithPath: "/Volumes/Fixture"), name: "Disque de démonstration", capacity: 0, available: 0, isLocal: true, isInternal: false, statisticsAvailable: false)
