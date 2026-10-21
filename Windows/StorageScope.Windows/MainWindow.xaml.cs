@@ -61,6 +61,8 @@ public partial class MainWindow : Window
         {
             if (_busy) { e.Cancel = true; MessageBox.Show("Annulez ou terminez l’opération en cours avant de fermer StorageScope.", "Opération en cours"); return; }
             _closing = true; _bubbleCancellation?.Cancel(); _inventoryCancellation?.Cancel(); _scanCancellation?.Cancel(); _browseCancellation?.Cancel();
+            _loadingDelay?.Stop(); _resizeTimer?.Stop();
+            Motion.Swap(ExplorerSplit, ExplorerTransitionSnapshot, null, false, new(.5, .5));
         };
         SizeChanged += (_, _) => UpdateResponsiveColumns();
     }
@@ -280,9 +282,9 @@ public partial class MainWindow : Window
         return BrowseAsync(destination is not null && Directory.Exists(destination) && DeletionSafetyPolicy.IsWithin(destination, root) ? destination : root);
     }
 
-    private void ApplyExplorerFilter()
+    private void ApplyExplorerFilter(IReadOnlyList<ScanEntry>? ordered = null)
     {
-        _explorer.ReplaceAll(_allExplorerItems.Where(item => _explorerScope switch {
+        _explorer.ReplaceAll((ordered ?? _allExplorerItems).Where(item => _explorerScope switch {
             ExplorerScope.DirectFiles => !item.IsDirectory,
             ExplorerScope.Remainder => _explorerRemainder?.Contains(item.Path) == true,
             _ => true
@@ -294,7 +296,7 @@ public partial class MainWindow : Window
             view.Filter = value => value is ScanEntry entry && filter.Matches(entry);
             view.SortDescriptions.Clear();
             var order = (ResultSort.SelectedItem as SortChoice)?.Order ?? ResultOrder.Largest;
-            if (view is ListCollectionView list) list.CustomSort = new ExplorerEntryComparer(order);
+            if (view is ListCollectionView list) list.CustomSort = ordered is null ? new ExplorerEntryComparer(order) : null;
         }
         RefreshSectionHeading();
     }

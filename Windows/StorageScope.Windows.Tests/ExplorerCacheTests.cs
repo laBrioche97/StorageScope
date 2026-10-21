@@ -76,7 +76,7 @@ internal static class ExplorerCacheTests
             test("warm 1000-item views render below 50 ms at the 95th percentile", () => {
                 var values = new List<double>();
                 var stages = new Dictionary<string,double>(); window.NavigationTiming = (stage, elapsed) => stages[stage] = Math.Max(stages.GetValueOrDefault(stage), elapsed);
-                for (var i=0; i<25; i++) { var leave = Browse(b); Pump(() => leave.IsCompleted); hold[a] = new(); var watch = Stopwatch.StartNew(); var warm = Browse(a); watch.Stop(); values.Add(watch.Elapsed.TotalMilliseconds); hold[a].SetResult(items); Pump(() => warm.IsCompleted); hold.Remove(a); }
+                for (var i=0; i<25; i++) { var leave = Browse(b); Pump(() => leave.IsCompleted); hold[a] = new(); var watch = Stopwatch.StartNew(); var warm = Browse(a); window.UpdateLayout(); watch.Stop(); values.Add(watch.Elapsed.TotalMilliseconds); hold[a].SetResult(items); Pump(() => warm.IsCompleted); hold.Remove(a); }
                 values.Sort(); var p95 = values[(int)Math.Ceiling(values.Count*.95)-1]; Console.WriteLine($"Cached 1000 items: p95 {p95:N2} ms, max {values[^1]:N2} ms");
                 Console.WriteLine("Navigation stage maxima: " + string.Join(", ", stages.Select(item => item.Key + "=" + item.Value.ToString("N2")))); window.NavigationTiming = null;
                 if (destination is not null) { Directory.CreateDirectory(destination); File.WriteAllText(Path.Combine(destination,"navigation-performance.json"), System.Text.Json.JsonSerializer.Serialize(new { items=1000, samples=values.Count, p95Milliseconds=p95, animationDisabled=true, cacheBytes=((ExplorerSessionCache)Get("_explorerCache")!).Bytes })); }

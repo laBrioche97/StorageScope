@@ -3,7 +3,16 @@ namespace StorageScope.Windows;
 internal sealed record ExplorerViewSnapshot(IReadOnlyList<ScanEntry> Entries, FolderFrame? Frame, string Layout,
     string[] Selection, double Scroll, long Cost)
 {
-    internal static long Estimate(IReadOnlyList<ScanEntry> entries) => 512L + entries.Sum(item => 256L + (item.Path.Length + item.Name.Length) * 2L);
+    private IReadOnlyList<ScanEntry>? Largest { get; init; }
+    private IReadOnlyList<ScanEntry>? Smallest { get; init; }
+    private IReadOnlyList<ScanEntry>? Names { get; init; }
+    internal IReadOnlyList<ScanEntry> Ordered(ResultOrder order) => (order switch { ResultOrder.Smallest => Smallest, ResultOrder.Name => Names, _ => Largest }) ?? Entries;
+    internal static ExplorerViewSnapshot Create(IReadOnlyList<ScanEntry> entries, FolderFrame? frame, string layout, string[] selection, double scroll) => new(entries, frame, layout, selection, scroll, Estimate(entries)) {
+        Largest = entries.OrderByDescending(item => item.Size).ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        Smallest = entries.OrderBy(item => item.Size).ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase).ToArray(),
+        Names = entries.OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase).ToArray()
+    };
+    internal static long Estimate(IReadOnlyList<ScanEntry> entries) => 512L + entries.Sum(item => 288L + (item.Path.Length + item.Name.Length) * 2L);
 }
 
 internal sealed class ExplorerSessionCache

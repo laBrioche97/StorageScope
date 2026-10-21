@@ -88,7 +88,7 @@ public partial class MainWindow
                 button.Click += async (_, _) => { if (button.Tag is string target) { _navigationBack = _currentDirectory is not null && DeletionSafetyPolicy.IsWithin(_currentDirectory, target); await BrowseAsync(target); } }; ExplorerBreadcrumbs.Children.Add(button); position++;
             }
             while (ExplorerBreadcrumbs.Children.Count > position) ExplorerBreadcrumbs.Children.RemoveAt(ExplorerBreadcrumbs.Children.Count - 1);
-            Mark("breadcrumbs"); ApplyExplorerFilter(); Mark("filter"); RenderBubbles(); Mark("bubbles");
+            Mark("breadcrumbs"); ApplyExplorerFilter(snapshot.Ordered((ResultSort.SelectedItem as SortChoice)?.Order ?? ResultOrder.Largest)); Mark("filter"); RenderBubbles(); Mark("bubbles");
             foreach (var selected in _explorer.Where(item => snapshot.Selection.Contains(item.Path, StringComparer.OrdinalIgnoreCase))) ExplorerGrid.SelectedItems.Add(selected);
             GridScroll(ExplorerGrid)?.ScrollToVerticalOffset(snapshot.Scroll);
             Mark("restore");
@@ -108,7 +108,7 @@ public partial class MainWindow
             var entries = await ReadExplorerDirectory(path, _result?.DirectorySizes, cancellation.Token);
             if (!Current()) return;
             if (cached is not null && cached.Entries.SequenceEqual(entries)) return;
-            var fresh = await Task.Run(() => new ExplorerViewSnapshot(entries, ExplorerShowsGraph ? Build(entries) : null, layout, cached?.Selection ?? [], cached?.Scroll ?? 0, ExplorerViewSnapshot.Estimate(entries)), cancellation.Token);
+            var fresh = await Task.Run(() => ExplorerViewSnapshot.Create(entries, ExplorerShowsGraph ? Build(entries) : null, layout, cached?.Selection ?? [], cached?.Scroll ?? 0), cancellation.Token);
             if (!Current()) return;
             _explorerCache.Put(key, fresh); Publish(fresh, cached is null);
         }

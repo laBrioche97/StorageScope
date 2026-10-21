@@ -2,6 +2,9 @@ import Foundation
 
 public struct ExplorerViewSnapshot: Sendable {
     public let items: [FileSystemItem]
+    public let largest: [FileSystemItem]
+    public let smallest: [FileSystemItem]
+    public let names: [FileSystemItem]
     public var frame: FolderBubbleFrame?
     public var layout: String
     public var selection: Set<String>
@@ -9,7 +12,10 @@ public struct ExplorerViewSnapshot: Sendable {
     public let cost: Int
     public init(items: [FileSystemItem], frame: FolderBubbleFrame?, layout: String, selection: Set<String> = [], scroll: Double = 0) {
         self.items = items; self.frame = frame; self.layout = layout; self.selection = selection; self.scroll = scroll
-        cost = 512 + items.reduce(0) { $0 + 320 + ($1.url.path.utf16.count + $1.name.utf16.count) * 2 }
+        largest = items.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize }
+        smallest = items.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize < $1.allocatedSize }
+        names = items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        cost = 512 + items.reduce(0) { $0 + 368 + ($1.url.path.utf16.count + $1.name.utf16.count) * 2 }
     }
 }
 

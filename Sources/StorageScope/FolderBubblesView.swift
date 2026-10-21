@@ -35,7 +35,8 @@ struct FolderBubblesView: View {
     private func goUp() {
         guard let current = model.currentDirectory, let root = model.selectedVolume?.url,
               current.standardizedFileURL.path != root.standardizedFileURL.path else { return }
-        model.loadExplorerDirectory(current.deletingLastPathComponent())
+        model.navigationBack = true; model.navigationAnchor = .center
+        model.loadExplorerDirectory((model.explorerPendingDirectory ?? current).deletingLastPathComponent())
     }
 }
 

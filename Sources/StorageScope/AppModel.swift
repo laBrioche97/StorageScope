@@ -151,6 +151,7 @@ final class AppModel: ObservableObject {
     @Published var navigationAnchor = UnitPoint.center
     var explorerScrollPosition: Double = 0
     private var explorerViewCache = ExplorerSessionCache()
+    private var explorerSortedSnapshot: ExplorerViewSnapshot?
     private var loaderTask: Task<Void, Never>?
     private var explorerLayoutKey: String { "\(maximumBubbles):\(Int(bubbleAvailableDiameter.isFinite ? bubbleAvailableDiameter / 16 : 0)):\(NSApp.keyWindow?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1):\(explorerDisplayMode)" }
     private func explorerCacheKey(_ directory: URL) -> String { selectedVolumeID + "|" + scanGeneration.uuidString + "|" + directory.path }
@@ -163,6 +164,7 @@ final class AppModel: ObservableObject {
     private func publishExplorerView(_ view: ExplorerViewSnapshot, directory: URL, back: Bool, animate: Bool, recordHistory: Bool = true) {
         let previous = currentDirectory
         currentDirectory = directory; explorerItems = view.items; bubbleFrame = view.frame
+        explorerSortedSnapshot = view
         selectedIDs = view.selection; explorerScrollPosition = view.scroll
         encounteredApplicationURLs.formUnion(view.items.filter { $0.isDirectory && $0.fileExtension == "app" }.map(\.url))
         if recordHistory && (explorerHistoryPosition < 0 || explorerHistory[explorerHistoryPosition] != directory) {
@@ -282,13 +284,17 @@ final class AppModel: ObservableObject {
 
     var explorerVisibleItems: [FileSystemItem] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return explorerItems.filter { item in
+        let ordered: [FileSystemItem]
+        if let prepared = explorerSortedSnapshot, prepared.items == explorerItems {
+            switch sort { case .allocated: ordered = prepared.largest; case .smallest: ordered = prepared.smallest; case .name: ordered = prepared.names; default: ordered = explorerItems.sorted(by: comparator) }
+        } else { ordered = explorerItems.sorted(by: comparator) }
+        return ordered.filter { item in
             (bubbleRemainderPaths == nil || bubbleRemainderPaths!.contains(item.url.path)) &&
             (kindFilter == .all || item.isDirectory == (kindFilter == .folders)) &&
             item.allocatedSize >= sizeFilter.rawValue &&
             (categoryFilter == nil || item.category == categoryFilter) &&
             (query.isEmpty || item.name.lowercased().contains(query) || item.url.path.lowercased().contains(query))
-        }.sorted(by: comparator)
+        }
     }
 
     var visibleItems: [FileSystemItem] {
