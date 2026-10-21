@@ -43,5 +43,5 @@ internal static class Motion
         element.BeginAnimation(UIElement.OpacityProperty, null);
         if (Animate) element.BeginAnimation(UIElement.OpacityProperty, Tween(.85, 1, milliseconds));
     }
-    internal static void Attach(Window window) => window.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler((_, e) => { if (Animate && e.OriginalSource is Button button) Reveal(button, Feedback); }), true);
+    internal static void Attach(Window window) => window.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler((_, e) => { if (Animate && e.OriginalSource is ButtonBase button) Reveal(button, Feedback); }), true);
 }

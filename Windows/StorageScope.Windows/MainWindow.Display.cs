@@ -123,8 +123,8 @@ public partial class MainWindow
 
     private void ListSearch_Changed(object sender, TextChangedEventArgs e) { ApplyDisplayFilters(); RenderBubbles(); }
     private void DisplayFilter_Changed(object sender, SelectionChangedEventArgs e) => ApplyDisplayFilters();
-    private void ShowFilters_Click(object sender, RoutedEventArgs e) { _compactFiltersOpen = !_compactFiltersOpen; ExtraFilters.Visibility = Visibility.Visible; UpdateResponsiveColumns(); }
-    private void ToggleFilters_Click(object sender, RoutedEventArgs e) { if (ActualHeight < 620) ShowFilters_Click(sender, e); else ExtraFilters.Visibility = ExtraFilters.IsVisible ? Visibility.Collapsed : Visibility.Visible; }
+    private void ShowFilters_Click(object sender, RoutedEventArgs e) { _compactFiltersOpen = !_compactFiltersOpen; ExtraFilters.Visibility = Visibility.Visible; UpdateResponsiveColumns(); if (ExtraFilters.IsVisible) Motion.Reveal(ExtraFilters); }
+    private void ToggleFilters_Click(object sender, RoutedEventArgs e) { if (ActualHeight < 620) ShowFilters_Click(sender, e); else { ExtraFilters.Visibility = ExtraFilters.IsVisible ? Visibility.Collapsed : Visibility.Visible; if (ExtraFilters.IsVisible) Motion.Reveal(ExtraFilters); } }
     private void ResetFilters_Click(object sender, RoutedEventArgs e)
     {
         ListSearch.Clear(); CategoryFilter.SelectedIndex = MinimumSizeFilter.SelectedIndex = EntryKindFilter.SelectedIndex = ResultSort.SelectedIndex = ApplicationSourceFilter.SelectedIndex = 0;

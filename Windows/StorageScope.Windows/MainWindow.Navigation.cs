@@ -92,6 +92,9 @@ public partial class MainWindow
             Mark("breadcrumbs"); ApplyExplorerFilter(snapshot.Ordered((ResultSort.SelectedItem as SortChoice)?.Order ?? ResultOrder.Largest)); Mark("filter"); RenderBubbles(); Mark("bubbles");
             foreach (var selected in _explorer.Where(item => snapshot.Selection.Contains(item.Path, StringComparer.OrdinalIgnoreCase))) ExplorerGrid.SelectedItems.Add(selected);
             GridScroll(ExplorerGrid)?.ScrollToVerticalOffset(snapshot.Scroll);
+            if (snapshot.Scroll > 0) Dispatcher.BeginInvoke(() => {
+                if (Current() && _currentDirectory == path) GridScroll(ExplorerGrid)?.ScrollToVerticalOffset(snapshot.Scroll);
+            }, DispatcherPriority.Loaded);
             Mark("restore");
             var frame = snapshot.Frame;
             DirectFilesButton.Content = $"Fichiers dans ce dossier{(frame?.DirectFiles is long direct ? " · " + (frame.Partial ? "estimation " : "") + SizeFormatter.Format(direct) : "")} — Voir la liste";
@@ -103,12 +106,11 @@ public partial class MainWindow
         try
         {
             if (cached is not null) {
-                if (cached.Layout != layout && ExplorerShowsGraph) cached = cached with { Frame = await Task.Run(() => Build(cached.Entries), cancellation.Token), Layout = layout };
                 if (!Current()) return; Publish(cached, true);
             }
             var entries = await ReadExplorerDirectory(path, _result?.DirectorySizes, cancellation.Token);
             if (!Current()) return;
-            if (cached is not null && cached.Entries.SequenceEqual(entries)) return;
+            if (cached is not null && cached.Layout == layout && cached.Entries.SequenceEqual(entries)) return;
             var fresh = await Task.Run(() => ExplorerViewSnapshot.Create(entries, ExplorerShowsGraph ? Build(entries) : null, layout, cached?.Selection ?? [], cached?.Scroll ?? 0), cancellation.Token);
             if (!Current()) return;
             _explorerCache.Put(key, fresh); Publish(fresh, cached is null);

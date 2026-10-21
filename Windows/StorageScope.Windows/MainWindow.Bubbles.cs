@@ -113,6 +113,7 @@ public partial class MainWindow
         var query = ListSearch.Text.Trim();
         foreach (var circle in _folderFrame.Circles.OrderBy(c => c.Depth))
         {
+            if (existing.TryGetValue(circle.Path, out var changed) && changed.Circle.Aggregate != circle.Aggregate) { BubbleCanvas.Children.Remove(changed); existing.Remove(circle.Path); }
             var created = !existing.TryGetValue(circle.Path, out var button);
             button ??= new BubbleButton { Circle = circle, HasChildren = false, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
             button.Circle = circle; button.Width = diameter * circle.Radius; button.Height = diameter * circle.Radius; button.Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase);
@@ -144,7 +145,7 @@ public partial class MainWindow
             if (!button.Circle.Aggregate)
             {
                 var menu = new ContextMenu();
-                void Add(string title, RoutedEventHandler action) { var item = new MenuItem { Header = title }; item.Click += action; menu.Items.Add(item); }
+                void Add(string title, RoutedEventHandler action) { var item = new MenuItem { Header = title }; item.Click += (source, args) => { if (!_navigationPending) action(source, args); }; menu.Items.Add(item); }
                 Add(button.Circle.IsDirectory ? "Ouvrir le dossier" : "Ouvrir", async (_, _) => { if (button.Circle.IsDirectory) await BrowseAsync(button.Circle.Path); else SafeOpen(button.Circle.Path); });
                 Add("Afficher dans l’Explorateur", (_, _) => SafeReveal(button.Circle.Path));
                 Add("Copier le chemin", (_, _) => { try { Clipboard.SetText(button.Circle.Path); } catch (Exception error) { ShowError("Copie impossible.", error); } });

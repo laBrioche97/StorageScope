@@ -901,7 +901,7 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 @MainActor func isCurrent() -> Bool { !Task.isCancelled && selectedVolumeID == volume.id && browseGeneration == generation }
                 defer { if browseGeneration == generation { explorerIsLoading = false; explorerLoaderVisible = false; explorerPendingDirectory = nil; loaderTask?.cancel() } }
-                if let cached, cached.layout == layout {
+                if let cached {
                     publishExplorerView(cached, directory: directory, back: back, animate: true, recordHistory: recordHistory)
                 }
                 var pending: [FileSystemItem] = []
