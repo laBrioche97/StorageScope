@@ -65,7 +65,7 @@ final class EpicGuideController: NSWindowController, NSWindowDelegate, Observabl
         complete("Suivi arrêté. Une désinstallation déjà acceptée dans Epic peut continuer. Aucun fichier supprimé par StorageScope.")
         try? OperationJournal.append(operation: "désinstallation Epic", path: game.installURL.path, status: "suivi annulé")
     }
-    func windowWillClose(_ notification: Notification) { stop() }
+    func windowWillClose(_ notification: Notification) { stop(); window?.contentView = nil }
 }
 
 private struct EpicGuideView: View {
@@ -103,9 +103,30 @@ private struct EpicGuideView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(number). \(title)").font(.title3.bold()); Text(caption)
             Button { enlarged = "EpicGuide/\(asset).png" } label: {
-                Image("EpicGuide/\(asset).png", bundle: .module).resizable().scaledToFit().frame(maxHeight: 260)
-                    .overlay { GeometryReader { proxy in Rectangle().stroke(.pink, lineWidth: 3).frame(width: proxy.size.width * rect.width, height: proxy.size.height * rect.height).position(x: proxy.size.width * rect.midX, y: proxy.size.height * rect.midY) } }
+                GuideScreenshot(asset: asset, highlight: rect)
             }.buttonStyle(.plain).accessibilityLabel("Étape \(number) : \(title). \(caption) Agrandir la capture officielle.")
+        }
+    }
+}
+
+private struct GuideScreenshot: View {
+    let asset: String
+    let highlight: CGRect
+    var body: some View {
+        if let url = Bundle.module.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide"),
+           let image = NSImage(contentsOf: url), let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            let crop = asset == "classic-library" ? CGRect(x: 0, y: 95, width: 700, height: 600)
+                : asset == "new-library" ? CGRect(x: 300, y: 250, width: 1250, height: 1000)
+                : asset == "new-game" ? CGRect(x: 330, y: 290, width: 630, height: 830)
+                : CGRect(x: 0, y: 0, width: source.width, height: source.height)
+            if let cropped = source.cropping(to: crop) {
+                Image(decorative: cropped, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                    .overlay { GeometryReader { proxy in
+                        Rectangle().stroke(.pink, lineWidth: 3)
+                            .frame(width: proxy.size.width * highlight.width * Double(source.width) / crop.width, height: proxy.size.height * highlight.height * Double(source.height) / crop.height)
+                            .position(x: proxy.size.width * (highlight.midX * Double(source.width) - crop.minX) / crop.width, y: proxy.size.height * (highlight.midY * Double(source.height) - crop.minY) / crop.height)
+                    } }.frame(maxHeight: 260)
+            }
         }
     }
 }

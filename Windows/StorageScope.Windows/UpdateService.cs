@@ -54,7 +54,7 @@ public sealed class UpdateService
     {
         IsOffline = UsingCachedOffer = false;
         try { return await CheckOnlineAsync(token); }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !token.IsCancellationRequested)
+        catch (Exception error) when (!token.IsCancellationRequested && (error is HttpRequestException { StatusCode: null } or TaskCanceledException))
         {
             IsOffline = true;
             var cached = await LoadOfferAsync(token);

@@ -88,7 +88,7 @@ public partial class MainWindow : Window
         if (_busy || _scanning) return;
         Diagnostics.Action = "analyse"; Diagnostics.Write("action");
         if (DrivePicker.SelectedItem is not DriveChoice drive) return;
-        var storageGeneration = _storageGeneration;
+        var storageGeneration = _volumeGeneration;
         _storageIdentity = drive.Identity;
         _scanCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
@@ -118,14 +118,14 @@ public partial class MainWindow : Window
             acceptingProgress = false;
             cancellation.Token.ThrowIfCancellationRequested();
             if (_closing) return;
-            if ((DrivePicker.SelectedItem as DriveChoice)?.Identity != drive.Identity || storageGeneration != _storageGeneration) return;
+            if ((DrivePicker.SelectedItem as DriveChoice)?.Identity != drive.Identity || storageGeneration != _volumeGeneration) return;
             _result = result;
             _folderIndex = await Task.Run(() => new FolderIndex(result), cancellation.Token);
             PopulateResult(_result);
             ScanStatusText.Text = $"Analyse {(_result.AccessErrors > 0 ? "partielle" : "terminée")} : {_result.FilesScanned:N0} fichiers · {_result.AccessErrors:N0} accès non disponibles" + (_result.CleanupTruncated ? " · suggestions limitées à 10 000 éléments" : "") + " · Choisissez Nettoyage conseillé pour continuer.";
             await RefreshExplorerAfterScanAsync(drive.Root);
         }
-        catch (OperationCanceledException) { if (storageGeneration == _storageGeneration) { ClearResults(); ScanStatusText.Text = "Analyse annulée. Aucun fichier modifié."; } }
+        catch (OperationCanceledException) { if (storageGeneration == _volumeGeneration) { ClearResults(); ScanStatusText.Text = "Analyse annulée. Aucun fichier modifié."; } }
         catch (Exception error)
         {
             ScanStatusText.Text = "L’analyse a échoué";
@@ -137,7 +137,7 @@ public partial class MainWindow : Window
             if (ReferenceEquals(_scanCancellation, cancellation)) _scanCancellation = null;
             cancellation.Dispose();
             SetScanning(false); RefreshSpaceStatus();
-            if (storageGeneration != _storageGeneration) EnsureBubbleAnalysis();
+            if (storageGeneration != _volumeGeneration) EnsureBubbleAnalysis();
             if (_folderIndex is null && _currentDirectory is not null && ExplorerShowsGraph) await LoadBubblesAsync(_currentDirectory);
         }
     }

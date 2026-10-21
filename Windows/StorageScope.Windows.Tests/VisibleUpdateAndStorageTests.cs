@@ -98,6 +98,14 @@ internal static class VisibleUpdateAndStorageTests
                 drives = [second]; Pump(Invoke("RefreshDrivesAsync"));
                 Pump(Invoke("EnterExplorerAsync")); Require((string?)Get("_currentDirectory") == b && chooser.Visibility == Visibility.Collapsed);
             });
+            test("opening the same root keeps its in-progress analysis alive", () => {
+                using var scanning = new CancellationTokenSource();
+                typeof(MainWindow).GetField("_scanCancellation", flags)!.SetValue(window, scanning);
+                typeof(MainWindow).GetMethod("SetScanning", flags)!.Invoke(window, [true]);
+                Pump(Invoke("OpenStorageRootAsync", second)); Require(!scanning.IsCancellationRequested);
+                typeof(MainWindow).GetField("_scanCancellation", flags)!.SetValue(window, null);
+                typeof(MainWindow).GetMethod("SetScanning", flags)!.Invoke(window, [false]);
+            });
             test("disconnected active storage and zero-volume inventory return to chooser", () => {
                 drives = []; Pump(Invoke("RefreshDrivesAsync")); Require(chooser.Visibility == Visibility.Visible && (string?)Get("_storageIdentity") is null);
                 Pump(Invoke("EnterExplorerAsync")); Require(((ItemsControl)window.FindName("StorageChoices")).Items.Count == 0);

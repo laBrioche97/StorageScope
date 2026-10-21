@@ -13,6 +13,7 @@ public partial class MainWindow
     private bool _refreshingDrives;
     private bool _choosingStorage;
     private int _storageGeneration;
+    private int _volumeGeneration;
     private int _driveRefreshGeneration;
     private string? _storageIdentity;
     private readonly Dictionary<string, ScanResult> _storageResults = [];
@@ -59,10 +60,11 @@ public partial class MainWindow
         UpdateVolumeHeader();
     }
 
-    private void InvalidateStorageReads()
+    private void InvalidateStorageReads(bool cancelScan = true)
     {
         ++_storageGeneration;
-        _scanCancellation?.Cancel(); _browseCancellation?.Cancel(); _bubbleCancellation?.Cancel();
+        if (cancelScan) { ++_volumeGeneration; _scanCancellation?.Cancel(); }
+        _browseCancellation?.Cancel(); _bubbleCancellation?.Cancel();
         ++_browseGeneration; ++_bubbleGeneration;
         SetExplorerLoading(false);
     }
@@ -101,7 +103,7 @@ public partial class MainWindow
         if (!DrivePicker.Items.OfType<DriveChoice>().Any(item => item.Identity == drive.Identity)) return;
         var previousIdentity = _storageIdentity;
         if (_result is not null && previousIdentity is not null) _storageResults[previousIdentity] = _result;
-        InvalidateStorageReads();
+        InvalidateStorageReads(cancelScan: previousIdentity != drive.Identity);
         var generation = _storageGeneration;
         _storageIdentity = drive.Identity;
         _refreshingDrives = true;
