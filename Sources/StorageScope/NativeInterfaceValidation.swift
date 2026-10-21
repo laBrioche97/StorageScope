@@ -1,6 +1,7 @@
 import AppKit
 import StorageCore
 import SwiftUI
+import Sparkle
 
 /// Offscreen native rendering, invoked only by the explicit CI validation command.
 @MainActor
@@ -9,6 +10,12 @@ enum NativeInterfaceValidation {
         let destination = URL(fileURLWithPath: CommandLine.arguments.last ?? "/tmp/storagescope-ui")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let model = AppModel()
+        let updates = SoftwareUpdates()
+        let probe = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: updates, delegate: updates)
+        updates.updater(probe, didAbortWithError: NSError(domain: SUSparkleErrorDomain, code: Int(SUError.noUpdateError.rawValue)))
+        precondition(updates.status == "Aucune mise à jour compatible disponible.")
+        updates.updater(probe, didAbortWithError: NSError(domain: SUSparkleErrorDomain, code: 1002, userInfo: [NSUnderlyingErrorKey: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)]))
+        precondition(updates.status.contains("Connexion indisponible"))
         precondition(model.sidebar == .applications && SidebarSection.allCases.first == .applications)
         for asset in ["classic-library", "classic-menu", "new-library", "new-game"] {
             precondition(Bundle.module.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide") != nil, "Offline Epic guide asset missing")

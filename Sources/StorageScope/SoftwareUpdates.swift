@@ -60,6 +60,7 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
         if !busy, let resume = postponedInstallation { postponedInstallation = nil; waitingForWork = false; resume() }
     }
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        guard !item.isInformationOnlyUpdate else { availableVersion = nil; status = "La nouvelle version ne dispose pas d’un paquet compatible installable automatiquement."; return }
         availableVersion = item.displayVersionString
         UserDefaults.standard.set(item.displayVersionString, forKey: "lastUpdateOffer")
         UserDefaults.standard.set(Date(), forKey: "lastUpdateOfferDate")
@@ -70,7 +71,17 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
         status = "Vous disposez de la dernière version compatible publiée."; checking = false; installRequested = false
     }
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
-        offline = (error as NSError).domain == NSURLErrorDomain
+        let failure = error as NSError
+        if failure.domain == SUSparkleErrorDomain && failure.code == Int(SUError.noUpdateError.rawValue) {
+            checking = false; installing = false; installRequested = false
+            status = "Aucune mise à jour compatible disponible."; return
+        }
+        var cause = failure
+        offline = cause.domain == NSURLErrorDomain
+        for _ in 0..<8 {
+            guard let nested = cause.userInfo[NSUnderlyingErrorKey] as? NSError else { break }
+            cause = nested; offline = offline || cause.domain == NSURLErrorDomain
+        }
         checking = false; installing = false; installRequested = false
         status = (offline ? "Connexion indisponible" : "Vérification impossible") + (availableVersion.map { " · version \($0) signalée lors de la dernière vérification ; connexion requise pour la revalider." } ?? " · réessayer.")
     }
