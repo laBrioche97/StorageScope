@@ -142,9 +142,9 @@ public sealed class UpdateService
         {
             if (File.Exists(path) && new FileInfo(path).Length <= 256 * 1024)
             {
-                var bytes = await File.ReadAllBytesAsync(path, token);
-                using var parsed = JsonDocument.Parse(bytes);
-                if (parsed.RootElement.TryGetProperty("tag_name", out _) && parsed.RootElement.TryGetProperty("assets", out _)) cached = bytes;
+                var cachedBytes = await File.ReadAllBytesAsync(path, token);
+                using var cachedDocument = JsonDocument.Parse(cachedBytes);
+                if (cachedDocument.RootElement.TryGetProperty("tag_name", out _) && cachedDocument.RootElement.TryGetProperty("assets", out _)) cached = cachedBytes;
             }
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { Diagnostics.Write("lecture-cache-release", error); }
