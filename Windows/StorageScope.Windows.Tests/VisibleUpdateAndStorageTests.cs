@@ -45,6 +45,10 @@ internal static class VisibleUpdateAndStorageTests
             try { Await(service.RevalidateAsync(offer!, default)); throw new InvalidOperationException("Offline installation accepted"); } catch (HttpRequestException) { }
             offline = false; Require(Await(service.CheckAsync(false, default)) is not null && !service.IsOffline);
         });
+        test("interrupted release cache is refetched without reusing its old ETag", () => {
+            File.WriteAllText(state + ".release.json", "{interrupted");
+            Require(Await(Service().CheckAsync(false, default)) is not null && !conditional);
+        });
         test("invalid metadata signature is refused and does not become an offline success", () => {
             invalid = true; try { Await(Service().CheckAsync(false, default)); throw new InvalidOperationException("Signature accepted"); } catch (CryptographicException) { }
             invalid = false;

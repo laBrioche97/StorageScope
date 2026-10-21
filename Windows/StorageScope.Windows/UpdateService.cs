@@ -132,13 +132,27 @@ public sealed class UpdateService
 
     private async Task<byte[]> ReadReleaseAsync(CancellationToken token)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        token = timeout.Token;
         var path = _state + ".release.json";
         var etagPath = _state + ".etag";
+        byte[]? cached = null;
+        try
+        {
+            if (File.Exists(path) && new FileInfo(path).Length <= 256 * 1024)
+            {
+                var bytes = await File.ReadAllBytesAsync(path, token);
+                using var parsed = JsonDocument.Parse(bytes);
+                if (parsed.RootElement.TryGetProperty("tag_name", out _) && parsed.RootElement.TryGetProperty("assets", out _)) cached = bytes;
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { Diagnostics.Write("lecture-cache-release", error); }
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/laBrioche97/StorageScope/releases/latest");
-        if (File.Exists(path) && new FileInfo(path).Length <= 256 * 1024 && File.Exists(etagPath) && new FileInfo(etagPath).Length < 512
+        if (cached is not null && File.Exists(etagPath) && new FileInfo(etagPath).Length < 512
             && EntityTagHeaderValue.TryParse(await File.ReadAllTextAsync(etagPath, token), out var tag)) request.Headers.IfNoneMatch.Add(tag);
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
-        if (response.StatusCode == HttpStatusCode.NotModified) return await File.ReadAllBytesAsync(path, token);
+        if (response.StatusCode == HttpStatusCode.NotModified) return cached ?? throw new IOException("Réponse conditionnelle sans métadonnées disponibles.");
         response.EnsureSuccessStatusCode();
         var bytes = await ReadBodyAsync(response, 256 * 1024, token);
         // Cache only well-formed release JSON. The offer still needs its own signature.

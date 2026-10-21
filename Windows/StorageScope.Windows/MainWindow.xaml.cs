@@ -119,9 +119,11 @@ public partial class MainWindow : Window
             cancellation.Token.ThrowIfCancellationRequested();
             if (_closing) return;
             if ((DrivePicker.SelectedItem as DriveChoice)?.Identity != drive.Identity || storageGeneration != _volumeGeneration) return;
-            _result = result;
-            _folderIndex = await Task.Run(() => new FolderIndex(result), cancellation.Token);
-            PopulateResult(_result);
+            var index = await Task.Run(() => new FolderIndex(result), cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (_closing || storageGeneration != _volumeGeneration) return;
+            _result = result; _folderIndex = index;
+            PopulateResult(result);
             ScanStatusText.Text = $"Analyse {(_result.AccessErrors > 0 ? "partielle" : "terminée")} : {_result.FilesScanned:N0} fichiers · {_result.AccessErrors:N0} accès non disponibles" + (_result.CleanupTruncated ? " · suggestions limitées à 10 000 éléments" : "") + " · Choisissez Nettoyage conseillé pour continuer.";
             await RefreshExplorerAfterScanAsync(drive.Root);
         }
@@ -138,7 +140,7 @@ public partial class MainWindow : Window
             cancellation.Dispose();
             SetScanning(false); RefreshSpaceStatus();
             if (storageGeneration != _volumeGeneration) EnsureBubbleAnalysis();
-            if (_folderIndex is null && _currentDirectory is not null && ExplorerShowsGraph) await LoadBubblesAsync(_currentDirectory);
+            if (!_choosingStorage && _folderIndex is null && _currentDirectory is not null && ExplorerShowsGraph) await LoadBubblesAsync(_currentDirectory);
         }
     }
 
