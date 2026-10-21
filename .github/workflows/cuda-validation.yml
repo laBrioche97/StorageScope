@@ -19,9 +19,15 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-      - name: Install only disposable CUDA compiler and documentation; verify official removal
+      - name: Download and authenticate official CUDA fixture
         shell: pwsh
-        run: ./scripts/test-cuda-isolated.ps1
+        run: ./scripts/test-cuda-isolated.ps1 -Phase Download
+      - name: Install disposable compiler and documentation only
+        shell: pwsh
+        run: ./scripts/test-cuda-isolated.ps1 -Phase Install
+      - name: Verify official component removal and preserve shared components
+        shell: pwsh
+        run: ./scripts/test-cuda-isolated.ps1 -Phase Uninstall
       - uses: actions/upload-artifact@v5
         if: always()
         with:
