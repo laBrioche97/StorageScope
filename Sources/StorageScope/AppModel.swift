@@ -152,7 +152,7 @@ final class AppModel: ObservableObject {
     var explorerScrollPosition: Double = 0
     private var explorerViewCache = ExplorerSessionCache()
     private var loaderTask: Task<Void, Never>?
-    private var explorerLayoutKey: String { "\(maximumBubbles):\(Int(bubbleAvailableDiameter.isFinite ? bubbleAvailableDiameter / 16 : 0)):\(explorerDisplayMode)" }
+    private var explorerLayoutKey: String { "\(maximumBubbles):\(Int(bubbleAvailableDiameter.isFinite ? bubbleAvailableDiameter / 16 : 0)):\(NSApp.keyWindow?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1):\(explorerDisplayMode)" }
     private func explorerCacheKey(_ directory: URL) -> String { selectedVolumeID + "|" + scanGeneration.uuidString + "|" + directory.path }
     private func saveExplorerView() {
         guard let directory = currentDirectory, explorerPendingDirectory == nil,

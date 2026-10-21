@@ -222,7 +222,8 @@ public partial class MainWindow : Window
         DisplayFilterPanel.Visibility = compactExplorer && !_compactFiltersOpen ? Visibility.Collapsed : Visibility.Visible;
         ExplorerSearchBox.Visibility = compactExplorer && !_compactFiltersOpen ? Visibility.Visible : Visibility.Collapsed;
         ExplorerCompactFiltersButton.Visibility = compactExplorer ? Visibility.Visible : Visibility.Collapsed;
-        ExplorerPathBox.Visibility = compactExplorer ? Visibility.Collapsed : Visibility.Visible;
+        ExplorerPathDisplay.Visibility = compactExplorer || ExplorerPathBox.IsKeyboardFocusWithin ? Visibility.Collapsed : Visibility.Visible;
+        if (compactExplorer) ExplorerPathBox.Visibility = Visibility.Collapsed;
         ExplorerNavigationBar.ColumnDefinitions[2].Width = new GridLength(compactExplorer ? 80 : 0);
         BubbleStatus.Visibility = compactExplorer ? Visibility.Collapsed : Visibility.Visible;
         BubbleCanvas.ToolTip = BubbleStatus.Text;

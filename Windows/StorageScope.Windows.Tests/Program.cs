@@ -422,6 +422,7 @@ internal static class Program
         ExplorerCacheTests.Run(window, _root, destination, Test);
         VisibleUpdateAndStorageTests.Interface(_root, destination, Test);
         ScanResponsivenessTests.Run(_root, Test);
+        Motion.TestEnabled = false;
         if (Environment.GetCommandLineArgs().Contains("--scan-audit")) ScanResponsivenessTests.AuditVolume(Test);
         var bubbleRoot = Path.Combine(_root, "graph-display");
         var bubbleSizes = new Dictionary<string, long> { [bubbleRoot] = 100_000_000_000 };
@@ -472,8 +473,7 @@ internal static class Program
             if (name == "windows-explorer-loading") {
                 typeof(MainWindow).GetMethod("SetExplorerLoading", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [true, "Analyse du disque…\nLes tailles se précisent en arrière-plan."]);
                 window.UpdateLayout();
-                var until = DateTime.UtcNow.AddMilliseconds(180);
-                while (DateTime.UtcNow < until) { window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle); Thread.Sleep(2); }
+                typeof(MainWindow).GetMethod("ShowDelayedLoader", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [null, EventArgs.Empty]);
                 Check(((FrameworkElement)window.FindName("ExplorerLoadingPanel")).IsVisible);
             }
             if (destination is null) continue;

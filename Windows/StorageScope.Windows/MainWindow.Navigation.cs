@@ -13,6 +13,7 @@ public partial class MainWindow
 {
     private readonly ExplorerSessionCache _explorerCache = new();
     internal Func<string, IReadOnlyDictionary<string, long>?, CancellationToken, Task<IReadOnlyList<ScanEntry>>> ReadExplorerDirectory { get; set; } = DirectoryBrowser.BrowseAsync;
+    internal Action<string, double>? NavigationTiming { get; set; }
     private string? _pendingDirectory;
     private bool _navigationPending;
     private bool _navigationBack;
@@ -61,27 +62,42 @@ public partial class MainWindow
         FolderFrame Build(IReadOnlyList<ScanEntry> entries) => index is not null ? index.Frame(path, entries, maximum, cancellation.Token, diameter) : FolderIndex.BuildFrame(path, entries, null, true, maximum, cancellation.Token, diameter);
         void Publish(ExplorerViewSnapshot snapshot, bool transition)
         {
+            var timing = System.Diagnostics.Stopwatch.StartNew();
+            void Mark(string stage) { NavigationTiming?.Invoke(stage, timing.Elapsed.TotalMilliseconds); timing.Restart(); }
             if (!Current()) return;
             var previous = transition && previousPath != path ? Motion.Capture(ExplorerSplit) : null;
             if (_explorerScope != ExplorerScope.All) ResetExplorerScope();
             _currentDirectory = path; _allExplorerItems = snapshot.Entries.ToList(); _folderFrame = snapshot.Frame;
             SetNavigationPending(false); SetExplorerLoading(false);
+            Mark("state");
             if (addHistory) RecordBrowse(path);
-            ExplorerPathBox.Text = path; ExplorerBreadcrumbs.Children.Clear();
+            Mark("history");
+            ((TextBlock)ExplorerPathDisplay.Content).Text = path;
+            AutomationProperties.SetName(ExplorerPathDisplay, path + " · Modifier le chemin");
+            ExplorerPathBox.Visibility = Visibility.Collapsed; ExplorerPathDisplay.Visibility = ActualWidth < 950 ? Visibility.Collapsed : Visibility.Visible;
+            Mark("path");
             var crumbs = new Stack<string>();
             for (var ancestor = path; ancestor is not null && crumbs.Count < 32; ancestor = Directory.GetParent(ancestor)?.FullName) crumbs.Push(ancestor);
+            var position = 0;
             foreach (var crumb in crumbs) {
-                var button = new Button { Content = Path.GetFileName(crumb.TrimEnd('\\')) is { Length: > 0 } name ? name : crumb, ToolTip = crumb, Padding = new Thickness(8, 4, 8, 4) };
-                button.Click += async (_, _) => { _navigationBack = DeletionSafetyPolicy.IsWithin(path, crumb); await BrowseAsync(crumb); }; ExplorerBreadcrumbs.Children.Add(button);
+                if (position < ExplorerBreadcrumbs.Children.Count && ExplorerBreadcrumbs.Children[position] is Button found) {
+                    if (!Equals(found.Tag, crumb)) { found.Tag = found.ToolTip = crumb; found.Content = Path.GetFileName(crumb.TrimEnd('\\')) is { Length: > 0 } label ? label : crumb; }
+                    position++; continue;
+                }
+                var button = new Button { Content = Path.GetFileName(crumb.TrimEnd('\\')) is { Length: > 0 } name ? name : crumb, Tag = crumb, ToolTip = crumb, Padding = new Thickness(8, 4, 8, 4) };
+                button.Click += async (_, _) => { if (button.Tag is string target) { _navigationBack = _currentDirectory is not null && DeletionSafetyPolicy.IsWithin(_currentDirectory, target); await BrowseAsync(target); } }; ExplorerBreadcrumbs.Children.Add(button); position++;
             }
-            ApplyExplorerFilter(); RenderBubbles();
+            while (ExplorerBreadcrumbs.Children.Count > position) ExplorerBreadcrumbs.Children.RemoveAt(ExplorerBreadcrumbs.Children.Count - 1);
+            Mark("breadcrumbs"); ApplyExplorerFilter(); Mark("filter"); RenderBubbles(); Mark("bubbles");
             foreach (var selected in _explorer.Where(item => snapshot.Selection.Contains(item.Path, StringComparer.OrdinalIgnoreCase))) ExplorerGrid.SelectedItems.Add(selected);
             GridScroll(ExplorerGrid)?.ScrollToVerticalOffset(snapshot.Scroll);
+            Mark("restore");
             var frame = snapshot.Frame;
             DirectFilesButton.Content = $"Fichiers dans ce dossier{(frame?.DirectFiles is long direct ? " · " + (frame.Partial ? "estimation " : "") + SizeFormatter.Format(direct) : "")} — Voir la liste";
             BubbleStatus.Text = frame?.Total is long bytes ? $"{path} · {SizeFormatter.Format(bytes)} identifiés" + (frame.Partial ? " · analyse partielle" : "") : $"{path} · Tailles inconnues : analysez le disque pour compléter les bulles.";
             BubbleEmptyState.Visibility = frame is null || frame.Circles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             Motion.Swap(ExplorerSplit, ExplorerTransitionSnapshot, previous, back, anchor);
+            Mark("transition");
         }
         try
         {
@@ -111,5 +127,15 @@ public partial class MainWindow
             if (ReferenceEquals(_browseCancellation, cancellation)) _browseCancellation = null;
             cancellation.Dispose();
         }
+    }
+
+    private void EditExplorerPath_Click(object sender, RoutedEventArgs e)
+    {
+        ExplorerPathDisplay.Visibility = Visibility.Collapsed; ExplorerPathBox.Visibility = Visibility.Visible;
+        ExplorerPathBox.Text = _currentDirectory ?? ""; ExplorerPathBox.Focus(); ExplorerPathBox.SelectAll();
+    }
+    private void ExplorerPathBox_LostFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+    {
+        ExplorerPathBox.Visibility = Visibility.Collapsed; ExplorerPathDisplay.Visibility = ActualWidth < 950 ? Visibility.Collapsed : Visibility.Visible;
     }
 }

@@ -26,6 +26,11 @@ internal static class CudaTests
             Reject(() => NvidiaCudaProvider.Parse(command, Id.Replace("Development", "Document"), windows, programs));
             Reject(() => RegisteredProductProvider.ParseCommand(command));
         });
+        test("native publisher verification supports system catalogues and rejects foreign or unsigned files", () => {
+            var system = Path.Combine(Environment.SystemDirectory, "rundll32.exe");
+            Require(NativePublisher.Verify(system, "Microsoft Corporation"));
+            Require(!NativePublisher.Verify(system, "NVIDIA Corporation") && !NativePublisher.Verify(dll, "NVIDIA Corporation"));
+        });
         test("CUDA preparation requires signatures matching architectures and exact registered name", () => {
             Require(provider.Prepare(product).NvidiaTarget is not null);
             signature = false; Require(!provider.Prepare(product).CanProceed); signature = true;

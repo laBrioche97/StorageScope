@@ -68,6 +68,7 @@ struct StorageExplorerView: View {
                 ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 6) {
                 if let volume = model.selectedVolume {
                     Button {
+                        model.navigationBack = true; model.navigationAnchor = .center
                         model.loadExplorerDirectory(volume.url)
                     } label: {
                         Label(volume.name, systemImage: "internaldrive.fill")
@@ -84,7 +85,7 @@ struct StorageExplorerView: View {
                                 let target = relativeComponents(root: volume.url, current: current)
                                     .prefix(index + 1)
                                     .reduce(volume.url) { $0.appendingPathComponent($1, isDirectory: true) }
-                                model.loadExplorerDirectory(target)
+                                model.navigationBack = true; model.navigationAnchor = .center; model.loadExplorerDirectory(target)
                             }
                             .buttonStyle(.plain)
                         }

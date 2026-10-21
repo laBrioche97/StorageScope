@@ -135,7 +135,8 @@
           <Grid x:Name="ExplorerNavigationBar">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="0"/></Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal"><Button Content="←" Click="ExplorerBack_Click" AutomationProperties.Name="Dossier précédent"/><Button Content="→" Click="ExplorerForward_Click" AutomationProperties.Name="Dossier suivant"/><Button Content="↑ Parent" Click="ParentButton_Click"/><Button Content="Racine" Click="ExplorerRoot_Click"/><Button Content="Stockages" Click="ChangeStorage_Click" ToolTip="Changer de stockage" AutomationProperties.Name="Changer de stockage"/></StackPanel>
-            <TextBox x:Name="ExplorerPathBox" Grid.Column="1" Margin="6,4" KeyDown="ExplorerPathBox_KeyDown"/>
+            <TextBox x:Name="ExplorerPathBox" Grid.Column="1" Margin="6,4" Visibility="Collapsed" IsUndoEnabled="False" KeyDown="ExplorerPathBox_KeyDown" LostKeyboardFocus="ExplorerPathBox_LostFocus"/>
+            <Button x:Name="ExplorerPathDisplay" Grid.Column="1" Margin="6,4" HorizontalContentAlignment="Left" Click="EditExplorerPath_Click" ToolTip="Modifier le chemin du dossier"><Button.Content><TextBlock TextTrimming="CharacterEllipsis"/></Button.Content></Button>
             <TextBox x:Name="ExplorerSearchBox" Visibility="Collapsed" Grid.Column="1" Text="{Binding Text,ElementName=ListSearch,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" Margin="6,4" TextChanged="ExplorerSearchBox_TextChanged" ToolTip="Rechercher dans le dossier" AutomationProperties.Name="Rechercher dans ce dossier"/>
             <Button x:Name="ExplorerCompactFiltersButton" Grid.Column="2" Content="Filtres" Click="ShowFilters_Click" Visibility="Collapsed" ToolTip="Afficher les filtres et le tri"/>
           </Grid>
