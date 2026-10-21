@@ -91,15 +91,16 @@ public sealed class NvidiaCudaProvider : IInstalledProductProvider
         OperationHistory.Append(new { operation = "désinstallation CUDA", product = plan.Product.Name, component = target.PackageId, status = "préparation" });
         try
         {
-            Process? process;
-            using (var runner = new FileStream(target.RunnerPath, FileMode.Open, FileAccess.Read, FileShare.Read))
-            using (var dll = new FileStream(target.DllPath, FileMode.Open, FileAccess.Read, FileShare.Read))
-            {
+            var process = await Task.Run(() => {
+                using var runner = new FileStream(target.RunnerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var dll = new FileStream(target.DllPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 CheckRegistration(plan.Product);
-                if (DeletionSafetyPolicy.ReadIdentity(target.RunnerPath, true) != target.RunnerIdentity || DeletionSafetyPolicy.ReadIdentity(target.DllPath, true) != target.DllIdentity) throw new IOException("Le désinstalleur CUDA a été remplacé.");
+                if (!ApplicationEnrichment.SafeLocal(target.RunnerPath) || !ApplicationEnrichment.SafeLocal(target.DllPath)
+                    || DeletionSafetyPolicy.ReadIdentity(target.RunnerPath, true) != target.RunnerIdentity || DeletionSafetyPolicy.ReadIdentity(target.DllPath, true) != target.DllIdentity) throw new IOException("Le désinstalleur CUDA a été remplacé ou lié.");
+                if (Machine(target.RunnerPath) != Machine(target.DllPath) || !VerifyPublisher(target.RunnerPath, "Microsoft Corporation") || !VerifyPublisher(target.DllPath, "NVIDIA Corporation")) throw new IOException("La signature ou l’architecture du désinstalleur CUDA a changé.");
                 token.ThrowIfCancellationRequested();
-                process = Start(new ProcessStartInfo(target.RunnerPath, fresh.Arguments!) { UseShellExecute = true, Verb = target.Registration.StartsWith("LocalMachine|", StringComparison.Ordinal) ? "runas" : "open" });
-            }
+                return Start(new ProcessStartInfo(target.RunnerPath, fresh.Arguments!) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(target.DllPath)!, Verb = target.Registration.StartsWith("LocalMachine|", StringComparison.Ordinal) ? "runas" : "open" });
+            }, token);
             using var lifetime = process;
             plan.Progress?.Report("Désinstallation NVIDIA en cours… Annuler arrête uniquement le suivi.");
             for (var i = 0; i < Checks; i++)
