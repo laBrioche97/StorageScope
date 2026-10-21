@@ -271,7 +271,8 @@ final class AppModel: ObservableObject {
     var displayedCleanupReport: CleanupReport? { validatedCleanupReport ?? snapshot?.cleanupReport }
 
     var selectedItems: [FileSystemItem] {
-        SelectionNormalizer.normalize(presentationItems.filter { selectedIDs.contains($0.id) })
+        if sidebar == .explorer && explorerPendingDirectory != nil { return [] }
+        return SelectionNormalizer.normalize(presentationItems.filter { selectedIDs.contains($0.id) })
     }
 
     var selectedBytes: Int64 { selectedItems.reduce(0) { $0 + $1.allocatedSize } }
@@ -857,6 +858,12 @@ final class AppModel: ObservableObject {
         sidebar = .explorer
         navigationBack = true; navigationAnchor = .center
         loadExplorerDirectory(volume.url)
+    }
+
+    func refreshExplorerView() {
+        explorerViewCache.clear()
+        guard let destination = explorerPendingDirectory ?? currentDirectory ?? selectedVolume?.url else { return }
+        loadExplorerDirectory(destination)
     }
 
     func loadExplorerDirectory(_ directory: URL, allowPackageTraversal: Bool = false) {

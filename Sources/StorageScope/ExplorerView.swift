@@ -106,7 +106,7 @@ struct StorageExplorerView: View {
                     if model.explorerCategoryContext != nil {
                         model.refreshCategoryExplorer()
                     } else {
-                        model.loadExplorerDirectory(model.currentDirectory ?? model.selectedVolume?.url ?? URL(fileURLWithPath: "/"))
+                        model.refreshExplorerView()
                     }
                 }
             }

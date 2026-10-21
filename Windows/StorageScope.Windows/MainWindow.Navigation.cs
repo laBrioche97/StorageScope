@@ -40,6 +40,7 @@ public partial class MainWindow
     {
         _navigationPending = pending; _pendingDirectory = pending ? destination : null;
         ExplorerGrid.IsEnabled = BubbleCanvas.IsEnabled = !pending;
+        DirectFilesButton.IsEnabled = !pending;
         AutomationProperties.SetItemStatus(ExplorerGrid, pending ? "Ouverture du dossier suivant" : "");
     }
     private async Task BrowseAsync(string path, bool addHistory = true)

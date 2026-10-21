@@ -90,6 +90,23 @@ internal static class ExplorerCacheTests
                 Require(image.Source is null && image.Visibility == Visibility.Collapsed && incoming.Opacity == 1, "interrupted animation leaked snapshot");
                 Motion.TestEnabled = false; Motion.Swap(incoming,image,snapshot,false,new(.5,.5)); Require(image.Source is null && incoming.RenderTransform == Transform.Identity, "reduced motion animated");
             });
+            test("navigation frame pacing is recorded on the available renderer", () => {
+                Motion.TestEnabled = true;
+                var incoming = (FrameworkElement)window.FindName("ExplorerSplit"); var image = (Image)window.FindName("ExplorerTransitionSnapshot");
+                var snapshot = Motion.Capture(incoming); var frames = new List<double>(); var watch=Stopwatch.StartNew();
+                EventHandler render = (_, _) => frames.Add(watch.Elapsed.TotalMilliseconds);
+                CompositionTarget.Rendering += render;
+                try {
+                    Motion.Swap(incoming,image,snapshot,false,new(.5,.5));
+                    var frame = new DispatcherFrame(); var stop = new DispatcherTimer(DispatcherPriority.Normal) { Interval=TimeSpan.FromMilliseconds(350) };
+                    stop.Tick += (_, _) => { stop.Stop(); frame.Continue=false; }; stop.Start(); Dispatcher.PushFrame(frame);
+                } finally { CompositionTarget.Rendering -= render; Motion.TestEnabled=false; }
+                var gaps=frames.Zip(frames.Skip(1), (first,second) => second-first).Order().ToArray();
+                var fps=gaps.Length>0 ? 1000/gaps[gaps.Length/2] : 0;
+                Console.WriteLine($"Navigation renderer tier {RenderCapability.Tier >> 16}: {frames.Count} frames; median {fps:N1} fps");
+                if (destination is not null) File.WriteAllText(Path.Combine(destination,"navigation-frame-pacing.json"), System.Text.Json.JsonSerializer.Serialize(new { rendererTier=RenderCapability.Tier>>16, frames=frames.Count, medianFps=fps, hardwareControlValidated=(RenderCapability.Tier>>16)==2 && fps>=59, targetFps=60 }));
+                Require(image.Source is null, "animation snapshot not released");
+            });
         }
         finally { window.ReadExplorerDirectory = oldRead; Set("_result", oldResult); Set("_folderIndex", oldIndex); Invoke("InvalidateExplorerCache"); Motion.TestEnabled = null; tabs.SelectedItem = window.FindName("OverviewTab"); SynchronizationContext.SetSynchronizationContext(context); }
     }
