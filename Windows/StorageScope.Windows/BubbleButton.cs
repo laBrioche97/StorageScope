@@ -9,7 +9,7 @@ namespace StorageScope.Windows;
 // Automation invocation without introducing a web runtime or a giant visual tree.
 internal sealed class BubbleButton : Button
 {
-    internal required FolderCircle Circle { get; init; }
+    internal required FolderCircle Circle { get; set; }
     internal bool Highlighted { get; set; }
     internal bool HasChildren { get; init; }
     protected override void OnGotKeyboardFocus(System.Windows.Input.KeyboardFocusChangedEventArgs e) { base.OnGotKeyboardFocus(e); InvalidateVisual(); }

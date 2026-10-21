@@ -1,0 +1,37 @@
+import Foundation
+
+public struct ExplorerViewSnapshot: Sendable {
+    public let items: [FileSystemItem]
+    public var frame: FolderBubbleFrame?
+    public var layout: String
+    public var selection: Set<String>
+    public var scroll: Double
+    public let cost: Int
+    public init(items: [FileSystemItem], frame: FolderBubbleFrame?, layout: String, selection: Set<String> = [], scroll: Double = 0) {
+        self.items = items; self.frame = frame; self.layout = layout; self.selection = selection; self.scroll = scroll
+        cost = 512 + items.reduce(0) { $0 + 320 + ($1.url.path.utf16.count + $1.name.utf16.count) * 2 }
+    }
+}
+
+public struct ExplorerSessionCache: Sendable {
+    public static let capacity = 64 * 1024 * 1024
+    private var entries: [String: (value: ExplorerViewSnapshot, used: UInt64)] = [:]
+    private var clock: UInt64 = 0
+    public private(set) var bytes = 0
+    public var count: Int { entries.count }
+    public init() {}
+    public mutating func get(_ key: String) -> ExplorerViewSnapshot? {
+        guard var entry = entries[key] else { return nil }
+        clock &+= 1; entry.used = clock; entries[key] = entry; return entry.value
+    }
+    public mutating func put(_ key: String, _ value: ExplorerViewSnapshot) {
+        if let old = entries.removeValue(forKey: key) { bytes -= old.value.cost }
+        guard value.cost <= Self.capacity else { return }
+        clock &+= 1; entries[key] = (value, clock); bytes += value.cost
+        while bytes > Self.capacity || entries.count > 32 {
+            guard let oldest = entries.min(by: { $0.value.used < $1.value.used }) else { break }
+            bytes -= oldest.value.value.cost; entries.removeValue(forKey: oldest.key)
+        }
+    }
+    public mutating func clear() { entries.removeAll(); bytes = 0 }
+}

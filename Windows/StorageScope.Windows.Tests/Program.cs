@@ -20,6 +20,8 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Contains("--epic-uninstall-fixture")) return NavigationAndEpicTests.RunOfficialFixture(args);
+        if (args.Contains("--cuda-isolated-uninstall")) return CudaTests.RunIsolated();
+        if (args.Contains("--cuda-readonly")) return CudaTests.ReadOnly();
         if (args.Contains("--probe-exit")) { Thread.Sleep(500); return unchecked((int)0xC0000005); }
         _root = Path.Combine(Environment.CurrentDirectory, ".test-data", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
@@ -28,6 +30,7 @@ internal static class Program
         OperationHistory.TestDirectory = Path.Combine(_root, "history");
         try
         {
+            CudaTests.Run(_root, Test);
             Test("protected system and profile roots", () =>
             {
                 Check(DeletionSafetyPolicy.BlockReason(Path.GetPathRoot(_root)!) is not null);
@@ -468,6 +471,8 @@ internal static class Program
             if (name == "windows-explorer-loading") {
                 typeof(MainWindow).GetMethod("SetExplorerLoading", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [true, "Analyse du disque…\nLes tailles se précisent en arrière-plan."]);
                 window.UpdateLayout();
+                var until = DateTime.UtcNow.AddMilliseconds(180);
+                while (DateTime.UtcNow < until) { window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle); Thread.Sleep(2); }
                 Check(((FrameworkElement)window.FindName("ExplorerLoadingPanel")).IsVisible);
             }
             if (destination is null) continue;

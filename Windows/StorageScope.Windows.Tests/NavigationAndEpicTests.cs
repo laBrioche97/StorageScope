@@ -42,7 +42,7 @@ internal static class NavigationAndEpicTests
                 var button = ((Canvas)window.FindName("BubbleCanvas")).Children.OfType<BubbleButton>().Single(item => item.Circle.Path == child);
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Require(((Grid)window.FindName("BubblePanel")).Visibility == Visibility.Visible);
-                Require(((Border)window.FindName("ExplorerLoadingPanel")).Visibility == Visibility.Visible);
+                Require(((TextBlock)window.FindName("BubbleStatus")).Text.Contains("Ouverture") || (string?)Get("_currentDirectory") == child);
                 Pump(() => Get("_browseCancellation") is null);
                 Require((string?)Get("_currentDirectory") == child && (bool)Get("_bubbleMode")!);
                 Require(((Canvas)window.FindName("BubbleCanvas")).Children.OfType<BubbleButton>().Any(item => item.Circle.Path == grandchild));

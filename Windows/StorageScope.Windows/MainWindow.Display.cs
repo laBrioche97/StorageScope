@@ -43,7 +43,7 @@ public partial class MainWindow
         if (CurrentSection == Section.Explorer && !IsPreviewMode) _ = EnterExplorerAsync();
         UpdateBubbleFilters();
         UpdateResponsiveColumns();
-        RefreshSectionHeading();
+        RefreshSectionHeading(); Motion.Reveal(MainTabs);
     }
 
     private void InitializeDisplayFilters()

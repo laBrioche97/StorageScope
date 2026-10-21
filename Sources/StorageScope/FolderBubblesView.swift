@@ -61,9 +61,9 @@ private struct FolderBubbleDiagram: View {
                     ContentUnavailableView("Aucun élément mesuré", systemImage: "folder", description: Text(model.explorerIssues.first?.message ?? "Les tailles inconnues restent disponibles dans la liste."))
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                if model.explorerIsLoading || model.bubbleIsLoading || model.isScanning && model.bubbleFrame?.totalBytes == nil {
+                if model.explorerLoaderVisible || (model.bubbleIsLoading && model.bubbleFrame == nil) || model.isScanning && model.bubbleFrame?.totalBytes == nil {
                     BriocheLoadingView(message: model.explorerIsLoading ? "Lecture du dossier…" : model.isScanning ? "Analyse du disque…" : "Préparation du graphique…", cancel: model.cancelExplorerLoading)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .frame(width: min(260, proxy.size.width), height: 160).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10)).position(x: max(130, proxy.size.width - 135), y: 85)
                 }
             }
             .onAppear { model.resizeBubbleLayout(width: proxy.size.width, height: proxy.size.height) }
@@ -101,7 +101,7 @@ private struct FolderBubbleControl: View {
     let bounds: CGRect
     var body: some View {
         Button { model.openBubble(node) } label: { Circle().fill(Color.clear).contentShape(Circle()) }
-            .buttonStyle(.plain).focused($focused)
+            .buttonStyle(.plain).disabled(model.explorerPendingDirectory != nil).focused($focused)
             .frame(width: bounds.width, height: bounds.height).position(x: bounds.midX, y: bounds.midY)
             .accessibilityLabel(node.name).accessibilityValue(ByteCountFormatter.storage.string(fromByteCount: node.bytes))
             .help(annotation)

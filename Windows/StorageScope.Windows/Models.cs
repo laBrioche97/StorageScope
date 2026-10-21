@@ -85,7 +85,8 @@ public sealed record InstalledApplication(string Name, string? Publisher, string
     public long SortSize => EstimatedBytes ?? 0;
     public bool HasKnownSize => EstimatedBytes.HasValue;
     public string SizeStatus { get; init; } = EstimatedBytes.HasValue ? "Taille déclarée" : "Calcul en cours";
-    public string DisplaySize => EstimatedBytes is long size ? $"{SizeFormatter.Format(size)} · {SizeStatus}" : SizeStatus;
+    public bool SharedInstallLocation { get; init; }
+    public string DisplaySize => (EstimatedBytes is long size ? $"{SizeFormatter.Format(size)} · {SizeStatus}" : SizeStatus) + (SharedInstallLocation ? " · Dossier partagé" : "");
     public ImageSource Icon { get; init; } = ApplicationIcons.Fallback;
     // UI Automation must never stringify a decoder owned by an inventory worker.
     public override string ToString() => Name;

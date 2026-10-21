@@ -55,6 +55,7 @@ public partial class MainWindow : Window
         InitializeDisplayFilters();
         InitializeContextActions();
         InitializeInterface();
+        Motion.Attach(this);
         Activated += (_, _) => { if (!IsPreviewMode) _ = RefreshRecycleBinAsync(false); };
         Closing += (_, e) =>
         {
@@ -161,6 +162,7 @@ public partial class MainWindow : Window
 
     private void ClearResults()
     {
+        InvalidateExplorerCache();
         _bubbleCancellation?.Cancel();
         _result = null; _folderIndex = null; _folderFrame = null; ++_bubbleGeneration;
         BubbleCanvas.Children.Clear();
@@ -244,7 +246,7 @@ public partial class MainWindow : Window
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy || _scanning) return;
-        try { _ = RefreshRecycleBinAsync(true); await RefreshDrivesAsync(); RefreshSpaceStatus(); await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
+        try { InvalidateExplorerCache(); _ = RefreshRecycleBinAsync(true); await RefreshDrivesAsync(); RefreshSpaceStatus(); await ReloadApplicationsAsync(); } catch (Exception error) { ShowError("Inventaire indisponible.", error); }
     }
 
     private async void DrivePicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -273,46 +275,8 @@ public partial class MainWindow : Window
 
     private Task RefreshExplorerAfterScanAsync(string root)
     {
-        var destination = _currentDirectory;
+        var destination = _pendingDirectory ?? _currentDirectory;
         return BrowseAsync(destination is not null && Directory.Exists(destination) && DeletionSafetyPolicy.IsWithin(destination, root) ? destination : root);
-    }
-
-    private async Task BrowseAsync(string path, bool addHistory = true)
-    {
-        _browseCancellation?.Cancel();
-        _bubbleCancellation?.Cancel(); _bubbleCancellation = null; ++_bubbleGeneration;
-        _browseCancellation = new CancellationTokenSource();
-        var cancellation = _browseCancellation;
-        var generation = ++_browseGeneration;
-        BubbleEmptyState.Visibility = Visibility.Collapsed;
-        if (_explorerScope != ExplorerScope.All) ResetExplorerScope();
-        LayoutExplorer();
-        if (addHistory) RecordBrowse(path);
-        SetExplorerLoading(true);
-        if (!string.Equals(_currentDirectory, path, StringComparison.OrdinalIgnoreCase)) {
-            _allExplorerItems.Clear(); _explorer.Clear(); _folderFrame = null; BubbleCanvas.Children.Clear();
-        }
-        _currentDirectory = path;
-        ExplorerPathBox.Text = path;
-        ExplorerBreadcrumbs.Children.Clear();
-        var crumbs = new Stack<string>();
-        for (var ancestor = path; ancestor is not null && crumbs.Count < 32; ancestor = Directory.GetParent(ancestor)?.FullName) crumbs.Push(ancestor);
-        foreach (var crumb in crumbs) {
-            var button = new Button { Content = Path.GetFileName(crumb.TrimEnd('\\')) is { Length: > 0 } name ? name : crumb, ToolTip = crumb, Padding = new Thickness(8, 4, 8, 4) };
-            button.Click += async (_, _) => await BrowseAsync(crumb);
-            ExplorerBreadcrumbs.Children.Add(button);
-        }
-        try
-        {
-            var entries = await DirectoryBrowser.BrowseAsync(path, _result?.DirectorySizes, cancellation.Token);
-            if (_closing || generation != _browseGeneration || cancellation.IsCancellationRequested) return;
-            _allExplorerItems = entries.ToList();
-            ApplyExplorerFilter();
-            if (ExplorerShowsGraph) await LoadBubblesAsync(path);
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception error) { if (!_closing && generation == _browseGeneration) { Diagnostics.Write("lecture-dossier", error); BubbleStatus.Text = "Dossier inaccessible : " + error.Message; BubbleEmptyState.Text = "Ce dossier n’a pas pu être lu. Vous pouvez revenir au dossier parent ou réessayer."; BubbleEmptyState.Visibility = Visibility.Visible; } }
-        finally { if (generation == _browseGeneration && !_scanning) SetExplorerLoading(false); if (ReferenceEquals(_browseCancellation, cancellation)) _browseCancellation = null; cancellation.Dispose(); RefreshSectionHeading(); }
     }
 
     private void ApplyExplorerFilter()
@@ -322,7 +286,17 @@ public partial class MainWindow : Window
             ExplorerScope.Remainder => _explorerRemainder?.Contains(item.Path) == true,
             _ => true
         }));
-        ApplyDisplayFilters();
+        if (!_viewsReady) return;
+        var filter = SectionFilter(Section.Explorer);
+        var view = CollectionViewSource.GetDefaultView(_explorer);
+        using (view.DeferRefresh()) {
+            view.Filter = value => value is ScanEntry entry && filter.Matches(entry);
+            view.SortDescriptions.Clear();
+            var order = (ResultSort.SelectedItem as SortChoice)?.Order ?? ResultOrder.Largest;
+            if (order != ResultOrder.Name) view.SortDescriptions.Add(new(nameof(ScanEntry.Size), order == ResultOrder.Smallest ? System.ComponentModel.ListSortDirection.Ascending : System.ComponentModel.ListSortDirection.Descending));
+            view.SortDescriptions.Add(new(nameof(ScanEntry.Name), System.ComponentModel.ListSortDirection.Ascending));
+        }
+        RefreshSectionHeading();
     }
 
     private async void ExplorerGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -334,7 +308,8 @@ public partial class MainWindow : Window
     private async void ParentButton_Click(object sender, RoutedEventArgs e)
     {
         if (_currentDirectory is null) return;
-        var parent = Directory.GetParent(_currentDirectory)?.FullName;
+        _navigationBack = true;
+        var parent = Directory.GetParent(_pendingDirectory ?? _currentDirectory)?.FullName;
         if (parent is not null) await BrowseAsync(parent);
     }
 
@@ -381,7 +356,7 @@ public partial class MainWindow : Window
 
     private async Task TrashEntriesAsync(List<ScanEntry> entries, IReadOnlyList<CleanupCandidate>? candidates = null)
     {
-        if (_busy || _scanning) return;
+        if (_busy || _scanning || (CurrentSection == Section.Explorer && _navigationPending)) return;
         SetBusy(true);
         Diagnostics.Action = "nettoyage-corbeille"; Diagnostics.Write("action");
         _operationCancellation = new();
@@ -410,6 +385,7 @@ public partial class MainWindow : Window
             _recoverableBytes += succeeded.Sum(item => item.Bytes);
             _ = RefreshRecycleBinAsync(true);
             _folderIndex = null; _folderFrame = null;
+            InvalidateExplorerCache();
             if (_currentDirectory is not null) await BrowseAsync(_currentDirectory);
             foreach (var item in succeeded)
             {
@@ -446,7 +422,13 @@ public partial class MainWindow : Window
             ScanStatusText.Text = "Préparation de la désinstallation…";
             var plan = await Task.Run(() => provider.Prepare(application), _operationCancellation.Token);
             plan = plan with { Progress = new Progress<string>(message => ScanStatusText.Text = message) };
-            if (!plan.CanProceed) { MessageBox.Show(plan.Explanation, "Désinstallation indisponible", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+            if (!plan.CanProceed) {
+                if (provider is NvidiaCudaProvider) {
+                    if (MessageBox.Show(plan.Explanation + "\n\nOuvrir les applications installées de Windows ?", "Désinstallation indisponible", MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+                        Process.Start(new ProcessStartInfo("ms-settings:appsfeatures") { UseShellExecute = true });
+                } else MessageBox.Show(plan.Explanation, "Désinstallation indisponible", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             if (!plan.EpicGuided && MessageBox.Show($"Désinstaller « {application.Name} » ?\n\nInstallation : {application.DisplaySize}.\nCette taille ne garantit pas l’espace libéré ; des composants peuvent être partagés.\n\n{plan.Explanation}\n\nLes sauvegardes restent conservées par StorageScope. Les résidus attribués seront proposés séparément.", "Vérifier la désinstallation", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             ScanStatusText.Text = plan.EpicGuided ? "Ouverture d’Epic pour confirmer la désinstallation…" : "Désinstallation officielle en cours…";
             var result = plan.EpicGuided
@@ -459,6 +441,7 @@ public partial class MainWindow : Window
                 if (residuals.Count > 0) MessageBox.Show($"{residuals.Count} cache(s) attribué(s) à ce jeu peuvent être examinés dans Nettoyage conseillé. Les sauvegardes restent conservées.", "Résidus du jeu");
             }
             if (!plan.EpicGuided) MessageBox.Show(result.Message, result.Verified ? "Désinstallation confirmée" : "Vérification nécessaire", MessageBoxButton.OK, result.Verified ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            InvalidateExplorerCache();
             await ReloadApplicationsAsync();
             RefreshSpaceStatus();
             ScanStatusText.Text = result.Verified ? "Désinstallation confirmée." : result.Message;

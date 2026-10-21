@@ -13,6 +13,7 @@ public sealed record ProductUninstallPlan(InstalledApplication Product, string E
 {
     public IProgress<string>? Progress { get; init; }
     public bool EpicGuided { get; init; }
+    public NvidiaCudaTarget? NvidiaTarget { get; init; }
 }
 public sealed record ProductUninstallResult(bool Verified, string Message, string State = "non confirmé");
 
@@ -305,7 +306,9 @@ public sealed class InstalledProductCatalog
         }
         var unique = result.GroupBy(item => item.PackageFullName ?? (item.Provider == "Epic" && item.ManifestPath is not null ? $"epic:{item.EpicNamespace}:{item.EpicCatalogId}:{item.ProductId}:{item.InstallLocation}" : EpicComponent(item) ? "epic-component:" + (item.RegistrationPath ?? item.Name) : item.InstallLocation is { Length: > 0 } location && Path.IsPathFullyQualified(location) ? location.TrimEnd('\\') : item.Provider + ":" + item.ProductId + ":" + item.Name), StringComparer.OrdinalIgnoreCase)
             .Select(group => group.OrderByDescending(item => item.RegistrationPath is not null).First()).ToList();
-        return unique;
+        var shared = unique.Where(item => !string.IsNullOrWhiteSpace(item.InstallLocation)).GroupBy(item => item.InstallLocation!, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return unique.Select(item => item with { SharedInstallLocation = item.InstallLocation is not null && shared.Contains(item.InstallLocation) }).ToList();
     }
-    public IInstalledProductProvider ProviderFor(InstalledApplication product) => product.PackageFullName is not null ? _providers[2] : product.Provider == "Epic" && product.ManifestPath is not null ? _providers[3] : product.RegistrationPath is not null ? _providers[0] : _providers[1];
+    private readonly NvidiaCudaProvider _cuda = new();
+    public IInstalledProductProvider ProviderFor(InstalledApplication product) => NvidiaCudaProvider.IsCandidate(product) ? _cuda : product.PackageFullName is not null ? _providers[2] : product.Provider == "Epic" && product.ManifestPath is not null ? _providers[3] : product.RegistrationPath is not null ? _providers[0] : _providers[1];
 }

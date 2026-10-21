@@ -69,21 +69,27 @@ public partial class MainWindow
     private void SetExplorerLoading(bool loading, string message = "Lecture du dossier…")
     {
         ExplorerLoader.Message = message;
-        ExplorerLoadingPanel.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        _loadingDelay?.Stop();
+        if (!loading) { ExplorerLoadingPanel.Visibility = Visibility.Collapsed; return; }
+        _loadingDelay ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _loadingDelay.Tick -= ShowDelayedLoader; _loadingDelay.Tick += ShowDelayedLoader; _loadingDelay.Start();
     }
+    private void ShowDelayedLoader(object? sender, EventArgs e) { _loadingDelay?.Stop(); ExplorerLoadingPanel.Visibility = Visibility.Visible; }
+
     private void CancelExplorer_Click(object sender, RoutedEventArgs e)
     {
         _browseCancellation?.Cancel(); _bubbleCancellation?.Cancel(); _scanCancellation?.Cancel();
         ++_browseGeneration; ++_bubbleGeneration;
-        SetExplorerLoading(false); BubbleStatus.Text = "Chargement annulé. Cliquez sur Analyser le disque ou ouvrez un dossier pour reprendre.";
+        SetNavigationPending(false); SetExplorerLoading(false); BubbleStatus.Text = "Chargement annulé. Cliquez sur Analyser le disque ou ouvrez un dossier pour reprendre.";
     }
     private async void ExplorerBack_Click(object sender, RoutedEventArgs e) => await BrowseHistoryAsync(-1);
     private async void ExplorerForward_Click(object sender, RoutedEventArgs e) => await BrowseHistoryAsync(1);
     private async Task BrowseHistoryAsync(int direction)
     {
+        if (_navigationPending && direction < 0) { CancelExplorer_Click(this, new()); return; }
         var position = _historyPosition + direction;
         if (position < 0 || position >= _browseHistory.Count) return;
-        _historyPosition = position; await BrowseAsync(_browseHistory[position], false);
+        _navigationBack = direction < 0; _historyPosition = position; await BrowseAsync(_browseHistory[position], false);
     }
     private void RecordBrowse(string path)
     {

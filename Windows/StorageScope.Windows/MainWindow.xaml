@@ -156,8 +156,9 @@
               <Canvas Grid.Row="1" x:Name="BubbleCanvas" ClipToBounds="True" SizeChanged="BubbleCanvas_SizeChanged" Background="Transparent"/>
               <TextBlock Grid.Row="1" x:Name="BubbleEmptyState" Visibility="Collapsed" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" Margin="16" Foreground="{DynamicResource MutedBrush}" IsHitTestVisible="False"/>
             </Grid>
-            <Border x:Name="ExplorerLoadingPanel" Grid.ColumnSpan="2" Grid.RowSpan="2" Visibility="Collapsed" Background="{DynamicResource PanelBrush}" CornerRadius="12"><StackPanel VerticalAlignment="Center"><local:BriocheLoader x:Name="ExplorerLoader"/><Button Content="Annuler le chargement" Click="CancelExplorer_Click" HorizontalAlignment="Center"/></StackPanel></Border>
+            <Border x:Name="ExplorerLoadingPanel" Grid.ColumnSpan="2" Grid.RowSpan="2" Visibility="Collapsed" Background="{DynamicResource PanelBrush}" CornerRadius="12" HorizontalAlignment="Right" VerticalAlignment="Top" MaxWidth="280" Margin="8"><StackPanel VerticalAlignment="Center"><local:BriocheLoader x:Name="ExplorerLoader"/><Button Content="Annuler le chargement" Click="CancelExplorer_Click" HorizontalAlignment="Center"/></StackPanel></Border>
           </Grid>
+          <Image x:Name="ExplorerTransitionSnapshot" Grid.Row="1" Stretch="Fill" IsHitTestVisible="False" Visibility="Collapsed"/>
           <WrapPanel Grid.Row="2"><Button x:Name="ExplorerCombinedButton" Content="Liste et bulles" Click="ShowBubbles_Click"/><Button x:Name="ExplorerListButton" Content="Liste seule" Click="ShowExplorerList_Click"/><Button x:Name="DirectFilesButton" Content="Fichiers dans ce dossier — Voir la liste" Click="DirectFiles_Click"/><TextBlock x:Name="BubbleLegend" Text="Les espaces entre bulles ne représentent pas l’espace libre." TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="4"/></WrapPanel>
           <StackPanel Grid.Row="2" Visibility="Collapsed" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Ouvrir" Click="OpenSelection_Click"/>

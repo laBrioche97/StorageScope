@@ -63,6 +63,7 @@ public partial class MainWindow
     }
     private async void ExplorerRoot_Click(object sender, RoutedEventArgs e)
     {
+        _navigationBack = true;
         if (DrivePicker.SelectedItem is DriveChoice drive) await BrowseAsync(drive.Root);
     }
     private async Task LoadBubblesAsync(string path)
@@ -102,7 +103,9 @@ public partial class MainWindow
     private void RenderBubbles()
     {
         if (BubbleCanvas is null || _folderFrame is null) return;
-        BubbleCanvas.Children.Clear();
+        var existing = BubbleCanvas.Children.OfType<BubbleButton>().ToDictionary(button => button.Circle.Path, StringComparer.OrdinalIgnoreCase);
+        var wanted = _folderFrame.Circles.Select(circle => circle.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in existing.Values.Where(button => !wanted.Contains(button.Circle.Path)).ToArray()) BubbleCanvas.Children.Remove(stale);
         BubbleEmptyState.Text = _allExplorerItems.Count == 0 ? "Ce dossier est vide." : "Aucun élément mesuré. Les tailles inconnues restent dans la liste ; analysez le disque pour préparer les bulles.";
         BubbleEmptyState.Visibility = _folderFrame.Circles.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var diameter = Math.Max(0, Math.Min(BubbleCanvas.ActualWidth, BubbleCanvas.ActualHeight) - 8);
@@ -110,44 +113,48 @@ public partial class MainWindow
         var query = ListSearch.Text.Trim();
         foreach (var circle in _folderFrame.Circles.OrderBy(c => c.Depth))
         {
-            var button = new BubbleButton { Circle = circle, HasChildren = false, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
+            var created = !existing.TryGetValue(circle.Path, out var button);
+            button ??= new BubbleButton { Circle = circle, HasChildren = false, Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase), Width = diameter * circle.Radius, Height = diameter * circle.Radius, Padding = new Thickness(0), BorderThickness = new Thickness(0), Background = Brushes.Transparent, FocusVisualStyle = null, Template = new ControlTemplate(typeof(Button)) };
+            button.Circle = circle; button.Width = diameter * circle.Radius; button.Height = diameter * circle.Radius; button.Highlighted = query.Length > 0 && circle.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase);
             var total = _folderFrame.Total;
             button.ToolTip = $"{circle.Name}\n{circle.Path}\n{SizeFormatter.Format(circle.Bytes)}" + (total > 0 ? $" · {circle.Bytes * 100d / total:N1} % du dossier parent" : "") + (_folderFrame.Partial ? "\nAnalyse partielle" : "");
             AutomationProperties.SetName(button, circle.Name + " · " + SizeFormatter.Format(circle.Bytes));
             AutomationProperties.SetHelpText(button, button.ToolTip.ToString());
             Canvas.SetLeft(button, BubbleCanvas.ActualWidth / 2 + circle.X * diameter / 2 - button.Width / 2);
             Canvas.SetTop(button, BubbleCanvas.ActualHeight / 2 + circle.Y * diameter / 2 - button.Height / 2);
+            button.InvalidateVisual();
+            if (!created) continue;
             button.Click += async (_, _) =>
             {
-                if (circle.Aggregate)
+                if (button.Circle.Aggregate)
                 {
                     ListSearch.Clear(); CategoryFilter.SelectedIndex = MinimumSizeFilter.SelectedIndex = EntryKindFilter.SelectedIndex = 0;
-                    var remainder = _allExplorerItems.Where(item => item.HasKnownSize && item.Size > 0).OrderByDescending(item => item.Size).ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase).Skip(circle.SkipCount).ToHashSet();
+                    var remainder = _allExplorerItems.Where(item => item.HasKnownSize && item.Size > 0).OrderByDescending(item => item.Size).ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase).Skip(button.Circle.SkipCount).ToHashSet();
                     _explorerRemainder = remainder.Select(item => item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
                     _explorerScope = ExplorerScope.Remainder; LayoutExplorer(); ApplyExplorerFilter();
                     BubbleStatus.Text = "Autres éléments du dossier courant · Liste et bulles pour revenir à tous les éléments.";
                 }
-                else if (circle.IsDirectory) await BrowseAsync(circle.Path);
+                else if (button.Circle.IsDirectory) { _navigationAnchor = new Point(Math.Clamp((Canvas.GetLeft(button) + button.Width / 2) / Math.Max(1, BubbleCanvas.ActualWidth), 0, 1), Math.Clamp((Canvas.GetTop(button) + button.Height / 2) / Math.Max(1, BubbleCanvas.ActualHeight), 0, 1)); await BrowseAsync(button.Circle.Path); }
                 else {
-                    ExplorerGrid.SelectedItem = _allExplorerItems.FirstOrDefault(entry => entry.Path == circle.Path);
+                    ExplorerGrid.SelectedItem = _allExplorerItems.FirstOrDefault(entry => entry.Path == button.Circle.Path);
                     if (ExplorerGrid.SelectedItem is not null) ExplorerGrid.ScrollIntoView(ExplorerGrid.SelectedItem);
                 }
 
             };
-            if (!circle.Aggregate)
+            if (!button.Circle.Aggregate)
             {
                 var menu = new ContextMenu();
                 void Add(string title, RoutedEventHandler action) { var item = new MenuItem { Header = title }; item.Click += action; menu.Items.Add(item); }
-                Add(circle.IsDirectory ? "Ouvrir le dossier" : "Ouvrir", async (_, _) => { if (circle.IsDirectory) await BrowseAsync(circle.Path); else SafeOpen(circle.Path); });
-                Add("Afficher dans l’Explorateur", (_, _) => SafeReveal(circle.Path));
-                Add("Copier le chemin", (_, _) => { try { Clipboard.SetText(circle.Path); } catch (Exception error) { ShowError("Copie impossible.", error); } });
-                Add("Propriétés", (_, _) => { try { ExplorerService.Properties(circle.Path); } catch (Exception error) { ShowError("Propriétés indisponibles.", error); } });
-                Add("Mettre à la corbeille…", async (_, _) => await TrashEntriesAsync([new(circle.Path, circle.Name, circle.Bytes, circle.IsDirectory, null, StorageCategory.Other)]));
+                Add(button.Circle.IsDirectory ? "Ouvrir le dossier" : "Ouvrir", async (_, _) => { if (button.Circle.IsDirectory) await BrowseAsync(button.Circle.Path); else SafeOpen(button.Circle.Path); });
+                Add("Afficher dans l’Explorateur", (_, _) => SafeReveal(button.Circle.Path));
+                Add("Copier le chemin", (_, _) => { try { Clipboard.SetText(button.Circle.Path); } catch (Exception error) { ShowError("Copie impossible.", error); } });
+                Add("Propriétés", (_, _) => { try { ExplorerService.Properties(button.Circle.Path); } catch (Exception error) { ShowError("Propriétés indisponibles.", error); } });
+                Add("Mettre à la corbeille…", async (_, _) => await TrashEntriesAsync([new(button.Circle.Path, button.Circle.Name, button.Circle.Bytes, button.Circle.IsDirectory, null, StorageCategory.Other)]));
                 button.ContextMenu = menu;
             }
-            button.MouseEnter += (_, _) => { if (!circle.Aggregate) { var entry = _allExplorerItems.FirstOrDefault(item => item.Path == circle.Path); if (entry is not null) ExplorerGrid.ScrollIntoView(entry); } HighlightExplorer(circle.Path); };
+            button.MouseEnter += (_, _) => { if (!button.Circle.Aggregate) { var entry = _allExplorerItems.FirstOrDefault(item => item.Path == button.Circle.Path); if (entry is not null) ExplorerGrid.ScrollIntoView(entry); } HighlightExplorer(button.Circle.Path); };
             button.MouseLeave += (_, _) => HighlightExplorer((ExplorerGrid.SelectedItem as ScanEntry)?.Path);
-            button.GotKeyboardFocus += (_, _) => HighlightExplorer(circle.Path);
+            button.GotKeyboardFocus += (_, _) => HighlightExplorer(button.Circle.Path);
             BubbleCanvas.Children.Add(button);
         }
     }

@@ -35,9 +35,15 @@ struct StorageExplorerView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ExplorerListTable(items: model.explorerVisibleItems)
+                ExplorerListTable(items: model.explorerVisibleItems).disabled(model.explorerPendingDirectory != nil)
             }
             explorerSelectionBar
+        }
+        .softTransition(model.navigationRevision.uuidString, duration: MotionTokens.navigation, back: model.navigationBack, anchor: model.navigationAnchor)
+        .overlay(alignment: .topTrailing) {
+            if let destination = model.explorerPendingDirectory {
+                Text("Ouverture de \(destination.lastPathComponent.isEmpty ? destination.path : destination.lastPathComponent)… · \(model.explorerVisited) éléments parcourus").font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)).accessibilityAddTraits(.updatesFrequently)
+            }
         }
         .onChange(of: model.isScanning) { _, scanning in
             if !scanning { model.ensureBubbleAnalysis() }
@@ -497,6 +503,6 @@ struct ExplorerListTable: View {
             TableColumn("Sur disque") { Text($0.hasKnownSize ? ByteCountFormatter.storage.string(fromByteCount: $0.allocatedSize) : "Taille inconnue").monospacedDigit() }.width(110)
             TableColumn("Catégorie") { Label($0.category.rawValue, systemImage: $0.category.symbol) }.width(150)
             TableColumn("Modification") { Text($0.modificationDate?.formatted(date: .numeric, time: .omitted) ?? "—") }.width(110)
-        }
+        }.background(ExplorerScrollMemory()).disabled(model.explorerPendingDirectory != nil)
     }
 }

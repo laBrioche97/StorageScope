@@ -81,6 +81,7 @@ struct ContentView: View {
                 }
             }
             }
+            .softTransition(model.sidebar?.rawValue ?? "", duration: MotionTokens.section)
             .navigationTitle(detailTitle)
         }
         }
@@ -92,6 +93,7 @@ struct ContentView: View {
         }
         .task { model.refreshTrashSummary(force: true) }
 
+        .buttonStyle(SoftButtonStyle())
         .toolbar { toolbar }
         .onChange(of: model.sidebar) { _, section in
             if section == .explorer, model.explorerCategoryContext == nil, !model.isPreviewMode { model.enterExplorer() }

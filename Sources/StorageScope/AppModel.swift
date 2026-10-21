@@ -143,6 +143,37 @@ final class AppModel: ObservableObject {
     @Published var explorerItems: [FileSystemItem] = []
     @Published var explorerIssues: [ScanIssue] = []
     @Published var explorerIsLoading = false
+    @Published var explorerLoaderVisible = false
+    @Published var explorerPendingDirectory: URL?
+    @Published var explorerVisited = 0
+    @Published var navigationRevision = UUID()
+    @Published var navigationBack = false
+    @Published var navigationAnchor = UnitPoint.center
+    var explorerScrollPosition: Double = 0
+    private var explorerViewCache = ExplorerSessionCache()
+    private var loaderTask: Task<Void, Never>?
+    private var explorerLayoutKey: String { "\(maximumBubbles):\(Int(bubbleAvailableDiameter.isFinite ? bubbleAvailableDiameter / 16 : 0)):\(explorerDisplayMode)" }
+    private func explorerCacheKey(_ directory: URL) -> String { selectedVolumeID + "|" + scanGeneration.uuidString + "|" + directory.path }
+    private func saveExplorerView() {
+        guard let directory = currentDirectory, explorerPendingDirectory == nil,
+              var view = explorerViewCache.get(explorerCacheKey(directory)) else { return }
+        view.selection = selectedIDs; view.scroll = explorerScrollPosition; view.frame = bubbleFrame; view.layout = explorerLayoutKey
+        explorerViewCache.put(explorerCacheKey(directory), view)
+    }
+    private func publishExplorerView(_ view: ExplorerViewSnapshot, directory: URL, back: Bool, animate: Bool, recordHistory: Bool = true) {
+        let previous = currentDirectory
+        currentDirectory = directory; explorerItems = view.items; bubbleFrame = view.frame
+        selectedIDs = view.selection; explorerScrollPosition = view.scroll
+        encounteredApplicationURLs.formUnion(view.items.filter { $0.isDirectory && $0.fileExtension == "app" }.map(\.url))
+        if recordHistory && (explorerHistoryPosition < 0 || explorerHistory[explorerHistoryPosition] != directory) {
+            explorerHistory = Array(explorerHistory.prefix(explorerHistoryPosition + 1)); explorerHistory.append(directory); explorerHistoryPosition = explorerHistory.count - 1
+        }
+        explorerPendingDirectory = nil; explorerLoaderVisible = false; loaderTask?.cancel()
+        bubbleMessage = view.frame?.totalBytes.map { ByteCountFormatter.storage.string(fromByteCount: $0) + (view.frame?.isPartial == true ? " · analyse partielle" : " · tailles mesurées") } ?? "Tailles inconnues · analysez le disque pour compléter les bulles."
+        navigationBack = back
+        if animate && previous != directory { navigationRevision = UUID() }
+    }
+
     @Published var explorerDisplayMode: ExplorerDisplayMode = .bubbles {
         didSet { resetExplorerTemporaryList() }
     }
@@ -310,6 +341,7 @@ final class AppModel: ObservableObject {
         } else {
             previousCount = nil
         }
+        explorerViewCache.clear()
         scanTask?.cancel()
         let generation = UUID()
         scanGeneration = generation
@@ -341,7 +373,7 @@ final class AppModel: ObservableObject {
                     scanStatus.update(value.progress)
                     if sidebar == .explorer, let context = explorerCategoryContext {
                         presentCategoryReport(value.categoryReport, category: context.category, volumeID: value.volumeID)
-                    } else if sidebar == .explorer,
+                    } else if sidebar == .explorer, explorerPendingDirectory == nil,
                        currentDirectory?.standardizedFileURL.path == volume.url.standardizedFileURL.path,
                        !value.rootItems.isEmpty {
                         explorerItems = value.rootItems
@@ -357,7 +389,7 @@ final class AppModel: ObservableObject {
                     if sidebar == .explorer, let context = explorerCategoryContext {
                         presentCategoryReport(value.categoryReport, category: context.category, volumeID: value.volumeID)
                     } else if sidebar == .explorer {
-                        loadExplorerDirectory(currentDirectory ?? volume.url)
+                        explorerViewCache.clear(); loadExplorerDirectory(explorerPendingDirectory ?? currentDirectory ?? volume.url)
                     }
                     if pendingCleanupAnalysis { calculateCleanup() }
                 case .cancelled(let value):
@@ -392,6 +424,7 @@ final class AppModel: ObservableObject {
         if isScanning { stopScan() }
         let generation = UUID()
         scanGeneration = generation
+        explorerViewCache.clear()
         selectedVolumeID = id
         explorerHistory = []; explorerHistoryPosition = -1
         cleanupSelectedIDs.removeAll(); cleanupActionMessage = ""
@@ -429,10 +462,12 @@ final class AppModel: ObservableObject {
     }
 
     func refreshVolumes() {
+        explorerViewCache.clear()
         refreshTrashSummary()
         let refreshed = StorageService.mountedVolumes()
         volumes = refreshed
         if !refreshed.contains(where: { $0.id == selectedVolumeID }) {
+            explorerViewCache.clear()
             stopScan(); browseTask?.cancel(); browseGeneration = UUID()
             bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
             currentDirectory = nil; explorerItems = []; snapshot = nil; liveSummary = nil
@@ -794,8 +829,10 @@ final class AppModel: ObservableObject {
     }
 
     func activate(_ item: FileSystemItem) {
+        guard explorerPendingDirectory == nil || sidebar != .explorer else { return }
         if item.isDirectory {
             if sidebar == .explorer {
+                navigationAnchor = .center
                 loadExplorerDirectory(item.url)
             } else {
                 currentDirectory = item.url
@@ -812,6 +849,7 @@ final class AppModel: ObservableObject {
     func loadExplorerRoot() {
         guard let volume = selectedVolume else { return }
         sidebar = .explorer
+        navigationBack = true; navigationAnchor = .center
         loadExplorerDirectory(volume.url)
     }
 
@@ -819,62 +857,83 @@ final class AppModel: ObservableObject {
         resetExplorerTemporaryList()
         if isPreviewMode { return }
         guard let volume = selectedVolume else { return }
-        browseTask?.cancel()
-        bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil; bubbleIsLoading = false
+        saveExplorerView()
+        browseTask?.cancel(); bubbleTask?.cancel(); bubbleGeneration = UUID()
         let generation = UUID(); browseGeneration = generation
-        bubbleRemainderPaths = nil
+        let directory = directory.standardizedFileURL
+        let key = explorerCacheKey(directory)
+        let cached = explorerViewCache.get(key)
+        let back = navigationBack
+        let recordHistory = !navigatingHistory
+        navigationBack = false
+        let maximum = maximumBubbles, diameter = bubbleAvailableDiameter
+        let layout = explorerLayoutKey
         explorerCategoryContext = nil
-        selectedIDs.removeAll()
-        explorerShowsSmallItems = false
-        if !navigatingHistory && (explorerHistoryPosition < 0 || explorerHistory[explorerHistoryPosition] != directory.standardizedFileURL) {
-            explorerHistory = Array(explorerHistory.prefix(explorerHistoryPosition + 1))
-            explorerHistory.append(directory.standardizedFileURL); explorerHistoryPosition = explorerHistory.count - 1
+        explorerVisited = 0; explorerIssues = []
+        explorerPendingDirectory = directory
+        explorerIsLoading = true; bubbleIsLoading = false; explorerLoaderVisible = false
+        loaderTask?.cancel()
+        if cached == nil {
+            loaderTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled, let self, browseGeneration == generation, explorerIsLoading else { return }
+                explorerLoaderVisible = true
+            }
         }
-        currentDirectory = directory.standardizedFileURL
-        explorerItems = []
-        explorerIssues = []
-        explorerIsLoading = true
         do {
             let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)
             directoryIndexStore = store
-            if explorerDisplayMode == .bubbles { loadBubbleFrame(directory, store: store) }
             let browser = DirectoryBrowserService(volumeID: volume.id, root: volume.url, indexStore: store)
             browseTask = Task { [weak self] in
                 guard let self else { return }
-                for await event in browser.browse(
-                    directory: directory,
-                    options: DirectoryBrowseOptions(includeHidden: true, batchSize: 256, allowPackageTraversal: allowPackageTraversal)
-                ) {
-                    guard !Task.isCancelled, selectedVolumeID == volume.id, browseGeneration == generation else { break }
+                func isCurrent() -> Bool { !Task.isCancelled && selectedVolumeID == volume.id && browseGeneration == generation }
+                defer { if browseGeneration == generation { explorerIsLoading = false; explorerLoaderVisible = false; explorerPendingDirectory = nil; loaderTask?.cancel() } }
+                if let cached, cached.layout == layout {
+                    publishExplorerView(cached, directory: directory, back: back, animate: true, recordHistory: recordHistory)
+                }
+                var pending: [FileSystemItem] = []
+                var issues: [ScanIssue] = []
+                for await event in browser.browse(directory: directory, options: DirectoryBrowseOptions(includeHidden: true, batchSize: 256, allowPackageTraversal: allowPackageTraversal)) {
+                    guard isCurrent() else { return }
                     switch event {
-                    case .started:
-                        explorerIsLoading = true
-                    case .batch(_, let items):
-                        explorerItems.append(contentsOf: items)
-                        encounteredApplicationURLs.formUnion(
-                            items.filter { $0.isDirectory && $0.fileExtension == "app" }.map(\.url)
-                        )
-                    case .issue(let issue):
-                        if explorerIssues.count < 200 { explorerIssues.append(issue) }
+                    case .started: break
+                    case .batch(_, let items): pending.append(contentsOf: items); explorerVisited = pending.count
+                    case .issue(let issue): if issues.count < 200 { issues.append(issue) }
                     case .completed:
-                        explorerIsLoading = false
-                        if explorerDisplayMode == .bubbles { loadBubbleFrame(directory, store: store) }
-                    case .cancelled:
-                        explorerIsLoading = false
+                        if !issues.isEmpty && pending.isEmpty {
+                            explorerIssues = issues; bubbleMessage = issues.first?.message ?? "Dossier inaccessible."
+                            if cached != nil { explorerItems = []; bubbleFrame = nil }
+                            return
+                        }
+                        let partial = isScanning || snapshot?.completedAt == nil || !issues.isEmpty
+                        do {
+                            let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial, items: pending, maximumVisible: maximum, availableDiameter: diameter)
+                            let preparedItems = pending
+                            let view = await Task.detached { ExplorerViewSnapshot(items: preparedItems, frame: frame, layout: layout, selection: cached?.selection ?? [], scroll: cached?.scroll ?? 0) }.value
+                            guard isCurrent() else { return }
+                            explorerViewCache.put(key, view)
+                            explorerIssues = issues
+                            if cached?.items != view.items || cached?.layout != layout { publishExplorerView(view, directory: directory, back: back, animate: cached == nil, recordHistory: recordHistory) }
+                            else { bubbleFrame = frame }
+                            if frame.totalBytes == nil, !isScanning, !operationsAreBusy, !autoScanAttempts.contains(volume.id) { autoScanAttempts.insert(volume.id); startScan() }
+                        } catch { if isCurrent() { bubbleMessage = error.localizedDescription } }
+                    case .cancelled: return
                     }
                 }
             }
         } catch {
-            explorerIsLoading = false
-            alertMessage = error.localizedDescription
+            explorerIsLoading = false; explorerPendingDirectory = nil; explorerLoaderVisible = false; loaderTask?.cancel()
+            bubbleMessage = error.localizedDescription
         }
     }
 
     func requestTrashSelection() {
+        guard explorerPendingDirectory == nil || sidebar != .explorer else { return }
         requestTrash(items: selectedItems)
     }
 
     func requestTrash(items: [FileSystemItem]) {
+        guard explorerPendingDirectory == nil || sidebar != .explorer else { return }
         let generation = UUID()
         trashRequestGeneration = generation
         requestedTrashPreflights = []
@@ -1121,7 +1180,7 @@ private final class QuickLookPresenter: NSObject, @preconcurrency QLPreviewPanel
 extension AppModel {
     func ensureBubbleAnalysis() {
         if isPreviewMode { return }
-        guard !choosingExplorerStorage, explorerShowsGraph, sidebar == .explorer,
+        guard explorerPendingDirectory == nil, !choosingExplorerStorage, explorerShowsGraph, sidebar == .explorer,
               let volume = selectedVolume else { return }
         do {
             let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)
@@ -1167,6 +1226,7 @@ extension AppModel {
 
     func cancelExplorerLoading() {
         browseTask?.cancel(); bubbleTask?.cancel(); browseGeneration = UUID(); bubbleGeneration = UUID()
+        loaderTask?.cancel(); explorerLoaderVisible = false; explorerPendingDirectory = nil
         if isScanning { stopScan() }
         if let volume = selectedVolume { autoScanAttempts.insert(volume.id) }
         explorerIsLoading = false; bubbleIsLoading = false
@@ -1174,6 +1234,8 @@ extension AppModel {
     }
 
     func browseHistory(_ direction: Int) {
+        if explorerPendingDirectory != nil && direction < 0 { cancelExplorerLoading(); return }
+        navigationBack = direction < 0
         let next = explorerHistoryPosition + direction
         guard explorerHistory.indices.contains(next) else { return }
         explorerHistoryPosition = next; navigatingHistory = true
@@ -1185,7 +1247,7 @@ extension AppModel {
             let known = explorerItems.filter { $0.hasKnownSize && $0.allocatedSize > 0 && !$0.isSymbolicLink }.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize }
             bubbleRemainderPaths = Set(known.dropFirst(node.skipCount).map(\.id))
             explorerTemporaryList = true; resetSectionFilters()
-        } else if node.isDirectory { loadExplorerDirectory(URL(fileURLWithPath: node.path)) }
+        } else if node.isDirectory { navigationAnchor = UnitPoint(x: min(1, max(0, (node.circle.x + 1) / 2)), y: min(1, max(0, (node.circle.y + 1) / 2))); loadExplorerDirectory(URL(fileURLWithPath: node.path)) }
         else { selectedIDs = [node.path]; explorerHoveredID = node.path }
     }
 
