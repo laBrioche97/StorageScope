@@ -84,12 +84,14 @@ internal static class ExplorerCacheTests
                 for (var i=0; i<25; i++) { var leave = Browse(b); Pump(() => leave.IsCompleted); hold[a] = new(); var watch = Stopwatch.StartNew(); var warm = Browse(a); publication.Add(watch.Elapsed.TotalMilliseconds); window.UpdateLayout(); watch.Stop(); values.Add(watch.Elapsed.TotalMilliseconds); hold[a].SetResult(items); Pump(() => warm.IsCompleted); hold.Remove(a); }
                 values.Sort(); var p95 = values[(int)Math.Ceiling(values.Count*.95)-1]; Console.WriteLine($"Cached 1000 items: p95 {p95:N2} ms, max {values[^1]:N2} ms");
                 publication.Sort(); var publicationP95=publication[(int)Math.Ceiling(publication.Count*.95)-1]; var tier=RenderCapability.Tier>>16;
+                var reference = Environment.GetCommandLineArgs().Contains("--reference-performance");
                 Console.WriteLine($"Renderer tier {tier}; cache publication p95 {publicationP95:N2} ms; hardware layout target 50 ms");
                 Console.WriteLine("Navigation stage maxima: " + string.Join(", ", stages.Select(item => item.Key + "=" + item.Value.ToString("N2")))); window.NavigationTiming = null;
-                if (destination is not null) { Directory.CreateDirectory(destination); File.WriteAllText(Path.Combine(destination,"navigation-performance.json"), System.Text.Json.JsonSerializer.Serialize(new { items=1000, samples=values.Count, p95Milliseconds=p95, publicationP95Milliseconds=publicationP95, rendererTier=tier, hardwareLayoutTargetMet=tier==2 && p95<50, animationDisabled=true, cacheBytes=((ExplorerSessionCache)Get("_explorerCache")!).Bytes })); }
+                if (destination is not null) { Directory.CreateDirectory(destination); File.WriteAllText(Path.Combine(destination,"navigation-performance.json"), System.Text.Json.JsonSerializer.Serialize(new { items=1000, samples=values.Count, p95Milliseconds=p95, publicationP95Milliseconds=publicationP95, rendererTier=tier, referenceMachine=reference, hardwareLayoutTargetMet=reference && tier==2 && p95<50, animationDisabled=true, cacheBytes=((ExplorerSessionCache)Get("_explorerCache")!).Bytes })); }
                 Require(publicationP95 < 50, "cached publication exceeds 50ms p95");
-                // Hosted CI has no accelerated desktop; its software layout is recorded separately.
-                Require(p95 < (tier==2 ? 50 : 150), "native layout exceeds renderer benchmark");
+                // Render tier reports capabilities, not a reproducible CPU/GPU benchmark machine.
+                // Keep the strict 50 ms target on the explicitly selected control workstation.
+                Require(p95 < (reference ? 50 : 150), "native layout exceeds renderer benchmark");
             });
             test("motion interruption and reduced motion release temporary snapshots", () => {
                 var incoming = (FrameworkElement)window.FindName("ExplorerSplit"); var image = (Image)window.FindName("ExplorerTransitionSnapshot");
