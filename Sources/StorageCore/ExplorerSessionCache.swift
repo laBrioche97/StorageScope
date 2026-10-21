@@ -10,7 +10,7 @@ public struct ExplorerViewSnapshot: Sendable {
     public var selection: Set<String>
     public var scroll: Double
     public let cost: Int
-    public init(items: [FileSystemItem], frame: FolderBubbleFrame?, layout: String, selection: Set<String> = [], scroll: Double = 0) {
+    public init(items: [FileSystemItem], frame: FolderBubbleFrame?, layout: String, selection: Set<String> = [], scroll: Double = .nan) {
         self.items = items; self.frame = frame; self.layout = layout; self.selection = selection; self.scroll = scroll
         largest = items.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize }
         smallest = items.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize < $1.allocatedSize }

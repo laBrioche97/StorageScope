@@ -40,8 +40,11 @@ struct ExplorerScrollMemory: NSViewRepresentable {
                 }
             }
             if self.path != path {
+                let firstAttachment = self.path == nil
                 self.path = path
-                found.contentView.scroll(to: NSPoint(x: 0, y: offset)); found.reflectScrolledClipView(found.contentView)
+                if offset.isFinite { found.contentView.scroll(to: NSPoint(x: 0, y: offset)) }
+                else if !firstAttachment, let table = found.documentView as? NSTableView, table.numberOfRows > 0 { table.scrollRowToVisible(0) }
+                found.reflectScrolledClipView(found.contentView)
             }
         }
     }

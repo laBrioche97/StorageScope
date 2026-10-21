@@ -149,7 +149,7 @@ final class AppModel: ObservableObject {
     @Published var navigationRevision = UUID()
     @Published var navigationBack = false
     @Published var navigationAnchor = UnitPoint.center
-    var explorerScrollPosition: Double = 0
+    var explorerScrollPosition: Double = .nan
     private var explorerViewCache = ExplorerSessionCache()
     private var explorerSortedSnapshot: ExplorerViewSnapshot?
     private var loaderTask: Task<Void, Never>?
@@ -922,7 +922,7 @@ final class AppModel: ObservableObject {
                         do {
                             let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial, items: pending, maximumVisible: maximum, availableDiameter: diameter)
                             let preparedItems = pending
-                            let view = await Task.detached { ExplorerViewSnapshot(items: preparedItems, frame: frame, layout: layout, selection: cached?.selection ?? [], scroll: cached?.scroll ?? 0) }.value
+                            let view = await Task.detached { ExplorerViewSnapshot(items: preparedItems, frame: frame, layout: layout, selection: cached?.selection ?? [], scroll: cached?.scroll ?? .nan) }.value
                             guard isCurrent() else { return }
                             explorerViewCache.put(key, view)
                             explorerIssues = issues
