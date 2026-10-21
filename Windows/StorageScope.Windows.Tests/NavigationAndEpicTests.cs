@@ -159,6 +159,12 @@ internal static class NavigationAndEpicTests
             var provider = Provider(wait: token => { cancellation.Cancel(); return Task.FromCanceled(cancellation.Token); }); var game = Game(provider);
             var cancelled = provider.ExecuteAsync(provider.Prepare(game), cancellation.Token).GetAwaiter().GetResult();
             Require(!cancelled.Verified && cancelled.State == "suivi annulé" && File.Exists(file));
+            using var completedCancellation = new CancellationTokenSource();
+            provider = Provider(wait: token => { File.Delete(file); completedCancellation.Cancel(); return Task.FromCanceled(completedCancellation.Token); });
+            game = Game(provider);
+            var completed = provider.ExecuteAsync(provider.Prepare(game), completedCancellation.Token).GetAwaiter().GetResult();
+            Require(completed.Verified && completed.State == "confirmée");
+            WriteManifest();
             provider = Provider(_ => File.Delete(file)); game = Game(provider);
             Require(provider.ExecuteAsync(provider.Prepare(game), default).GetAwaiter().GetResult().Verified);
             Require(Directory.Exists(gameRoot));

@@ -137,7 +137,13 @@ public sealed class EpicProductProvider : IInstalledProductProvider
             return Finish(plan, false, "non confirmé", "La désinstallation Epic n’est pas confirmée. Terminez-la dans le launcher, puis actualisez l’inventaire. Aucun fichier n’a été supprimé par StorageScope.");
         }
         catch (OperationCanceledException)
-        { return Finish(plan, false, "suivi annulé", "Suivi annulé dans StorageScope. Une désinstallation déjà acceptée dans Epic peut continuer ; actualisez ensuite l’inventaire. Aucun fichier n’a été supprimé par StorageScope."); }
+        {
+            // Cancellation can race with the manual "Verify now" confirmation.
+            // Record the actual local result instead of overwriting success with cancellation.
+            if (await VerifyAsync(plan.Product, CancellationToken.None))
+                return Finish(plan, true, "confirmée", "Désinstallation Epic confirmée localement. Les sauvegardes restent conservées.");
+            return Finish(plan, false, "suivi annulé", "Suivi annulé dans StorageScope. Une désinstallation déjà acceptée dans Epic peut continuer ; actualisez ensuite l’inventaire. Aucun fichier n’a été supprimé par StorageScope.");
+        }
         catch (Exception error)
         {
             OperationHistory.Append(new { operation = "désinstallation Epic", product = plan.Product.Name, status = "échec", error = error.GetType().Name });

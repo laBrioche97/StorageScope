@@ -89,6 +89,7 @@ internal static class VisibleUpdateAndStorageTests
                 Pump(Invoke("EnterExplorerAsync")); Require(chooser.Visibility == Visibility.Visible && second.CapacityLabel.Contains("indisponible"));
                 Require(((ItemsControl)window.FindName("StorageChoices")).Items.Count == 2);
                 Capture(window, destination, "windows-storage-choice.png");
+                Require(Descendants((ItemsControl)window.FindName("StorageChoices")).OfType<Button>().Any(button => AutomationProperties.GetName(button) == first.VolumeLabel));
             });
             test("choosing the already selected storage reopens its exact root and resets filters but keeps mode", () => {
                 Pump(Invoke("OpenStorageRootAsync", first)); Pump(Invoke("BrowseAsync", Path.Combine(a, "Child"), true));
