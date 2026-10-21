@@ -83,7 +83,7 @@ internal static class CudaTests
                                 foreach (AutomationElement button in buttons) {
                                     var name = button.Current.Name.Trim().Replace("&", "");
                                     if (seen.Add(name)) Console.WriteLine("Isolated NVIDIA button: " + name);
-                                    if (button.Current.IsEnabled && new[] { "Uninstall", "Désinstaller", "Yes", "Oui", "Close", "Fermer" }.Contains(name, StringComparer.OrdinalIgnoreCase) && button.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern)) {
+                                    if (button.Current.IsEnabled && new[] { "Uninstall", "Désinstaller", "Yes", "Oui" }.Contains(name, StringComparer.OrdinalIgnoreCase) && button.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern)) {
                                         ((InvokePattern)pattern).Invoke(); Console.WriteLine("Isolated fixture consent: " + name);
                                     }
                                 }
@@ -98,8 +98,11 @@ internal static class CudaTests
         var before = provider.DetectAsync(default).GetAwaiter().GetResult();
         var product = before.Single(item => item.Name == "NVIDIA CUDA Development 12.1");
         var docs = before.Single(item => item.Name == "NVIDIA CUDA Documentation 12.1");
+        var compiler = Path.Combine(product.InstallLocation!, "bin", "nvcc.exe"); Require(File.Exists(compiler));
         var plan = provider.Prepare(product); Require(plan.CanProceed); Console.WriteLine("CUDA official plan verified: " + plan.NvidiaTarget!.PackageId);
         var result = provider.ExecuteAsync(plan, default).GetAwaiter().GetResult(); consent.Cancel(); Console.WriteLine(result.Message); Require(result.Verified);
+        for (var attempt = 0; attempt < 60 && File.Exists(compiler); attempt++) Thread.Sleep(1000);
+        Require(!File.Exists(compiler));
         Require(!provider.VerifyAsync(docs, default).GetAwaiter().GetResult());
         Require(before.Where(item => item.ProductId != product.ProductId).All(item => !provider.VerifyAsync(item, default).GetAwaiter().GetResult()));
         Console.WriteLine("PASS real CUDA Development removal; documentation and other CUDA components preserved."); return 0;
