@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Windows.Automation;
 using StorageScope.Windows;
 
 internal static class CudaTests
@@ -67,12 +68,38 @@ internal static class CudaTests
         if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" || Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") != "github-hosted" || Environment.GetEnvironmentVariable("STORAGESCOPE_CUDA_DISPOSABLE") != "12.1") throw new InvalidOperationException("Real CUDA uninstall is restricted to a disposable hosted runner.");
         var diagnostics = Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP")!, "cuda-validation");
         Diagnostics.TestDirectory = diagnostics; OperationHistory.TestDirectory = diagnostics;
-        var provider = new NvidiaCudaProvider { Checks = 300 };
+        using var consent = new CancellationTokenSource();
+        var provider = new NvidiaCudaProvider { Checks = 300, Start = info => {
+            var process = Process.Start(info); if (process is not null) {
+                var ownedId = process.Id;
+                _ = Task.Run(async () => {
+                    var seen = new HashSet<string>();
+                    while (!consent.IsCancellationRequested) {
+                        try {
+                            var windows = AutomationElement.RootElement.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ProcessIdProperty, ownedId));
+                            foreach (AutomationElement window in windows) {
+                                if (!window.Current.Name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)) continue;
+                                var buttons = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+                                foreach (AutomationElement button in buttons) {
+                                    var name = button.Current.Name.Trim().Replace("&", "");
+                                    if (seen.Add(name)) Console.WriteLine("Isolated NVIDIA button: " + name);
+                                    if (button.Current.IsEnabled && new[] { "Uninstall", "Désinstaller", "Yes", "Oui", "Close", "Fermer" }.Contains(name, StringComparer.OrdinalIgnoreCase) && button.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern)) {
+                                        ((InvokePattern)pattern).Invoke(); Console.WriteLine("Isolated fixture consent: " + name);
+                                    }
+                                }
+                            }
+                        } catch (Exception error) when (error is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+                        try { await Task.Delay(1000, consent.Token); } catch (OperationCanceledException) { return; }
+                    }
+                });
+            }
+            return process;
+        } };
         var before = provider.DetectAsync(default).GetAwaiter().GetResult();
         var product = before.Single(item => item.Name == "NVIDIA CUDA Development 12.1");
         var docs = before.Single(item => item.Name == "NVIDIA CUDA Documentation 12.1");
         var plan = provider.Prepare(product); Require(plan.CanProceed); Console.WriteLine("CUDA official plan verified: " + plan.NvidiaTarget!.PackageId);
-        var result = provider.ExecuteAsync(plan, default).GetAwaiter().GetResult(); Console.WriteLine(result.Message); Require(result.Verified);
+        var result = provider.ExecuteAsync(plan, default).GetAwaiter().GetResult(); consent.Cancel(); Console.WriteLine(result.Message); Require(result.Verified);
         Require(!provider.VerifyAsync(docs, default).GetAwaiter().GetResult());
         Require(before.Where(item => item.ProductId != product.ProductId).All(item => !provider.VerifyAsync(item, default).GetAwaiter().GetResult()));
         Console.WriteLine("PASS real CUDA Development removal; documentation and other CUDA components preserved."); return 0;
