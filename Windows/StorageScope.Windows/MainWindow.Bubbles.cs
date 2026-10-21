@@ -47,7 +47,7 @@ public partial class MainWindow
     {
         _bubbleMode = true; ResetExplorerScope();
         ApplyExplorerFilter(); UpdateBubbleFilters(); UpdateResponsiveColumns(); EnsureBubbleAnalysis();
-        if (_currentDirectory is not null) _ = LoadBubblesAsync(_currentDirectory);
+        if (!_navigationPending && _currentDirectory is not null) _ = LoadBubblesAsync(_currentDirectory);
     }
     private void ShowExplorerList_Click(object sender, RoutedEventArgs e)
     {

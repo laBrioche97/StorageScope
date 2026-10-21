@@ -30,7 +30,8 @@ struct StorageExplorerView: View {
                 FolderBubblesView()
             } else if model.explorerIsLoading && model.explorerItems.isEmpty {
                 VStack(spacing: 14) {
-                    BriocheLoadingView(message: "Lecture du dossier…", cancel: model.cancelExplorerLoading)
+                    if model.explorerLoaderVisible { BriocheLoadingView(message: "Lecture du dossier…", cancel: model.cancelExplorerLoading) }
+                    else { Text("Lecture du dossier…"); Button("Annuler", action: model.cancelExplorerLoading) }
                     if model.isScanning { Text("Les tailles se précisent pendant l’analyse.").foregroundStyle(.secondary) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
