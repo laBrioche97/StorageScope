@@ -70,6 +70,20 @@ enum NativeInterfaceValidation {
             }
         }
         }
-        print("PASS native macOS bubble rendering at 100/200%, light/dark, cached icons and initial navigation")
+        let demoGame = ManagedGame(id: "guide-demo", name: "Jeu de démonstration", provider: .epic, installURL: URL(fileURLWithPath: "/tmp/StorageScopeGuideDemo"), manifestURL: URL(fileURLWithPath: "/tmp/StorageScopeGuideDemo.item"), uninstallURL: nil)
+        let guide = EpicGuideController(game: demoGame, model: model)
+        defer { guide.close() }
+        for modern in [false, true] {
+            let view = EpicGuideView(guide: guide, modern: modern).environment(\.colorScheme, .dark).frame(width: 740, height: 560)
+            let hosting = NSHostingView(rootView: view)
+            hosting.frame = NSRect(x: 0, y: 0, width: 740, height: 560); hosting.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { throw CocoaError(.fileWriteUnknown) }
+            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+            guard let data = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+            try data.write(to: destination.appendingPathComponent("macos-epic-guide-\(modern ? "new" : "classic").png"))
+        }
+        precondition(!guide.started && !guide.finished, "Rendering the guide must not launch an uninstaller")
+        print("PASS native macOS bubble rendering at 100/200%, light/dark, cached icons, storage roots and both offline Epic guide presentations")
     }
 }

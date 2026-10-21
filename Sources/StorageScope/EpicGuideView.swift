@@ -68,10 +68,11 @@ final class EpicGuideController: NSWindowController, NSWindowDelegate, Observabl
     func windowWillClose(_ notification: Notification) { stop(); window?.contentView = nil }
 }
 
-private struct EpicGuideView: View {
+struct EpicGuideView: View {
     @ObservedObject var guide: EpicGuideController
     @State private var modern = false
     @State private var enlarged: String?
+    init(guide: EpicGuideController, modern: Bool = false) { self.guide = guide; _modern = State(initialValue: modern) }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(guide.game.name).font(.title.bold())

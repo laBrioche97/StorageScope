@@ -17,6 +17,11 @@ public struct ManagedGame: Identifiable, Hashable, Sendable {
     public var estimatedBytes: Int64? = nil
     public var manifestIdentity: FileIdentity? = nil
     public var manifestDigest: Data? = nil
+    public init(id: String, name: String, provider: GameProvider, installURL: URL, manifestURL: URL, uninstallURL: URL?, estimatedBytes: Int64? = nil, manifestIdentity: FileIdentity? = nil, manifestDigest: Data? = nil) {
+        self.id = id; self.name = name; self.provider = provider
+        self.installURL = installURL; self.manifestURL = manifestURL; self.uninstallURL = uninstallURL
+        self.estimatedBytes = estimatedBytes; self.manifestIdentity = manifestIdentity; self.manifestDigest = manifestDigest
+    }
     public var canUninstall: Bool { uninstallURL != nil }
     public var explanation: String {
         if provider == .epic {
