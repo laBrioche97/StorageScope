@@ -21,7 +21,7 @@ private struct SoftTransition: ViewModifier {
                 let next = UUID(); generation = next
                 guard !reduceMotion, MotionTokens.enabled else { scale = 1; opacity = 1; return }
                 var transaction = Transaction(); transaction.disablesAnimations = true
-                withTransaction(transaction) { scale = back ? 1.04 : .98; opacity = .82 }
+                withTransaction(transaction) { scale = back ? 1.04 : 0.98; opacity = 0.82 }
                 Task { @MainActor in
                     await Task.yield()
                     guard generation == next else { return }
@@ -39,7 +39,7 @@ struct SoftButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.padding(.horizontal, 8).padding(.vertical, 5)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-            .opacity(configuration.isPressed ? .75 : 1)
+            .opacity(configuration.isPressed ? 0.75 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: MotionTokens.feedback), value: configuration.isPressed)
     }
 }

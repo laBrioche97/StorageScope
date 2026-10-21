@@ -81,14 +81,7 @@ public sealed class NvidiaCudaProvider : IInstalledProductProvider
         input.Position = header; if (reader.ReadUInt32() != 0x4550) throw new IOException("Signature PE invalide.");
         var machine = reader.ReadUInt16(); if (machine is not (0x14c or 0x8664 or 0xaa64)) throw new IOException("Architecture non prise en charge."); return machine;
     }
-    private static bool TrustedPublisher(string path, string organization)
-    {
-#pragma warning disable SYSLIB0057
-        using var certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
-#pragma warning restore SYSLIB0057
-        Authenticode.Verify(path, certificate.Subject);
-        return certificate.SubjectName.Decode(X500DistinguishedNameFlags.UseNewLines).Split('\n').Any(line => line.Trim() == "O=" + organization);
-    }
+    private static bool TrustedPublisher(string path, string organization) => NativePublisher.Verify(path, organization);
     public async Task<ProductUninstallResult> ExecuteAsync(ProductUninstallPlan plan, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
