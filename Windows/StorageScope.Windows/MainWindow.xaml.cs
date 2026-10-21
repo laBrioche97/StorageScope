@@ -695,4 +695,3 @@ public partial class MainWindow : Window
         MessageBox.Show($"{title}\n\n{error.Message}", "StorageScope", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }
-

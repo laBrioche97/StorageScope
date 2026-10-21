@@ -81,8 +81,11 @@ enum NativeInterfaceValidation {
         let guide = EpicGuideController(game: demoGame, model: model)
         defer { guide.close() }
         for modern in [false, true] {
-            let view = EpicGuideView(guide: guide, modern: modern).environment(\.colorScheme, .dark).frame(width: 740, height: 560)
+            let view = EpicGuideView(guide: guide, modern: modern).environment(\.colorScheme, .dark).frame(width: 740, height: 560).background(Color(nsColor: .windowBackgroundColor))
             let hosting = NSHostingView(rootView: view)
+            guide.window?.appearance = NSAppearance(named: .darkAqua)
+            guide.window?.setContentSize(NSSize(width: 740, height: 560))
+            guide.window?.contentView = hosting
             hosting.frame = NSRect(x: 0, y: 0, width: 740, height: 560); hosting.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(100))
             guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { throw CocoaError(.fileWriteUnknown) }
