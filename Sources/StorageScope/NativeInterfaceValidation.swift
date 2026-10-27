@@ -54,6 +54,7 @@ enum NativeInterfaceValidation {
         for (width, height, suffix) in [(1120.0, 800.0, "large"), (740.0, 560.0, "small")] {
         model.bubbleFrame = try ExplorerBubbleLayout.frame(path: "/Volumes/Test", items: model.explorerItems, total: 95 * 1_073_741_824, partial: false, availableDiameter: height < 600 ? 180 : 400)
         for dark in [false, true] {
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             for scale in [1.0, 2.0] {
                 let view = ContentView().environmentObject(model).environmentObject(SoftwareUpdates())
                     .environment(\.colorScheme, dark ? .dark : .light)

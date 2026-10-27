@@ -22,7 +22,13 @@ struct StorageScopeApp: App {
                     } else if model.isPreviewMode {
                         do { try await NativeInterfaceValidation.run(); exit(0) }
                         catch { print("Native interface validation failed: \(error)"); exit(1) }
-                    } else { await model.restoreLastScan() }
+                    } else {
+                        await model.restoreLastScan()
+                        if CommandLine.arguments.contains("--verify-live-interface") {
+                            do { try await NativeLiveInterfaceValidation.run(model: model); exit(0) }
+                            catch { print("Live interface validation failed: \(error)"); exit(1) }
+                        }
+                    }
                 }
         }
         .commands {

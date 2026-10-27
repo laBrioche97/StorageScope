@@ -40,7 +40,7 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
             if PackagedValidation.updateFeed != nil {
                 installRequested = true; checking = true; instance.checkForUpdates()
             } else { check() } // Informational probe at every normal launch; never auto-install.
-        } catch { status = "Vérification impossible : \(error.localizedDescription)"; updater = nil }
+        } catch { PackagedValidation.recordUpdate("failed:configuration:" + String(describing: error)); status = "Vérification impossible : \(error.localizedDescription)"; updater = nil }
     }
     func feedURLString(for updater: SPUUpdater) -> String? { PackagedValidation.updateFeed }
     func check() {
@@ -55,6 +55,7 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
         updater.checkForUpdates()
     }
     func cancel() {
+        PackagedValidation.recordUpdate("cancelled")
         cancellation?(); cancellation = nil; canCancel = false; installRequested = false
         installing = false; checking = false; status = "Mise à jour annulée. La version actuelle reste utilisable."
     }
@@ -111,7 +112,11 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) { PackagedValidation.recordUpdate("failed:" + String(describing: error)); LocalDiagnostics.shared.record(action: "installation de mise à jour", error: error); installing = false; checking = false; installRequested = false; status = "Mise Ã  jour interrompue : \(error.localizedDescription)"; acknowledgement() }
     func showDownloadInitiated(cancellation: @escaping () -> Void) { PackagedValidation.recordUpdate("downloading"); self.cancellation = cancellation; canCancel = true; expected = 0; received = 0; status = "Téléchargement de la mise à jour…" }
     func showDownloadDidReceiveExpectedContentLength(_ expectedContentLength: UInt64) { expected = expectedContentLength }
-    func showDownloadDidReceiveData(ofLength length: UInt64) { received += length; progress = expected > 0 ? min(1, Double(received) / Double(expected)) : 0; status = "Téléchargement : \(Int(progress * 100)) %" }
+    func showDownloadDidReceiveData(ofLength length: UInt64) {
+        received += length; progress = expected > 0 ? min(1, Double(received) / Double(expected)) : 0
+        status = "Téléchargement : \(Int(progress * 100)) %"
+        if PackagedValidation.updateFeed != nil, ProcessInfo.processInfo.environment["STORAGESCOPE_UPDATE_VALIDATION_CANCEL"] == "1", received >= 65_536 { cancel() }
+    }
     func showDownloadDidStartExtractingUpdate() { PackagedValidation.recordUpdate("validating"); cancellation = nil; canCancel = false; status = "Vérification et préparation du remplacement…" }
     func showExtractionReceivedProgress(_ progress: Double) { self.progress = progress }
     func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {

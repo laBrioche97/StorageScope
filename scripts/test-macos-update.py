@@ -12,6 +12,7 @@ import plistlib
 import re
 import shutil
 import subprocess
+import socket
 import threading
 import time
 
@@ -44,6 +45,18 @@ assert sign(root / 'altered.zip', True, signature).returncode != 0, 'An altered 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args): pass
+    def copyfile(self, source, output):
+        if self.path.endswith('/interrupted.zip'):
+            output.write(source.read(65_536)); output.flush()
+            self.connection.shutdown(socket.SHUT_RDWR)
+            return
+        if self.path.endswith('/slow.zip'):
+            try:
+                while chunk := source.read(65_536):
+                    output.write(chunk); output.flush(); time.sleep(.2)
+            except (BrokenPipeError, ConnectionResetError): pass
+            return
+        super().copyfile(source, output)
 
 server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=str(root)))
 threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -63,6 +76,10 @@ def feed(name, filename, edsignature):
 feed('valid.xml', 'update.zip', signature)
 feed('altered.xml', 'altered.zip', signature)
 feed('invalid-signature.xml', 'update.zip', 'A' * 86 + '==')
+for filename in ['interrupted.zip', 'slow.zip']: shutil.copy2(archive, root / filename)
+feed('interrupted.xml', 'interrupted.zip', signature)
+feed('cancelled.xml', 'slow.zip', signature)
+feed('read-only.xml', 'update.zip', signature)
 unsigned = root / 'unsigned.xml'; unsigned.write_bytes((root / 'valid.xml').read_bytes().replace(b'Isolated validation', b'Tampered metadata'))
 
 def launch_scenario(name, should_succeed):
@@ -76,8 +93,16 @@ def launch_scenario(name, should_succeed):
         NSAppTransportSecurity={'NSAllowsLocalNetworking': True})
     info_file.write_bytes(plistlib.dumps(info))
     subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True, capture_output=True)
+    mount = None
+    if name == 'read-only':
+        image = root / 'read-only.dmg'
+        subprocess.run(['hdiutil', 'create', '-srcfolder', str(folder), '-volname', 'StorageScopeValidation', '-format', 'UDRO', str(image)], check=True, capture_output=True)
+        mount = root / 'read-only-mounted'; mount.mkdir(exist_ok=True)
+        subprocess.run(['hdiutil', 'attach', '-nobrowse', '-readonly', '-mountpoint', str(mount), str(image)], check=True, capture_output=True)
+        app = mount / 'StorageScope.app'; info_file = app / 'Contents/Info.plist'
     events = folder / 'events.log'
     environment = dict(os.environ, STORAGESCOPE_ISOLATED_VALIDATION='1', STORAGESCOPE_UPDATE_VALIDATION_RESULT=str(events))
+    if name == 'cancelled': environment['STORAGESCOPE_UPDATE_VALIDATION_CANCEL'] = '1'
     output = (folder / 'process.log').open('w')
     process = subprocess.Popen([str(app / 'Contents/MacOS/StorageScope')], env=environment, stdout=output, stderr=output)
     try:
@@ -90,23 +115,26 @@ def launch_scenario(name, should_succeed):
                 subprocess.run([str(app / 'Contents/MacOS/StorageScope'), '--verify-installation'], check=True, timeout=35, stdout=output, stderr=output)
                 assert 'accepted' in content and 'ready' in content
                 return {'installedVersion':version, 'realSparkleReplacement':True, 'newVersionStarts':True}
-            if not should_succeed and 'failed:' in content:
+            if not should_succeed and ('failed:' in content or name == 'cancelled' and 'cancelled' in content):
                 assert current == previous_build, 'Failed verification must leave the old application in place'
                 return {'rejected':True, 'previousVersionPreserved':True}
             if process.poll() is not None:
                 raise AssertionError(f'{name}: process exited before expected outcome; {content}; { (folder / "process.log").read_text()[-4000:] }')
             time.sleep(.2)
+        subprocess.run(['sample', str(process.pid), '1', '-file', str(folder / 'sample.log')], check=False, capture_output=True, timeout=10)
         raise AssertionError(f'{name}: timed out; events={events.read_text() if events.exists() else "none"}; log={(folder / "process.log").read_text()[-5000:]}')
     finally:
         if process.poll() is None: process.terminate(); process.wait(timeout=15)
         # Only terminate the disposable fixture's relaunched process.
         subprocess.run(['pkill', '-f', str(app / 'Contents/MacOS/StorageScope')], check=False)
+        if mount: subprocess.run(['hdiutil', 'detach', str(mount)], check=True, capture_output=True)
         output.close()
 
 results = {}
 try:
-    for scenario in ['unsigned', 'invalid-signature', 'altered']:
+    for scenario in ['unsigned', 'invalid-signature', 'altered', 'interrupted', 'cancelled', 'read-only']:
         results[scenario] = launch_scenario(scenario, False)
+        (root / 'results.json').write_text(json.dumps(results, indent=2))
     results['valid'] = launch_scenario('valid', True)
 finally: server.shutdown()
 (root / 'results.json').write_text(json.dumps(results, indent=2))

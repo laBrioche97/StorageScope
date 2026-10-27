@@ -4,7 +4,9 @@ import StorageCore
 @MainActor
 final class DiagnosticLifecycle: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
-        guard !CommandLine.arguments.contains("--verify-interface"), !CommandLine.arguments.contains("--verify-installation") else { return }
+        guard !CommandLine.arguments.contains("--verify-interface"), !CommandLine.arguments.contains("--verify-installation"),
+              !CommandLine.arguments.contains("--verify-live-interface"),
+              ProcessInfo.processInfo.environment["STORAGESCOPE_ISOLATED_VALIDATION"] != "1" else { return }
         let interrupted = LocalDiagnostics.shared.begin(version: AppIdentity.version)
         NSSetUncaughtExceptionHandler { exception in
             LocalDiagnostics.shared.record(action: "exception non interceptée", detail: exception.name.rawValue + "\n" + exception.callStackSymbols.joined(separator: "\n"))

@@ -636,6 +636,7 @@ final class AppModel: ObservableObject {
     }
 
     func prepareUninstall(item: FileSystemItem) {
+        guard !operationsAreBusy else { alertMessage = "Terminez l’opération en cours avant de préparer une désinstallation."; return }
         guard item.isDirectory, item.fileExtension == "app" else { return }
         if let known = applications.first(where: { $0.bundleURL.standardizedFileURL.path == item.url.standardizedFileURL.path }) {
             prepareUninstall(known)
@@ -652,6 +653,7 @@ final class AppModel: ObservableObject {
                     alertMessage = "Cette application n’a pas pu être identifiée de façon sûre."
                     return
                 }
+                uninstallIsWorking = false
                 prepareUninstall(discovered)
             }
         }

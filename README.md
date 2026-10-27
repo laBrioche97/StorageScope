@@ -76,7 +76,7 @@ lipo -archs dist/StorageScope.app/Contents/MacOS/StorageScope
 
 La dernière commande doit afficher `arm64 x86_64` (l’ordre peut varier). Le script refuse la release si une architecture manque et génère le dSYM correspondant dans `dist/StorageScope.app.dSYM`.
 
-Le script d’installation local effectue également la copie, retire les attributs File Provider et vérifie la signature :
+Le script d’installation local vérifie la signature existante et conserve les attributs, notamment la quarantaine. Un échec de copie restaure l’application précédente :
 
 ```sh
 chmod +x scripts/install-app.sh

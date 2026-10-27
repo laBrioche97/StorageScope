@@ -44,7 +44,8 @@ struct ManagedGamesPanel: View {
                 LazyVStack(alignment: .leading, spacing: 8) { ForEach(filteredGames) { game in
                     VStack(alignment: .leading, spacing: 7) {
                         HStack {
-                            if let icon = icons[game.id] { Image(nsImage: icon).resizable().scaledToFit().frame(width: 32, height: 32) }
+                            Image(nsImage: icons[game.id] ?? NSImage(systemSymbolName: "gamecontroller.fill", accessibilityDescription: game.name)!)
+                                .resizable().scaledToFit().frame(width: 32, height: 32).accessibilityLabel(game.name)
                             VStack(alignment: .leading) {
                                 Text(game.name).font(.headline)
                                 Text(game.provider.rawValue).font(.caption).foregroundStyle(.secondary)
