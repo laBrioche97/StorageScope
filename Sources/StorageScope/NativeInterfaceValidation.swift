@@ -16,6 +16,8 @@ enum NativeInterfaceValidation {
         precondition(updates.status == "Aucune mise à jour compatible disponible.")
         updates.updater(probe, didAbortWithError: NSError(domain: SUSparkleErrorDomain, code: 1002, userInfo: [NSUnderlyingErrorKey: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)]))
         precondition(updates.status.contains("Connexion indisponible"))
+        updates.updater(probe, didAbortWithError: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadServerResponse))
+        precondition(updates.status.contains("Vérification impossible") && updates.symbol != "checkmark.circle")
         precondition(model.sidebar == .applications && SidebarSection.allCases.first == .applications)
         for asset in ["classic-library", "classic-menu", "new-library", "new-game"] {
             precondition(EpicGuideResources.bundle.url(forResource: asset, withExtension: "png", subdirectory: "EpicGuide") != nil, "Offline Epic guide asset missing")

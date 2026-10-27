@@ -43,6 +43,10 @@ struct ContentView: View {
                     if updates.canCancel { Button("Annuler") { updates.cancel() } }
                 }
                 Spacer()
+                Button { model.prepareEmptyTrash() } label: {
+                    Label(model.trashSummaryLabel, systemImage: "trash").lineLimit(1)
+                }.labelStyle(.titleAndIcon).controlSize(.small)
+                    .help("Corbeille du compte courant sur les stockages locaux · voir la taille et vider")
             }.padding(.horizontal, 16).padding(.vertical, 8)
             NavigationSplitView(columnVisibility: $navigationVisibility) {
             List([SidebarSection.applications, .overview, .explorer, .categories, .cleanup], selection: sidebarSelection) { section in
@@ -156,8 +160,6 @@ struct ContentView: View {
             .frame(maxWidth: 190)
             .disabled(model.operationsAreBusy && !model.isScanning)
 
-            Button(model.trashSummaryLabel, systemImage: "trash") { model.prepareEmptyTrash() }
-                .help("Voir la taille et vider définitivement la Corbeille")
             Menu("Plus", systemImage: "ellipsis.circle") {
                 Button("Rechercher des mises à jour…") { updates.check() }.disabled(model.operationsAreBusy)
                 Button("Historique local") { openLocalFolder("History") }
@@ -173,8 +175,10 @@ struct ContentView: View {
 
             if model.isScanning {
                 Button("Arrêter", systemImage: "stop.fill") { model.stopScan() }
+                    .labelStyle(.titleAndIcon)
             } else {
                 Button("Analyser le disque", systemImage: "play.fill") { model.startScan() }
+                    .labelStyle(.titleAndIcon)
                     .keyboardShortcut("r", modifiers: .command)
             }
         }

@@ -20,8 +20,18 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     private var expected: UInt64 = 0
     private var received: UInt64 = 0
     private var offline = false
+    private var detectionFailed = false
+    private var hasChecked = false
+    private var startupProbe: Task<Void, Never>?
+    private(set) var checksStarted = 0
     var isBusy = false
-    var symbol: String { checking || installing ? "arrow.triangle.2.circlepath" : availableVersion != nil ? "arrow.down.circle.fill" : offline || !isConfigured ? "wifi.slash" : "checkmark.circle" }
+    var symbol: String {
+        if checking || installing { return "arrow.triangle.2.circlepath" }
+        if availableVersion != nil { return "arrow.down.circle.fill" }
+        if offline { return "wifi.slash" }
+        if !isConfigured || detectionFailed { return "exclamationmark.circle" }
+        return hasChecked ? "checkmark.circle" : "clock"
+    }
 
     override init() {
         super.init()
@@ -39,12 +49,24 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
             isConfigured = true
             if PackagedValidation.updateFeed != nil {
                 installRequested = true; checking = true; instance.checkForUpdates()
-            } else { check() } // Informational probe at every normal launch; never auto-install.
+            } else {
+                status = availableVersion == nil ? "Préparation de la recherche de mises à jour…" : status
+                startupProbe = Task { @MainActor [weak self] in
+                    for _ in 0..<50 {
+                        guard !Task.isCancelled, let self else { return }
+                        if instance.canCheckForUpdates { check(); return }
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    self?.detectionFailed = true
+                    self?.status = "Vérification impossible pour le moment · réessayer."
+                }
+            } // Informational probe at every normal launch; never auto-install.
         } catch { PackagedValidation.recordUpdate("failed:configuration:" + String(describing: error)); status = "Vérification impossible : \(error.localizedDescription)"; updater = nil }
     }
     func feedURLString(for updater: SPUUpdater) -> String? { PackagedValidation.updateFeed }
     func check() {
         guard isConfigured, !checking, !installing, let updater, updater.canCheckForUpdates else { return }
+        checksStarted += 1; detectionFailed = false
         checking = true; offline = false; status = "Recherche de mises à jour…"
         updater.checkForUpdateInformation()
     }
@@ -67,12 +89,14 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         guard !item.isInformationOnlyUpdate else { availableVersion = nil; status = "La nouvelle version ne dispose pas d’un paquet compatible installable automatiquement."; return }
         availableVersion = item.displayVersionString
+        hasChecked = true; detectionFailed = false
         UserDefaults.standard.set(item.displayVersionString, forKey: "lastUpdateOffer")
         UserDefaults.standard.set(Date(), forKey: "lastUpdateOfferDate")
         status = "Mettre à jour vers \(item.displayVersionString) et redémarrer"
     }
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
         availableVersion = nil; UserDefaults.standard.removeObject(forKey: "lastUpdateOffer")
+        hasChecked = true; detectionFailed = false
         status = "Vous disposez de la dernière version compatible publiée."; checking = false; installRequested = false
     }
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
@@ -80,14 +104,18 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
         LocalDiagnostics.shared.record(action: "mise à jour Mac", error: error)
         let failure = error as NSError
         if failure.domain == SUSparkleErrorDomain && failure.code == Int(SUError.noUpdateError.rawValue) {
+            hasChecked = true; detectionFailed = false; availableVersion = nil
+            UserDefaults.standard.removeObject(forKey: "lastUpdateOffer")
             checking = false; installing = false; installRequested = false
             status = "Aucune mise à jour compatible disponible."; return
         }
         var cause = failure
-        offline = cause.domain == NSURLErrorDomain
+        detectionFailed = true
+        let networkCodes: Set<Int> = [NSURLErrorTimedOut, NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed, NSURLErrorNotConnectedToInternet]
+        offline = cause.domain == NSURLErrorDomain && networkCodes.contains(cause.code)
         for _ in 0..<8 {
             guard let nested = cause.userInfo[NSUnderlyingErrorKey] as? NSError else { break }
-            cause = nested; offline = offline || cause.domain == NSURLErrorDomain
+            cause = nested; offline = offline || (cause.domain == NSURLErrorDomain && networkCodes.contains(cause.code))
         }
         checking = false; installing = false; installRequested = false
         status = (offline ? "Connexion indisponible" : "Vérification impossible") + (availableVersion.map { " · version \($0) signalée lors de la dernière vérification ; connexion requise pour la revalider." } ?? " · réessayer.")

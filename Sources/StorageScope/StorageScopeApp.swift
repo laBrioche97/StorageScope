@@ -25,7 +25,7 @@ struct StorageScopeApp: App {
                     } else {
                         await model.restoreLastScan()
                         if CommandLine.arguments.contains("--verify-live-interface") {
-                            do { try await NativeLiveInterfaceValidation.run(model: model); exit(0) }
+                            do { try await NativeLiveInterfaceValidation.run(model: model, updates: updates); exit(0) }
                             catch { print("Live interface validation failed: \(error)"); exit(1) }
                         }
                     }
