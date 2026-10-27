@@ -34,3 +34,7 @@ release-assets/
 *.xcodeproj/xcuserdata/
 *.xcscmblueprint
 *.xccheckout
+
+# Local Python validation caches
+__pycache__/
+*.pyc
