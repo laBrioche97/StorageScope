@@ -212,6 +212,7 @@ final class AppModel: ObservableObject {
     @Published var uninstallSelectedIDs: Set<String> = []
     @Published var uninstallIsWorking = false
     @Published var uninstallResult: UninstallResult?
+    @Published private(set) var uninstallSizes: [String: InstallationSize] = [:]
     @Published var showingTrashConfirmation = false
     @Published var showingAccessIssues = false
     @Published var alertMessage: String?
@@ -625,6 +626,7 @@ final class AppModel: ObservableObject {
         uninstallIsWorking = true
         uninstallPlan = nil
         uninstallResult = nil
+        uninstallSizes = [:]
         uninstallSelectedIDs = []
         Task { [weak self] in
             guard let self else { return }
@@ -662,11 +664,19 @@ final class AppModel: ObservableObject {
     func performUninstall(requestQuitIfRunning: Bool = true) {
         LocalDiagnostics.shared.record(action: "désinstallation d’application")
         guard let plan = uninstallPlan, plan.canProceed, !uninstallIsWorking else { return }
+        // Folder metadata alone is not an installation's size. Carry the current
+        // measured estimates into the operation without changing any file identities.
+        let operationPlan = UninstallPlan(application: plan.application, candidates: plan.candidates.map { candidate in
+            UninstallCandidate(url: candidate.url, group: candidate.group, reason: candidate.reason,
+                allocatedBytesUpperBound: uninstallSizes[candidate.id]?.bytes ?? (candidate.isDirectory ? 0 : candidate.allocatedBytesUpperBound),
+                isDirectory: candidate.isDirectory, isPackage: candidate.isPackage, expectedIdentity: candidate.expectedIdentity,
+                isRemovable: candidate.isRemovable, isSelectedByDefault: candidate.isSelectedByDefault)
+        }, isRunning: plan.isRunning, blockingReason: plan.blockingReason, generatedAt: plan.generatedAt)
         uninstallIsWorking = true
         Task { [weak self] in
             guard let self else { return }
             let result = await uninstallService.uninstall(
-                plan,
+                operationPlan,
                 selectedCandidateIDs: uninstallSelectedIDs,
                 requestQuitIfRunning: requestQuitIfRunning
             )
@@ -680,7 +690,7 @@ final class AppModel: ObservableObject {
                         .filter { $0.status == .trashed }
                         .map { $0.originalURL.standardizedFileURL.path }
                 )
-                let removedItems = plan.candidates.compactMap { candidate -> FileSystemItem? in
+                let removedItems = operationPlan.candidates.compactMap { candidate -> FileSystemItem? in
                     guard trashedPaths.contains(candidate.url.standardizedFileURL.path) else { return nil }
                     return FileSystemItem(
                         url: candidate.url,
@@ -710,6 +720,48 @@ final class AppModel: ObservableObject {
                 duplicateReport = nil
             }
         }
+    }
+
+    func measureUninstallPlan() async {
+        guard let plan = uninstallPlan, uninstallResult == nil else { return }
+        uninstallSizes = Dictionary(plan.candidates.map { candidate in
+            (candidate.id, candidate.isDirectory
+                ? (candidate.group == .applicationBundle ? installationSize(at: candidate.url) : InstallationSize(state: candidate.isRemovable ? .calculating : .unavailable))
+                : InstallationSize(bytes: candidate.allocatedBytesUpperBound, state: .measured))
+        }, uniquingKeysWith: { _, latest in latest })
+        await InstallationSizeService.measureAll(plan.candidates.filter { $0.isDirectory && $0.isRemovable }.map(\.url)) { [weak self] batch in
+            await self?.publishUninstallSizes(batch, generatedAt: plan.generatedAt)
+        }
+    }
+
+    private func publishUninstallSizes(_ batch: [String: InstallationSize], generatedAt: Date) {
+        guard uninstallPlan?.generatedAt == generatedAt, uninstallResult == nil, !Task.isCancelled else { return }
+        uninstallSizes.merge(batch) { _, new in new }
+    }
+
+    func uninstallSelectionSummary(_ plan: UninstallPlan) -> String {
+        let selected = plan.candidates.filter { $0.group == .applicationBundle || uninstallSelectedIDs.contains($0.id) }
+        return uninstallSizeSummary(paths: selected.map { $0.url.path })
+    }
+
+    func uninstallResultSummary(_ result: UninstallResult) -> String {
+        let moved = ([result.bundleResult].compactMap { $0 } + result.associatedResults).filter { $0.status == .trashed }
+        guard !moved.isEmpty else { return "Aucun élément déplacé par StorageScope." }
+        return uninstallSizeSummary(paths: moved.map { $0.originalURL.path })
+    }
+
+    private func uninstallSizeSummary(paths: [String]) -> String {
+        let sizes = paths.compactMap { uninstallSizes[$0] }
+        guard sizes.count == paths.count, sizes.allSatisfy({ $0.bytes != nil }) else {
+            return "Taille totale encore indisponible. L’espace libre est recalculé après vidage de la corbeille."
+        }
+        let total = sizes.reduce(Int64(0)) { sum, size in
+            let value = size.bytes ?? 0
+            return sum > Int64.max - value ? Int64.max : sum + value
+        }
+        let partial = sizes.contains { $0.state != .measured }
+        return (partial ? "Estimation partielle : " : "Taille mesurée : ") + ByteCountFormatter.storage.string(fromByteCount: total)
+            + ". L’espace libre dépend du vidage de la corbeille et du partage des blocs APFS."
     }
 
     func prepareEmptyTrash() {

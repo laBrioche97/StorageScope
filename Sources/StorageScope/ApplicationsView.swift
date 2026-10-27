@@ -126,6 +126,7 @@ struct UninstallView: View {
                 planView(plan)
             }
         }
+        .task(id: model.uninstallResult == nil ? model.uninstallPlan?.generatedAt : nil) { await model.measureUninstallPlan() }
     }
 
     private func planView(_ plan: UninstallPlan) -> some View {
@@ -136,7 +137,7 @@ struct UninstallView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(plan.application.displayName).font(.title.bold())
                     Text(plan.application.bundleIdentifier ?? "Identifiant absent").font(.caption.monospaced()).foregroundStyle(.secondary)
-                    Text(model.installationSize(at: plan.application.bundleURL).label).monospacedDigit()
+                    Text((model.uninstallSizes[plan.application.id] ?? model.installationSize(at: plan.application.bundleURL)).label).monospacedDigit()
                     Text("Sauvegardes conservées par défaut · résidus examinés séparément").font(.caption).foregroundStyle(.secondary)
                     if plan.isRunning { Label("L’application est ouverte et devra être quittée normalement.", systemImage: "exclamationmark.circle.fill").foregroundStyle(.orange) }
                     if let reason = plan.blockingReason { Label(reason, systemImage: "lock.fill").foregroundStyle(.red) }
@@ -156,7 +157,7 @@ struct UninstallView: View {
             }
             Divider()
             HStack {
-                Text("Jusqu’à \(ByteCountFormatter.storage.string(fromByteCount: selectedBytes(plan))) seront récupérables après vidage de la Corbeille.")
+                Text(model.uninstallSelectionSummary(plan))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button(plan.isRunning ? "Quitter puis désinstaller" : "Mettre à la Corbeille", role: .destructive) {
@@ -193,7 +194,7 @@ struct UninstallView: View {
                             Text(candidate.url.path).font(.caption2.monospaced()).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
                         }
                         Spacer()
-                        Text(ByteCountFormatter.storage.string(fromByteCount: candidate.allocatedBytesUpperBound)).monospacedDigit()
+                        Text(model.uninstallSizes[candidate.id]?.label ?? (candidate.isDirectory ? "Calcul en cours…" : InstallationSize(bytes: candidate.allocatedBytesUpperBound, state: .measured).label)).monospacedDigit()
                         Button("Finder") { NSWorkspace.shared.activateFileViewerSelecting([candidate.url]) }
                     }
                     .padding(.vertical, 3)
@@ -203,17 +204,12 @@ struct UninstallView: View {
         } label: { Text(title).font(.headline) }
     }
 
-    private func selectedBytes(_ plan: UninstallPlan) -> Int64 {
-        plan.candidates.filter { $0.group == .applicationBundle || model.uninstallSelectedIDs.contains($0.id) }
-            .reduce(0) { $0 + $1.allocatedBytesUpperBound }
-    }
-
     private func uninstallResult(_ result: UninstallResult) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             Label(result.status == .succeeded ? "Application déplacée" : "Résultat de la désinstallation", systemImage: result.status == .succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .font(.title.bold()).foregroundStyle(result.status == .succeeded ? .green : .orange)
             Text(result.message ?? "L’application et les éléments sélectionnés ont été traités.")
-            Text("\(ByteCountFormatter.storage.string(fromByteCount: result.recoverableBytesUpperBound)) récupérables après vidage de la Corbeille.")
+            Text(model.uninstallResultSummary(result))
                 .font(.title3.bold())
             if !result.associatedResults.isEmpty {
                 let failures = result.associatedResults.filter { $0.status == .failed }
