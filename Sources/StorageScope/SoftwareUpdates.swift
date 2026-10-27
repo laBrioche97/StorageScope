@@ -100,8 +100,6 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
         status = "Vous disposez de la dernière version compatible publiée."; checking = false; installRequested = false
     }
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
-        PackagedValidation.recordUpdate("failed:" + String(describing: error))
-        LocalDiagnostics.shared.record(action: "mise à jour Mac", error: error)
         let failure = error as NSError
         if failure.domain == SUSparkleErrorDomain && failure.code == Int(SUError.noUpdateError.rawValue) {
             hasChecked = true; detectionFailed = false; availableVersion = nil
@@ -109,6 +107,8 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
             checking = false; installing = false; installRequested = false
             status = "Aucune mise à jour compatible disponible."; return
         }
+        PackagedValidation.recordUpdate("failed:" + String(describing: error))
+        LocalDiagnostics.shared.record(action: "mise à jour Mac", error: error)
         var cause = failure
         detectionFailed = true
         let networkCodes: Set<Int> = [NSURLErrorTimedOut, NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed, NSURLErrorNotConnectedToInternet]

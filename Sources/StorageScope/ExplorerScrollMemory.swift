@@ -8,7 +8,7 @@ struct ExplorerScrollMemory: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { NSView(frame: .zero) }
     func updateNSView(_ nsView: NSView, context: Context) {
         let coordinator = context.coordinator
-        let path = model.currentDirectory?.path
+        let path = model.currentDirectory?.path ?? model.explorerCategoryContext.map { "category:" + $0.category.rawValue }
         let offset = model.explorerScrollPosition
         DispatchQueue.main.async { coordinator.attach(from: nsView, path: path, offset: offset) }
     }
@@ -34,7 +34,7 @@ struct ExplorerScrollMemory: NSViewRepresentable {
                 detach(); scroll = found; found.contentView.postsBoundsChangedNotifications = true
                 observer = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: found.contentView, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated {
-                        guard let self, self.model.currentDirectory?.path == self.path, self.model.explorerPendingDirectory == nil, let scroll = self.scroll else { return }
+                        guard let self, (self.model.currentDirectory?.path ?? self.model.explorerCategoryContext.map { "category:" + $0.category.rawValue }) == self.path, self.model.explorerPendingDirectory == nil, let scroll = self.scroll else { return }
                         self.model.explorerScrollPosition = scroll.contentView.bounds.origin.y
                     }
                 }

@@ -3,7 +3,8 @@ import StorageCore
 import SwiftUI
 
 struct ContentView: View {
-    @State private var navigationVisibility: NavigationSplitViewVisibility = .all
+    @State private var sidebarVisible = true
+    @State private var compactWindow = false
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var updates: SoftwareUpdates
@@ -14,25 +15,31 @@ struct ContentView: View {
         return "\(section) — \(volume.name)"
     }
 
-    private var sidebarSelection: Binding<SidebarSection?> {
-        Binding(
-            get: { model.sidebar },
-            set: { selection in
-                guard selection != model.sidebar else { return }
-                // macOS 27 can invoke a List selection setter from inside SwiftUI's
-                // current render transaction. Publish on the next main-loop turn.
-                DispatchQueue.main.async {
-                    guard model.sidebar != selection else { return }
-                    model.sidebar = selection
+    private let sections: [SidebarSection] = [.applications, .overview, .explorer, .categories, .cleanup]
+
+    private var sidebarNavigation: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(sections) { section in
+                Button {
+                    model.sidebar = section
+                    if compactWindow { sidebarVisible = false }
+                } label: {
+                    Label(section.rawValue, systemImage: section.icon)
+                        .lineLimit(1).frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                        .padding(.horizontal, 10).contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .background(model.sidebar == section ? Color.accentColor.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                .accessibilityAddTraits(model.sidebar == section ? .isSelected : [])
             }
-        )
+            Spacer(minLength: 0)
+        }.padding(10).frame(width: 220).background(.regularMaterial)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Button("Afficher la navigation", systemImage: "sidebar.left") { navigationVisibility = navigationVisibility == .detailOnly ? .all : .detailOnly }.labelStyle(.iconOnly)
+                Button("Afficher ou masquer la navigation", systemImage: "sidebar.left") { sidebarVisible.toggle() }.labelStyle(.iconOnly)
                 BriocheMark().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)).frame(width: 32, height: 32).accessibilityHidden(true)
                 Text(AppIdentity.title).font(.title3.bold()).lineLimit(1)
                 Button { updates.activate() } label: { Image(systemName: updates.symbol) }
@@ -48,57 +55,23 @@ struct ContentView: View {
                 }.labelStyle(.titleAndIcon).controlSize(.small)
                     .help("Corbeille du compte courant sur les stockages locaux · voir la taille et vider")
             }.padding(.horizontal, 16).padding(.vertical, 8)
-            NavigationSplitView(columnVisibility: $navigationVisibility) {
-            List([SidebarSection.applications, .overview, .explorer, .categories, .cleanup], selection: sidebarSelection) { section in
-                Label(section.rawValue, systemImage: section.icon)
-                    .tag(section)
+            HStack(spacing: 0) {
+                if sidebarVisible && !compactWindow { sidebarNavigation; Divider() }
+                sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationTitle("Stockage")
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220)
-        } detail: {
-            VStack(spacing: 0) {
-                HStack {
-                    TextField("Rechercher dans cette section", text: $model.searchText).textFieldStyle(.roundedBorder)
-                    if !model.searchText.isEmpty || model.sizeFilter != .all || model.kindFilter != .all || model.categoryFilter != nil {
-                        Button("Effacer les filtres") { model.resetSectionFilters() }
-                    }
-                }.padding(12)
-                Group {
-                if model.sidebar == .volumes {
-                    VolumesView()
-                } else if model.sidebar == .explorer {
-                    if model.choosingExplorerStorage { ExplorerStorageChooser() }
-                    else {
-                        VStack(alignment: .leading) {
-                            HStack { Button("Changer de stockage", systemImage: "externaldrive") { model.showExplorerStorages() }.disabled(model.operationsAreBusy); Text(model.storageChoiceMessage).font(.caption).foregroundStyle(.secondary) }.padding(.horizontal)
-                            StorageExplorerView()
-                        }
-                    }
-                } else if model.sidebar == .applications {
-                    ApplicationsView()
-                } else if model.sidebar == .cleanup {
-                    EnhancedCleanupView()
-                } else if model.sidebar == .categories {
-                    EnhancedCategoriesView()
-                } else {
-                    StorageResultsView()
-                }
-            }
-            }
-            .softTransition(model.sidebar?.rawValue ?? "", duration: MotionTokens.section)
-            .navigationTitle(detailTitle)
-        }
-        }
-        .background {
-            GeometryReader { proxy in
-                Color.clear.onAppear { if proxy.size.width < 950 { navigationVisibility = .detailOnly } }
-                    .onChange(of: proxy.size.width) { _, width in navigationVisibility = width < 950 ? .detailOnly : .all }
+            .overlay(alignment: .leading) {
+                if sidebarVisible && compactWindow { sidebarNavigation.shadow(radius: 8, x: 3) }
             }
         }
+        .background(WindowLayoutObserver { compact in
+            guard compact != compactWindow else { return }
+            compactWindow = compact
+            sidebarVisible = !compact
+        })
         .task { model.refreshTrashSummary(force: true) }
-
         .buttonStyle(SoftButtonStyle())
         .toolbar { toolbar }
+        .navigationTitle(detailTitle)
         .onChange(of: model.sidebar) { _, section in
             if section == .explorer, model.explorerCategoryContext == nil, !model.isPreviewMode { model.enterExplorer() }
             else { model.navigate(to: nil) }
@@ -141,6 +114,39 @@ struct ContentView: View {
                 .environmentObject(model)
                 .frame(minWidth: 760, minHeight: 620)
         }
+    }
+
+    private var sectionContent: some View {
+            VStack(spacing: 0) {
+                HStack {
+                    TextField("Rechercher dans cette section", text: $model.searchText).textFieldStyle(.roundedBorder)
+                    if !model.searchText.isEmpty || model.sizeFilter != .all || model.kindFilter != .all || model.categoryFilter != nil {
+                        Button("Effacer les filtres") { model.resetSectionFilters() }
+                    }
+                }.padding(12)
+                Group {
+                if model.sidebar == .volumes {
+                    VolumesView()
+                } else if model.sidebar == .explorer {
+                    if model.choosingExplorerStorage { ExplorerStorageChooser() }
+                    else {
+                        VStack(alignment: .leading) {
+                            HStack { Button("Changer de stockage", systemImage: "externaldrive") { model.showExplorerStorages() }.disabled(model.operationsAreBusy); Text(model.storageChoiceMessage).font(.caption).foregroundStyle(.secondary) }.padding(.horizontal)
+                            StorageExplorerView()
+                        }
+                    }
+                } else if model.sidebar == .applications {
+                    ApplicationsView()
+                } else if model.sidebar == .cleanup {
+                    EnhancedCleanupView()
+                } else if model.sidebar == .categories {
+                    EnhancedCategoriesView()
+                } else {
+                    StorageResultsView()
+                }
+            }
+            }
+            .softTransition(model.sidebar?.rawValue ?? "", duration: MotionTokens.section)
     }
 
     private func openLocalFolder(_ name: String) {
@@ -477,48 +483,12 @@ private struct AccessIssueRow: View {
 }
 
 private struct ItemTable: View {
-    @EnvironmentObject private var model: AppModel
     let items: [FileSystemItem]
-
     var body: some View {
-        Table(items, selection: $model.selectedIDs) {
-            TableColumn("Nom") { item in
-                HStack {
-                    Image(systemName: item.isDirectory ? "folder.fill" : "doc.fill").foregroundStyle(item.isDirectory ? .blue : .secondary)
-                    Text(item.name).lineLimit(1)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { model.activate(item) }
-                .contextMenu { contextMenu(item) }
-            }.width(min: 170, ideal: 250)
-            TableColumn("Sur disque") { Text(ByteCountFormatter.storage.string(fromByteCount: $0.allocatedSize)).monospacedDigit() }.width(100)
-            TableColumn("Logique") { item in
-                Text(ByteCountFormatter.storage.string(fromByteCount: item.logicalSize)).foregroundStyle(item.logicalSize != item.allocatedSize ? .primary : .secondary).monospacedDigit()
-            }.width(90)
-            TableColumn("Type") { Text($0.category.rawValue) }.width(110)
-            TableColumn("Emplacement") { Text($0.parentPath).lineLimit(1).truncationMode(.middle) }.width(min: 150, ideal: 260)
-            TableColumn("Modification") { Text($0.modificationDate?.formatted(date: .numeric, time: .omitted) ?? "—") }.width(95)
-        }
-        .overlay {
-            if items.isEmpty { ContentUnavailableView("Aucun élément", systemImage: "magnifyingglass", description: Text("Modifiez la recherche ou les filtres.")) }
-        }
-    }
-
-    @ViewBuilder private func contextMenu(_ item: FileSystemItem) -> some View {
-        if item.isDirectory { Button("Explorer") { model.activate(item) } }
-        if item.isPackage && item.fileExtension == "app" { Button("Désinstaller proprement…") { model.prepareUninstall(item: item) } }
-        Button("Afficher dans le Finder") { model.reveal(item) }
-        Button("Ouvrir") { model.open(item) }
-        Divider()
-        Button("Copier le chemin") { model.copyPath(item) }
-        Button("Copier le nom") { model.copyName(item) }
-        Divider()
-        if item.fileExtension != "app" {
-            Button("Mettre à la corbeille", role: .destructive) {
-                model.selectedIDs = [item.id]
-                model.requestTrashSelection()
-            }.disabled(!item.isTrashable)
-        }
+        NativeFileTable(items: items, mode: .overview)
+            .overlay {
+                if items.isEmpty { ContentUnavailableView("Aucun élément", systemImage: "magnifyingglass", description: Text("Modifiez la recherche ou les filtres.")) }
+            }
     }
 }
 

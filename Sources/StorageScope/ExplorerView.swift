@@ -481,30 +481,9 @@ private struct ExplorerSmallItemsTile: View {
 struct ExplorerListTable: View {
     @EnvironmentObject private var model: AppModel
     let items: [FileSystemItem]
-
     var body: some View {
-        Table(items, selection: $model.selectedIDs) {
-            TableColumn("Nom") { item in
-                Label(item.name, systemImage: item.isDirectory ? (item.isPackage ? "shippingbox.fill" : "folder.fill") : item.category.symbol)
-                    .onHover { model.explorerHoveredID = $0 ? item.id : nil }
-                    .listRowBackground(model.explorerHoveredID == item.id ? Color.accentColor.opacity(0.15) : Color.clear)
-                    .onTapGesture(count: 2) { item.isPackage ? model.open(item) : model.activate(item) }
-                    .contextMenu {
-                        if item.isDirectory && !item.isPackage { Button("Explorer") { model.activate(item) } }
-                        if item.isPackage { Button("Afficher le contenu du paquet") { model.showPackageContents(item) } }
-                        if item.isPackage && item.fileExtension == "app" { Button("Désinstaller proprement…") { model.prepareUninstall(item: item) } }
-                        Button("Finder") { model.reveal(item) }
-                        if item.fileExtension != "app" {
-                            Button("Mettre à la Corbeille", role: .destructive) {
-                                model.selectedIDs = [item.id]
-                                model.requestTrashSelection()
-                            }.disabled(!item.isTrashable)
-                        }
-                    }
-            }
-            TableColumn("Sur disque") { Text($0.hasKnownSize ? ByteCountFormatter.storage.string(fromByteCount: $0.allocatedSize) : "Taille inconnue").monospacedDigit() }.width(110)
-            TableColumn("Catégorie") { Label($0.category.rawValue, systemImage: $0.category.symbol) }.width(150)
-            TableColumn("Modification") { Text($0.modificationDate?.formatted(date: .numeric, time: .omitted) ?? "—") }.width(110)
-        }.background(ExplorerScrollMemory()).disabled(model.explorerPendingDirectory != nil)
+        NativeFileTable(items: items, mode: .explorer)
+            .background(ExplorerScrollMemory())
+            .disabled(model.explorerPendingDirectory != nil)
     }
 }

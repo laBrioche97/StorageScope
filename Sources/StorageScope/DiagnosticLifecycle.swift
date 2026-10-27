@@ -9,7 +9,11 @@ final class DiagnosticLifecycle: NSObject, NSApplicationDelegate {
               ProcessInfo.processInfo.environment["STORAGESCOPE_ISOLATED_VALIDATION"] != "1" else { return }
         let interrupted = LocalDiagnostics.shared.begin(version: AppIdentity.version)
         NSSetUncaughtExceptionHandler { exception in
-            LocalDiagnostics.shared.record(action: "exception non interceptée", detail: exception.name.rawValue + "\n" + exception.callStackSymbols.joined(separator: "\n"))
+            let reason = exception.reason ?? ""
+            let layoutReason = reason.lowercased().contains("constraint") || reason.contains("NSWindow")
+                ? reason.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
+                : "Détails complémentaires dans le rapport système macOS."
+            LocalDiagnostics.shared.record(action: "exception non interceptée", detail: exception.name.rawValue + " · " + layoutReason + "\n" + exception.callStackSymbols.joined(separator: "\n"))
         }
         if interrupted {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {

@@ -261,6 +261,7 @@ final class AppModel: ObservableObject {
     private var bubbleGeneration = UUID()
     private var autoScanAttempts: Set<String> = []
     private var browseGeneration = UUID()
+    private var categoryNavigationGeneration = UUID()
     private var trashRefreshTask: Task<Void, Never>?
     private var trashNeedsRefresh = false
     private var trashCheckedAt = Date.distantPast
@@ -1215,15 +1216,27 @@ final class AppModel: ObservableObject {
     }
 
     func openCategory(_ category: ItemCategory) {
-        sort = .allocated
         guard let report = displayedCategoryReport else {
             alertMessage = "Une analyse est nécessaire pour afficher les principaux fichiers de cette catégorie."
             return
         }
-        categoryFilter = category
-        browseTask?.cancel()
-        presentCategoryReport(report, category: category, volumeID: selectedVolumeID)
-        sidebar = .explorer
+        let generation = UUID(); categoryNavigationGeneration = generation
+        let volumeID = selectedVolumeID, indexGeneration = scanGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, generation == categoryNavigationGeneration,
+                  volumeID == selectedVolumeID, indexGeneration == scanGeneration else { return }
+            LocalDiagnostics.shared.record(action: "ouvrir une catégorie", detail: category.rawValue)
+            browseTask?.cancel(); browseGeneration = UUID()
+            bubbleTask?.cancel(); bubbleGeneration = UUID(); loaderTask?.cancel()
+            explorerPendingDirectory = nil; bubbleIsLoading = false; explorerLoaderVisible = false
+            var transaction = Transaction(); transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                sidebar = .explorer
+                resetSectionFilters(); sort = .allocated; categoryFilter = category
+                explorerScrollPosition = .nan
+                presentCategoryReport(report, category: category, volumeID: volumeID)
+            }
+        }
     }
 
     func refreshCategoryExplorer() {
@@ -1266,7 +1279,6 @@ final class AppModel: ObservableObject {
         var candidates = summary.topContributors
         if let snapshot, snapshot.volumeID == volumeID {
             candidates.append(contentsOf: snapshot.topFiles)
-            candidates.append(contentsOf: snapshot.directoryContents.values.joined())
         }
         if let liveSummary, liveSummary.volumeID == volumeID {
             candidates.append(contentsOf: liveSummary.rootItems)
@@ -1278,10 +1290,10 @@ final class AppModel: ObservableObject {
             if let existing = byPath[path], existing.allocatedSize >= item.allocatedSize { continue }
             byPath[path] = item
         }
-        return byPath.values.sorted {
+        return Array(byPath.values.sorted {
             if $0.allocatedSize != $1.allocatedSize { return $0.allocatedSize > $1.allocatedSize }
             return $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending
-        }
+        }.prefix(500))
     }
 
     func examineCleanupItem(_ item: FileSystemItem) {

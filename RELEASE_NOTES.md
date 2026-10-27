@@ -1,11 +1,9 @@
-# StorageScope 3.5.0
+# StorageScope 3.5.1
 
-- Première distribution macOS universelle : Intel et Apple Silicon, macOS 14 minimum. Application native SwiftUI utilisable hors ligne.
-- Tailles des applications et jeux calculées progressivement, indépendamment de l’analyse du disque ; distinction mesurée, déclarée, partielle ou indisponible.
-- Logos conservés pendant les actualisations, lectures et tris en arrière-plan, conservation des vues de l’explorateur lorsque l’application revient au premier plan.
-- Diagnostics locaux exportables, rotation des journaux et signalement des sessions interrompues. Aucun envoi automatique.
-- Mises à jour Mac avec Sparkle : archives et flux signés Ed25519, vérification à chaque lancement, installation après accord.
-- Distribution Mac de test : application signée ad hoc, installateur sans certificat Developer ID ni notarisation Apple. macOS peut demander une autorisation individuelle dans Réglages Système > Confidentialité et sécurité. Ne désactivez pas les protections du système.
-- Installateur Windows x64/ARM64 maintenu avec vérification RSA des mises à jour. Absence de signature Authenticode ; SmartScreen peut afficher un avertissement.
+- Correctif Mac : remplacement de la liste latérale à hauteur automatique et du redimensionnement piloté pendant la mise en page, impliqués dans les arrêts de l’interface sur macOS 27.
+- Navigation latérale stable, sélection et clavier conservés ; volet superposé dans les petites fenêtres.
+- Contrôles de changements de sections et de tailles répétés dans la vraie fenêtre, y compris sur macOS 27, en plus des contrôles macOS 14, 15 Intel et 26.
+- Le diagnostic local conserve désormais aussi la raison de l’exception lorsqu’AppKit la fournit.
+- Fonctionnement hors ligne, protections de nettoyage, sauvegardes et données personnelles conservés. Aucun changement fonctionnel Windows.
 
-Les sauvegardes restent conservées par défaut. Les tailles allouées APFS ne garantissent pas un gain équivalent d’espace libre (clones et instantanés). Les composants privilégiés et les désinstallations sans méthode officielle vérifiable restent protégés.
+Version Mac de test, sans signature Developer ID ni notarisation Apple. Les archives et le flux de mise à jour sont authentifiés par Ed25519. Windows conserve son manifeste RSA-PSS vérifié ; le paquet n’a pas de signature Authenticode. Les autorisations du système restent applicables.

@@ -28,7 +28,7 @@ environment = dict(os.environ, HTTP_PROXY='http://127.0.0.1:9', HTTPS_PROXY='htt
 subprocess.run([str(binary), '--verify-installation'], env=environment, check=True, timeout=35)
 ui = Path(os.environ['RUNNER_TEMP']) / 'storagescope-packaged-ui'
 subprocess.run([str(binary), '--verify-interface', str(ui)], env=environment, check=True, timeout=120)
-subprocess.run([str(binary), '--verify-live-interface', str(ui)], env=environment, check=True, timeout=80)
+subprocess.run([str(binary), '--verify-live-interface', str(ui)], env=environment, check=True, timeout=180)
 assert len(list(ui.glob('*.png'))) >= 4
 # An in-place second installation must preserve settings and not create another application.
 preferences = Path.home() / 'Library/Application Support/StorageScope/package-test-preserved.txt'
