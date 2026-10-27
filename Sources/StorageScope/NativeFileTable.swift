@@ -75,7 +75,8 @@ struct NativeFileTable: NSViewRepresentable {
                 if table.selectedRowIndexes != indexes { table.selectRowIndexes(indexes, byExtendingSelection: false) }
                 let visible = table.rows(in: table.visibleRect)
                 if visible.location != NSNotFound {
-                    for row in visible.location..<min(items.count, NSMaxRange(visible)) {
+                    let first = min(items.count, max(0, visible.location))
+                    for row in first..<min(items.count, NSMaxRange(visible)) {
                         (table.rowView(atRow: row, makeIfNecessary: false) as? FileHoverRow)?.hovered = items[row].id == hovered
                     }
                 }
@@ -146,7 +147,7 @@ struct NativeFileTable: NSViewRepresentable {
         @objc func activateRow(_ sender: Any?) {
             guard let table, enabled, items.indices.contains(table.clickedRow) else { return }
             let item = items[table.clickedRow]
-            if item.isPackage { model.open(item) } else { model.activate(item) }
+            if mode == .explorer && item.isPackage { model.open(item) } else { model.activate(item) }
         }
         func menu(row: Int) -> NSMenu? {
             guard enabled, items.indices.contains(row) else { return nil }

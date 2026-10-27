@@ -11,14 +11,19 @@ enum CategoryLayoutValidation {
         let previous = model.snapshot
         defer { model.snapshot = previous; model.sidebar = .applications }
         let categories: [ItemCategory] = [.document, .applicationData, .image, .video]
-        let summaries = categories.map { category in
-            let files = (0..<650).map { index in
-                FileSystemItem(url: URL(fileURLWithPath: "/Volumes/StorageScope-Layout-Fixture/\(category.rawValue)/\(index)-" + String(repeating: "nom très long 動画 📁 ", count: 10) + ".dat"),
-                    logicalSize: Int64(650 - index) * 4096, allocatedSize: Int64(650 - index) * 4096,
-                    isDirectory: false, category: category, safety: .personal, sizeIsKnown: true)
+        var summaries: [CategorySummary] = []
+        let longName = String(repeating: "nom très long 動画 📁 ", count: 10)
+        for category in categories {
+            var files: [FileSystemItem] = []
+            for index in 0..<650 {
+                let prefix = "/Volumes/StorageScope-Layout-Fixture/" + category.rawValue + "/" + String(index) + "-"
+                let url = URL(fileURLWithPath: prefix + longName + ".dat")
+                let bytes = Int64(650 - index) * 4096
+                files.append(FileSystemItem(url: url, logicalSize: bytes, allocatedSize: bytes,
+                    isDirectory: false, category: category, safety: .personal, sizeIsKnown: true))
             }
-            return CategorySummary(category: category, logicalBytes: 8_000_000_000, allocatedBytes: 8_000_000_000,
-                fileCount: 100_000, topContributors: files)
+            summaries.append(CategorySummary(category: category, logicalBytes: 8_000_000_000,
+                allocatedBytes: 8_000_000_000, fileCount: 100_000, topContributors: files))
         }
         let report = CategoryReport(summaries: summaries, isComplete: false)
         model.snapshot = ScanSnapshot(root: model.selectedVolume?.url ?? URL(fileURLWithPath: "/"),
@@ -36,6 +41,10 @@ enum CategoryLayoutValidation {
             window.setContentSize(NSSize(width: [740.0, 949, 951, 1120][transitions % 4], height: transitions % 2 == 0 ? 560 : 800))
             try await Task.sleep(for: .milliseconds(80))
             if !baseline {
+                let readyDeadline = Date().addingTimeInterval(2)
+                while Date() < readyDeadline && (findTable(window.contentView)?.numberOfRows != 500 || model.explorerVisibleItems.count != 500) {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
                 guard model.sidebar == .explorer, model.explorerCategoryContext?.category == category,
                       model.explorerItems.count == 500, model.explorerVisibleItems.count == 500,
                       model.explorerCategoryContext?.totalFileCount == 100_000,
