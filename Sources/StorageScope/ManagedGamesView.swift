@@ -61,6 +61,8 @@ struct ManagedGamesPanel: View {
                         }
                         Text(game.installURL.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     }.padding(.vertical, 6)
+                    .task(id: model.applicationIconRevision) { await model.loadGameIcon(game) }
+                    .onDisappear { model.gameIcons[game.id] = nil }
                 }
                 }
                 if model.gameUninstallIsWorking {

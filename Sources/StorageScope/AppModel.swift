@@ -232,6 +232,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var gamesSmallest: [ManagedGame] = []
     @Published var installationSizes: [String: InstallationSize] = [:]
     @Published var gameIcons: [String: NSImage] = [:]
+    @Published private(set) var applicationIconRevision = UUID()
     private var applicationsTask: Task<Void, Never>?
     private var applicationsGeneration = UUID()
     private var volumeRefreshTask: Task<Void, Never>?
@@ -559,36 +560,33 @@ final class AppModel: ObservableObject {
             gameIcons = gameIcons.filter { key, _ in games.contains { $0.id == key } }
             await prepareInstallationOrder(generation: generation)
             guard !Task.isCancelled, applicationsGeneration == generation else { return }
+            applicationIconRevision = UUID()
             applicationsAreLoading = false
             // Both inventories share ONE bounded group, never four simultaneous directory walks.
-            async let sizes: Void = InstallationSizeService.measureAll(discovered.map(\.bundleURL) + games.map(\.installURL)) { [weak self] batch in
+            await InstallationSizeService.measureAll(discovered.map(\.bundleURL) + games.map(\.installURL)) { [weak self] batch in
                 await self?.publishInstallationSizes(batch, generation: generation)
             }
-            for application in discovered {
-                guard !Task.isCancelled, applicationsGeneration == generation else { return }
-                let image = await iconCache.load(for: application.bundleURL, version: application.version)
-                guard !Task.isCancelled, applicationsGeneration == generation else { return }
-                applicationIcons[application.bundleURL.path] = image
-                try? await Task.sleep(for: .milliseconds(8))
-            }
-            for game in games {
-                guard !Task.isCancelled, applicationsGeneration == generation else { return }
-                let root = game.installURL
-                let bundle = await Task.detached(priority: .utility) { () -> URL? in
-                    if root.pathExtension == "app" { return root }
-                    return (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey]))?.prefix(100).first {
-                        $0.pathExtension == "app" && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
-                    }
-                }.value
-                if let bundle {
-                    let image = await iconCache.load(for: bundle)
-                    guard !Task.isCancelled, applicationsGeneration == generation else { return }
-                    gameIcons[game.id] = image
-                }
-                await Task.yield()
-            }
-            await sizes
         }
+    }
+
+    func loadApplicationIcon(_ application: InstalledApplication) async {
+        let image = await iconCache.load(for: application.bundleURL, version: application.version)
+        guard !Task.isCancelled, applications.contains(where: { $0.id == application.id && $0.bundleIdentity == application.bundleIdentity && $0.version == application.version }) else { return }
+        applicationIcons[application.bundleURL.path] = image
+    }
+
+    func loadGameIcon(_ game: ManagedGame) async {
+        let root = game.installURL
+        let bundle = await Task.detached(priority: .utility) { () -> URL? in
+            if root.pathExtension == "app" { return root }
+            return (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey]))?.prefix(100).first {
+                $0.pathExtension == "app" && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
+            }
+        }.value
+        guard let bundle else { return }
+        let image = await iconCache.load(for: bundle)
+        guard !Task.isCancelled, managedGames.contains(where: { $0.id == game.id && $0.manifestIdentity == game.manifestIdentity }) else { return }
+        gameIcons[game.id] = image
     }
 
     private func publishInstallationSizes(_ batch: [String: InstallationSize], generation: UUID) async {

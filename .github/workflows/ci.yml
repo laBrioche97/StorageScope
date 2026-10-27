@@ -26,6 +26,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       DEVELOPER_DIR: ${{ matrix.runner == 'macos-14' && '/Applications/Xcode_16.2.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
+      # Intel CI VMs lack a Metal target architecture; allow the OS software fallback.
+      # This setting is scoped to the test host, never included in the application.
+      METAL_ERROR_MODE: ${{ contains(matrix.runner, 'intel') && '0' || '' }}
     timeout-minutes: 30
 
     steps:
@@ -147,6 +150,9 @@ jobs:
     timeout-minutes: 20
     env:
       DEVELOPER_DIR: ${{ matrix.runner == 'macos-14' && '/Applications/Xcode_16.2.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
+      # Intel CI VMs lack a Metal target architecture; allow the OS software fallback.
+      # This setting is scoped to the test host, never included in the application.
+      METAL_ERROR_MODE: ${{ contains(matrix.runner, 'intel') && '0' || '' }}
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
       STORAGESCOPE_SPARKLE_SIGNER: validation-tools/sign_update
     steps:

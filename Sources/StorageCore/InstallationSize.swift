@@ -25,7 +25,21 @@ public struct InstallationSize: Hashable, Sendable {
 
 /// Reads metadata only: never opens file contents, downloads cloud data or follows links.
 /// A structured task group bounds filesystem work to two installations at a time.
+private actor InstallationReadLimiter {
+    private var available = 2
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    func acquire() async {
+        if available > 0 { available -= 1; return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+    func release() {
+        if waiting.isEmpty { available += 1 }
+        else { waiting.removeFirst().resume() }
+    }
+}
+
 public enum InstallationSizeService {
+    private static let limiter = InstallationReadLimiter()
     public static func measure(_ url: URL) -> InstallationSize {
         let root = url.standardizedFileURL
         guard !DeletionSafetyPolicy.isCloudPath(root.path), !hasLinkedAncestor(root),
@@ -71,7 +85,12 @@ public enum InstallationSizeService {
             func submit() {
                 guard next < unique.count, !Task.isCancelled else { return }
                 let url = unique[next]; next += 1
-                group.addTask { (url.path, measure(url)) }
+                group.addTask {
+                    await limiter.acquire()
+                    let size = Task.isCancelled ? InstallationSize(state: .unavailable) : measure(url)
+                    await limiter.release()
+                    return (url.path, size)
+                }
             }
             submit(); submit()
             for await (path, size) in group {

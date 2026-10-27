@@ -53,7 +53,7 @@ struct ApplicationsView: View {
                 }
             }
         }
-        .task { model.loadApplications() }
+        .task { if model.applications.isEmpty && !model.applicationsAreLoading { model.loadApplications() } }
     }
 }
 
@@ -88,6 +88,8 @@ private struct ApplicationCard: View {
                     .disabled(application.isProtected)
             }
         }
+        .task(id: model.applicationIconRevision) { await model.loadApplicationIcon(application) }
+        .onDisappear { model.applicationIcons[application.bundleURL.path] = nil }
         .padding(15)
         .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
     }

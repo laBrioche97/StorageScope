@@ -1,9 +1,13 @@
-name: Publish Windows release with verified update manifest
+name: Publish validated desktop installers and authenticated updates
 on:
   workflow_dispatch:
     inputs:
       tag:
         description: Existing stable vX.Y.Z tag
+        required: true
+        type: string
+      validation_run_id:
+        description: Successful CI run for this exact commit, including installed macOS packages
         required: true
         type: string
       recovery:
@@ -68,20 +72,45 @@ jobs:
           if-no-files-found: error
   macos:
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+      GH_TOKEN: ${{ github.token }}
+      VALIDATION_RUN: ${{ inputs.validation_run_id }}
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag }}
-      - run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
-      - run: swift run --disable-sandbox StorageCoreTests
-      - run: swift run --disable-sandbox StorageScope --verify-interface "$RUNNER_TEMP/storagescope-ui"
+      - name: Require installed-package validation for this exact commit
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VALIDATION_RUN" > "$RUNNER_TEMP/validation-run.json"
+          python3 - <<'PY'
+          import json, subprocess, os
+          from pathlib import Path
+          run=json.loads((Path(os.environ['RUNNER_TEMP'])/'validation-run.json').read_text())
+          assert run['head_sha'] == subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert run['conclusion'] == 'success' and run['path'] == '.github/workflows/ci.yml'
+          PY
+      - uses: actions/download-artifact@v5
+        with:
+          name: macos-validated-package-candidate
+          path: .
+          run-id: ${{ inputs.validation_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify the exact tested Mac release assets
+        run: |
+          chmod +x validation-tools/sign_update
+          (cd release-assets && shasum -a 256 -c ./*.sha256)
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" | validation-tools/sign_update --ed-key-file - --verify release-assets/appcast.xml
+          mkdir -p dist
+          ditto -x -k release-assets/StorageScope-universal.zip dist
+          codesign --verify --deep --strict dist/StorageScope.app
+          dist/StorageScope.app/Contents/MacOS/StorageScope --verify-installation
       - uses: actions/upload-artifact@v5
         with:
-          name: macos-native-interface
-          path: ${{ runner.temp }}/storagescope-ui/*.png
+          name: release-macos-validated
+          path: release-assets/*
           if-no-files-found: error
   publish:
     needs: [windows, macos]
@@ -99,12 +128,16 @@ jobs:
         with:
           name: release-windows-key
           path: release-assets
-      - name: Publish verified Windows packages together
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-macos-validated
+          path: release-assets
+      - name: Publish validated Windows and Mac packages together
         shell: bash
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          for FILE in StorageScope-Windows-Setup-DEVELOPMENT.exe StorageScope-Windows-Setup-DEVELOPMENT.exe.sha256 windows-update.json windows-update.json.sig; do
+          for FILE in StorageScope-Windows-Setup-DEVELOPMENT.exe StorageScope-Windows-Setup-DEVELOPMENT.exe.sha256 windows-update.json windows-update.json.sig StorageScope-macOS-universal-DEVELOPMENT.pkg StorageScope-macOS-universal-DEVELOPMENT.pkg.sha256 StorageScope-universal.zip StorageScope-universal.zip.sha256 appcast.xml; do
             [[ -s "release-assets/$FILE" && ! -L "release-assets/$FILE" ]]
           done
           (cd release-assets && sha256sum --check ./*.sha256)
