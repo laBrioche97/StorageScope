@@ -162,7 +162,7 @@ struct ContentView: View {
                 Button("Rechercher des mises à jour…") { updates.check() }.disabled(model.operationsAreBusy)
                 Button("Historique local") { openLocalFolder("History") }
                 Button("Ouvrir les diagnostics") { openLocalFolder("Diagnostics") }
-                Button("Exporter les diagnostics�") { DiagnosticLifecycle.export() }
+                Button("Exporter les diagnostics…") { DiagnosticLifecycle.export() }
                 Divider()
                 Menu("Autres vues") {
                     ForEach([SidebarSection.largestFiles, .largestFolders, .volumes, .lastScan]) { section in

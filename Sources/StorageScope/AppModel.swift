@@ -6,12 +6,12 @@ import SwiftUI
 
 enum SidebarSection: String, CaseIterable, Identifiable {
     case applications = "Applications et jeux"
-    case overview = "Vue dâ€™ensemble"
+    case overview = "Vue d’ensemble"
     case explorer = "Explorateur"
     case largestFiles = "Plus gros fichiers"
     case largestFolders = "Plus gros dossiers"
-    case categories = "CatÃ©gories"
-    case cleanup = "Nettoyage conseillÃ©"
+    case categories = "Catégories"
+    case cleanup = "Nettoyage conseillé"
     case volumes = "Volumes"
     case lastScan = "Dernier scan"
     var id: String { rawValue }
@@ -45,7 +45,7 @@ enum SizeFilter: Int64, CaseIterable, Identifiable {
 }
 
 enum ItemSort: String, CaseIterable, Identifiable {
-    case allocated = "Taille dÃ©croissante"
+    case allocated = "Taille décroissante"
     case smallest = "Taille croissante"
     case name = "Nom"
     case type = "Type"
@@ -171,7 +171,7 @@ final class AppModel: ObservableObject {
             explorerHistory = Array(explorerHistory.prefix(explorerHistoryPosition + 1)); explorerHistory.append(directory); explorerHistoryPosition = explorerHistory.count - 1
         }
         explorerPendingDirectory = nil; explorerLoaderVisible = false; loaderTask?.cancel()
-        bubbleMessage = view.frame?.totalBytes.map { ByteCountFormatter.storage.string(fromByteCount: $0) + (view.frame?.isPartial == true ? " Â· analyse partielle" : " Â· tailles mesurÃ©es") } ?? "Tailles inconnues Â· analysez le disque pour complÃ©ter les bulles."
+        bubbleMessage = view.frame?.totalBytes.map { ByteCountFormatter.storage.string(fromByteCount: $0) + (view.frame?.isPartial == true ? " · analyse partielle" : " · tailles mesurées") } ?? "Tailles inconnues · analysez le disque pour compléter les bulles."
         navigationBack = back
         if animate && previous != directory { navigationRevision = UUID() }
     }
@@ -253,7 +253,7 @@ final class AppModel: ObservableObject {
     private var explorerHistory: [URL] = []
     private var explorerHistoryPosition = -1
     private var navigatingHistory = false
-    @Published var bubbleMessage = "PrÃ©paration du graphiqueâ€¦"
+    @Published var bubbleMessage = "Préparation du graphique…"
     @Published var bubbleRemainderPaths: Set<String>?
     private var bubbleTask: Task<Void, Never>?
     private var bubbleGeneration = UUID()
@@ -463,7 +463,7 @@ final class AppModel: ObservableObject {
         explorerCategoryContext = nil
         directoryIndexStore = nil
         bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
-        bubbleMessage = "PrÃ©paration du graphiqueâ€¦"
+        bubbleMessage = "Préparation du graphique…"
         snapshot = nil
         liveSummary = nil
         validatedCleanupReport = nil
@@ -504,7 +504,7 @@ final class AppModel: ObservableObject {
             bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
             currentDirectory = nil; explorerItems = []; snapshot = nil; liveSummary = nil
             choosingExplorerStorage = true
-            storageChoiceMessage = "Le stockage actif a Ã©tÃ© dÃ©connectÃ©. Choisissez un autre stockage."
+            storageChoiceMessage = "Le stockage actif a été déconnecté. Choisissez un autre stockage."
         }
     }
 
@@ -529,7 +529,7 @@ final class AppModel: ObservableObject {
         choosingExplorerStorage = false
         explorerHistory = []; explorerHistoryPosition = -1
         resetSectionFilters(); resetExplorerTemporaryList()
-        storageChoiceMessage = "Racine ouverte Â· historique et filtres de lâ€™explorateur rÃ©initialisÃ©s."
+        storageChoiceMessage = "Racine ouverte · historique et filtres de l’explorateur réinitialisés."
         currentDirectory = volume.url
         loadExplorerRoot()
     }
@@ -574,7 +574,7 @@ final class AppModel: ObservableObject {
             for game in games {
                 guard !Task.isCancelled, applicationsGeneration == generation else { return }
                 let root = game.installURL
-                let bundle = await Task.detached(priority: .utility) {
+                let bundle = await Task.detached(priority: .utility) { () -> URL? in
                     if root.pathExtension == "app" { return root }
                     return (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey]))?.prefix(100).first {
                         $0.pathExtension == "app" && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
@@ -649,7 +649,7 @@ final class AppModel: ObservableObject {
                 guard let discovered = await applicationDiscovery.application(at: item.url) else {
                     showingUninstall = false
                     uninstallIsWorking = false
-                    alertMessage = "Cette application nâ€™a pas pu Ãªtre identifiÃ©e de faÃ§on sÃ»re."
+                    alertMessage = "Cette application n’a pas pu être identifiée de façon sûre."
                     return
                 }
                 prepareUninstall(discovered)
@@ -881,7 +881,7 @@ final class AppModel: ObservableObject {
                 requestTrash(items: validatedItems)
             } catch {
                 duplicateError = error.localizedDescription
-                alertMessage = "Les doublons ont changÃ© depuis lâ€™analyse : \(error.localizedDescription)"
+                alertMessage = "Les doublons ont changé depuis l’analyse : \(error.localizedDescription)"
             }
         }
     }
@@ -1035,11 +1035,11 @@ final class AppModel: ObservableObject {
             return
         }
         if !applications.isEmpty {
-            alertMessage = "Une sÃ©lection contenant une application ne peut pas utiliser la suppression gÃ©nÃ©rique. DÃ©sinstallez chaque application sÃ©parÃ©ment."
+            alertMessage = "Une sélection contenant une application ne peut pas utiliser la suppression générique. Désinstallez chaque application séparément."
             return
         }
         if normalized.contains(where: { !$0.isTrashable }) {
-            alertMessage = "La sÃ©lection contient un Ã©lÃ©ment systÃ¨me protÃ©gÃ©."
+            alertMessage = "La sélection contient un élément système protégé."
         } else {
             Task { [weak self] in
                 guard let self else { return }
@@ -1047,7 +1047,7 @@ final class AppModel: ObservableObject {
                 guard generation == trashRequestGeneration else { return }
                 let failures = preflights.filter { !$0.isReady }
                 guard failures.isEmpty else {
-                    alertMessage = "La suppression a Ã©tÃ© bloquÃ©e avant confirmation.\n"
+                    alertMessage = "La suppression a été bloquée avant confirmation.\n"
                         + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
                     return
                 }
@@ -1091,7 +1091,7 @@ final class AppModel: ObservableObject {
                 }
             }
             let failures = results.filter { $0.status == .failed }
-            alertMessage = "\(succeeded.count) Ã©lÃ©ment(s) dans la Corbeille, \(failures.count) Ã©chec(s). Lâ€™espace sera libÃ©rÃ© aprÃ¨s vidage de la Corbeille.\n" + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
+            alertMessage = "\(succeeded.count) élément(s) dans la Corbeille, \(failures.count) échec(s). L’espace sera libéré après vidage de la Corbeille.\n" + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
         }
     }
 
@@ -1163,7 +1163,7 @@ final class AppModel: ObservableObject {
     func openCategory(_ category: ItemCategory) {
         sort = .allocated
         guard let report = displayedCategoryReport else {
-            alertMessage = "Une analyse est nÃ©cessaire pour afficher les principaux fichiers de cette catÃ©gorie."
+            alertMessage = "Une analyse est nécessaire pour afficher les principaux fichiers de cette catégorie."
             return
         }
         categoryFilter = category
@@ -1295,11 +1295,11 @@ extension AppModel {
                 guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volumeID, currentDirectory?.path == directory.path else { return }
                 bubbleFrame = frame
                 if frame.totalBytes == nil {
-                    bubbleMessage = isScanning ? "Analyse du disqueâ€¦ Les tailles se prÃ©cisent en arriÃ¨re-plan." : "Tailles des dossiers inconnues. Analysez le disque pour complÃ©ter le graphique."
+                    bubbleMessage = isScanning ? "Analyse du disque… Les tailles se précisent en arrière-plan." : "Tailles des dossiers inconnues. Analysez le disque pour compléter le graphique."
                     if !isScanning, !operationsAreBusy, !autoScanAttempts.contains(volumeID) {
                         autoScanAttempts.insert(volumeID); startScan()
                     }
-                } else { bubbleMessage = (frame.isPartial ? "Analyse partielle" : "Tailles mesurÃ©es") + " Â· Dossiers et fichiers de ce niveau" }
+                } else { bubbleMessage = (frame.isPartial ? "Analyse partielle" : "Tailles mesurées") + " · Dossiers et fichiers de ce niveau" }
             } catch is CancellationError { }
             catch { LocalDiagnostics.shared.record(action: "graphique de l’explorateur", error: error); if bubbleGeneration == generation { bubbleFrame = nil; bubbleMessage = "Graphique indisponible. La liste reste accessible." } }
         }
@@ -1320,7 +1320,7 @@ extension AppModel {
         if isScanning { stopScan() }
         if let volume = selectedVolume { autoScanAttempts.insert(volume.id) }
         explorerIsLoading = false; bubbleIsLoading = false
-        bubbleMessage = "Chargement annulÃ©. Ouvrez un dossier ou relancez lâ€™analyse pour reprendre."
+        bubbleMessage = "Chargement annulé. Ouvrez un dossier ou relancez l’analyse pour reprendre."
     }
 
     func browseHistory(_ direction: Int) {
@@ -1355,28 +1355,28 @@ extension AppModel {
     }
 
     func selectRecognizedTemporaries() {
-        guard !operationsAreBusy else { cleanupActionMessage = "Terminez ou annulez lâ€™opÃ©ration en cours."; return }
-        guard let report = displayedCleanupReport else { cleanupActionMessage = "Calcul du nettoyage conseillÃ©â€¦"; calculateCleanup(); return }
+        guard !operationsAreBusy else { cleanupActionMessage = "Terminez ou annulez l’opération en cours."; return }
+        guard let report = displayedCleanupReport else { cleanupActionMessage = "Calcul du nettoyage conseillé…"; calculateCleanup(); return }
         resetSectionFilters()
         let allowed: Set<CleanupSuggestionKind> = [.xcodeDerivedData, .toolCaches, .applicationCaches, .diagnosticReports]
         let items = report.suggestions.filter { allowed.contains($0.id) && $0.confidence == .high && $0.action == .reviewAndTrash }.flatMap(\.items).filter(\.isTrashable)
         cleanupSelectedIDs = Set(SelectionNormalizer.normalize(items).map(\.id))
-        cleanupActionMessage = items.isEmpty ? "Aucun temporaire reconnu admissible. Les documents et sauvegardes restent conservÃ©s." : "\(cleanupSelectedIDs.count) Ã©lÃ©ment(s) sÃ©lectionnÃ©(s). Examinez la sÃ©lection avant de nettoyer. Les filtres ont Ã©tÃ© rÃ©initialisÃ©s."
+        cleanupActionMessage = items.isEmpty ? "Aucun temporaire reconnu admissible. Les documents et sauvegardes restent conservés." : "\(cleanupSelectedIDs.count) élément(s) sélectionné(s). Examinez la sélection avant de nettoyer. Les filtres ont été réinitialisés."
     }
 
     func chooseDuplicateDirectory() {
-        guard !operationsAreBusy else { duplicateError = "Terminez ou annulez lâ€™opÃ©ration en cours."; return }
+        guard !operationsAreBusy else { duplicateError = "Terminez ou annulez l’opération en cours."; return }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
-        panel.message = "Choisissez un dossier personnel. Les contenus seront comparÃ©s ; aucun fichier ne sera supprimÃ©."
+        panel.message = "Choisissez un dossier personnel. Les contenus seront comparés ; aucun fichier ne sera supprimé."
         guard panel.runModal() == .OK, let directory = panel.url else { return }
         startDuplicateAnalysis(directory: directory)
     }
 
     var trashSummaryLabel: String {
-        guard let summary = trashSummary else { return trashSummaryIsLoading ? "Corbeille Â· Calcul en cours" : "Corbeille Â· Indisponible" }
-        if summary.items.isEmpty && !summary.issues.isEmpty { return "Corbeille Â· Indisponible" }
+        guard let summary = trashSummary else { return trashSummaryIsLoading ? "Corbeille · Calcul en cours" : "Corbeille · Indisponible" }
+        if summary.items.isEmpty && !summary.issues.isEmpty { return "Corbeille · Indisponible" }
         let partial = !summary.issues.isEmpty || summary.wasCancelled
-        return "Corbeille Â· " + (partial ? "â‰ˆ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
+        return "Corbeille · " + (partial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
     }
 
     func refreshTrashSummary(force: Bool = false) {
