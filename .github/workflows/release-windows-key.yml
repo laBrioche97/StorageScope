@@ -71,6 +71,9 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
   macos:
+    permissions:
+      contents: read
+      actions: read
     runs-on: macos-14
     timeout-minutes: 10
     env:
