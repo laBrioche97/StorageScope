@@ -26,9 +26,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       DEVELOPER_DIR: ${{ matrix.runner == 'macos-14' && '/Applications/Xcode_16.2.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
-      # Intel CI VMs lack a Metal target architecture; allow the OS software fallback.
+      # Intel CI VMs lack a Metal archive slice; log errors and allow shader compilation.
       # This setting is scoped to the test host, never included in the application.
-      METAL_ERROR_MODE: ${{ contains(matrix.runner, 'intel') && '0' || '' }}
+      METAL_ERROR_MODE: ${{ contains(matrix.runner, 'intel') && '5' || '' }}
     timeout-minutes: 30
 
     steps:
@@ -56,7 +56,13 @@ jobs:
           TEST_BINARY="$(swift build --disable-sandbox --product StorageCoreTests --show-bin-path)/StorageCoreTests"
           "$TEST_BINARY"
 
+      - name: Configure ephemeral Intel VM graphics diagnostics
+        if: contains(matrix.runner, 'intel')
+        run: |
+          defaults write NSGlobalDomain METAL_ERROR_MODE -int 5
+          launchctl setenv METAL_ERROR_MODE 5
       - name: Verify native macOS rendering and session icons
+        timeout-minutes: 4
         run: swift run --disable-sandbox StorageScope --verify-interface "$RUNNER_TEMP/storagescope-ui"
 
       - uses: actions/upload-artifact@v5
@@ -118,7 +124,6 @@ jobs:
 
   macos-package:
     name: Build universal macOS test installer
-    needs: build-and-test
     runs-on: macos-14
     timeout-minutes: 40
     env:
@@ -126,7 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: swift build --disable-sandbox
-      - run: ./scripts/build-macos-release.sh v3.5.0 development
+      - run: ./scripts/build-macos-release.sh "v$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)" development
       - name: Preserve exact verification tools from pinned Sparkle
         run: |
           mkdir -p validation-tools
@@ -150,9 +155,9 @@ jobs:
     timeout-minutes: 20
     env:
       DEVELOPER_DIR: ${{ matrix.runner == 'macos-14' && '/Applications/Xcode_16.2.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
-      # Intel CI VMs lack a Metal target architecture; allow the OS software fallback.
+      # Intel CI VMs lack a Metal archive slice; log errors and allow shader compilation.
       # This setting is scoped to the test host, never included in the application.
-      METAL_ERROR_MODE: ${{ contains(matrix.runner, 'intel') && '0' || '' }}
+      METAL_ERROR_MODE: ${{ contains(matrix.runner, 'intel') && '5' || '' }}
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
       STORAGESCOPE_SPARKLE_SIGNER: validation-tools/sign_update
     steps:
@@ -166,6 +171,11 @@ jobs:
           chmod +x validation-tools/sign_update
           mkdir -p dist
           ditto -x -k release-assets/StorageScope-universal.zip dist
+      - name: Configure ephemeral Intel VM graphics diagnostics
+        if: contains(matrix.runner, 'intel')
+        run: |
+          defaults write NSGlobalDomain METAL_ERROR_MODE -int 5
+          launchctl setenv METAL_ERROR_MODE 5
       - run: python3 scripts/test-macos-package.py release-assets/StorageScope-macOS-universal-DEVELOPMENT.pkg
       - run: python3 scripts/test-macos-update.py
       - uses: actions/upload-artifact@v5

@@ -40,6 +40,7 @@ struct ManagedGamesPanel: View {
                     Text("Toutes les sources").tag("Toutes les sources")
                     ForEach(GameProvider.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
                 }
+                if !games.isEmpty && filteredGames.isEmpty { Text("Aucun jeu ne correspond aux filtres. Une taille inconnue est masquée lorsqu’un minimum est choisi.").foregroundStyle(.secondary) }
                 LazyVStack(alignment: .leading, spacing: 8) { ForEach(filteredGames) { game in
                     VStack(alignment: .leading, spacing: 7) {
                         HStack {

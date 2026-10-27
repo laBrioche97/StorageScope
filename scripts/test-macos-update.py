@@ -21,6 +21,10 @@ root.mkdir(exist_ok=True)
 assets = Path('release-assets').resolve()
 signer = Path(os.environ['STORAGESCOPE_SPARKLE_SIGNER']).resolve() if os.environ.get('STORAGESCOPE_SPARKLE_SIGNER') else next(Path('.build').rglob('sign_update')).resolve()
 secret = os.environ['SPARKLE_PRIVATE_KEY'] + '\n'
+candidate_info = plistlib.loads(Path('dist/StorageScope.app/Contents/Info.plist').read_bytes())
+version = candidate_info['CFBundleShortVersionString']
+build = candidate_info['CFBundleVersion']
+previous_build = str(int(build) - 1)
 
 def sign(path, verify=False, signature=None):
     args = [str(signer), '--ed-key-file', '-'] + (['--verify'] if verify else []) + [str(path)]
@@ -49,7 +53,7 @@ def feed(name, filename, edsignature):
     path = root / name
     path.write_text(f'''<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><title>Isolated validation</title>
-<item><title>StorageScope 3.5.0</title><sparkle:version>17</sparkle:version><sparkle:shortVersionString>3.5.0</sparkle:shortVersionString>
+<item><title>StorageScope {version}</title><sparkle:version>{build}</sparkle:version><sparkle:shortVersionString>{version}</sparkle:shortVersionString>
 <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
 <enclosure url="{base}/{filename}" sparkle:edSignature="{edsignature}" length="{(root / filename).stat().st_size}" type="application/octet-stream"/>
 </item></channel></rss>''', encoding='utf-8')
@@ -67,7 +71,7 @@ def launch_scenario(name, should_succeed):
     subprocess.run(['ditto', 'dist/StorageScope.app', str(app)], check=True)
     info_file = app / 'Contents/Info.plist'
     info = plistlib.loads(info_file.read_bytes())
-    info.update(CFBundleVersion='16', CFBundleShortVersionString='3.4.99',
+    info.update(CFBundleVersion=previous_build, CFBundleShortVersionString='0.0.1',
         StorageScopeValidationFeedURL=base + '/' + name + '.xml',
         NSAppTransportSecurity={'NSAllowsLocalNetworking': True})
     info_file.write_bytes(plistlib.dumps(info))
@@ -81,13 +85,13 @@ def launch_scenario(name, should_succeed):
         while time.monotonic() < deadline:
             content = events.read_text() if events.exists() else ''
             current = plistlib.loads(info_file.read_bytes())['CFBundleVersion'] if info_file.exists() else ''
-            if should_succeed and current == '17':
+            if should_succeed and current == build:
                 process.wait(timeout=30)
                 subprocess.run([str(app / 'Contents/MacOS/StorageScope'), '--verify-installation'], check=True, timeout=35, stdout=output, stderr=output)
                 assert 'accepted' in content and 'ready' in content
-                return {'installedVersion':'3.5.0', 'realSparkleReplacement':True, 'newVersionStarts':True}
+                return {'installedVersion':version, 'realSparkleReplacement':True, 'newVersionStarts':True}
             if not should_succeed and 'failed:' in content:
-                assert current == '16', 'Failed verification must leave the old application in place'
+                assert current == previous_build, 'Failed verification must leave the old application in place'
                 return {'rejected':True, 'previousVersionPreserved':True}
             if process.poll() is not None:
                 raise AssertionError(f'{name}: process exited before expected outcome; {content}; { (folder / "process.log").read_text()[-4000:] }')

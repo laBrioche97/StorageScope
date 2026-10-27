@@ -16,7 +16,9 @@ binary = app / 'Contents/MacOS/StorageScope'
 report = Path(os.environ['RUNNER_TEMP']) / 'storagescope-package-validation.json'
 subprocess.run(['sudo', 'installer', '-pkg', str(package), '-target', '/'], check=True, timeout=120)
 info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-assert info['CFBundleShortVersionString'] == '3.5.0'
+expected = plistlib.loads(Path('Packaging/Info.plist').read_bytes())
+assert info['CFBundleShortVersionString'] == expected['CFBundleShortVersionString']
+assert info['CFBundleVersion'] == expected['CFBundleVersion']
 assert info['CFBundleIdentifier'] == 'com.labrioche.StorageScope'
 assert info['LSMinimumSystemVersion'] == '14.0' and info['SURequireSignedFeed']
 architectures = subprocess.check_output(['lipo', '-archs', str(binary)], text=True).split()

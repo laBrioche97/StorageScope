@@ -2,16 +2,24 @@
 
 StorageScope est une application native pour **macOS et Windows**, locale et sans télémétrie, qui répond à une question simple : **qu’est-ce qui occupe réellement le stockage de cet ordinateur ?**
 
-La version 3.2 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
+La version 3.5 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
 
 ## Installer StorageScope 3
 
 Ouvrir [Téléchargements](https://labrioche.tech/telechargements) depuis un ordinateur compatible, puis cliquer sur **Télécharger StorageScope**. Le site ne propose aucun fichier si la plateforme n'est pas prise en charge ou si son installateur n'est pas publié.
 
 - **Windows 10 version 2004 ou ultérieur / Windows 11, x64 ou ARM64** : ouvrir l’installateur proposé ; la distribution actuelle sans certificat Windows porte le nom `StorageScope-Windows-Setup-DEVELOPMENT.exe`. Il choisit le processeur natif, inclut .NET et conserve une seule version après validation du remplacement. Windows peut afficher SmartScreen.
-- **macOS 14 ou ultérieur, Intel ou Apple Silicon** : ouvrir `StorageScope-macOS-universal.pkg`. Le paquet universel installe le logiciel dans Applications. L'Accès complet au disque reste une permission explicite dans les réglages macOS.
+- **macOS 14 ou ultérieur, Intel ou Apple Silicon** : ouvrir `StorageScope-macOS-universal-DEVELOPMENT.pkg` (version de test). Le paquet universel installe le logiciel dans Applications. L'Accès complet au disque reste une permission explicite dans les réglages macOS.
 
-Le premier passage depuis une version 3.0/3.1 nécessite cet installateur. La version Windows 3.2 embarque une clé publique de mise à jour : nouveautés, acceptation, contrôle du manifeste signé et du paquet, installation puis redémarrage. **Plus tard** laisse la version actuelle utilisable. Le démarrage, l’analyse et le nettoyage n’exigent ni réseau ni compte. Aucun paquet macOS n’est annoncé tant que ses signatures et sa notarisation ne sont pas activées.
+Le premier passage depuis une version 3.0/3.1 nécessite cet installateur. La version Windows 3.2 embarque une clé publique de mise à jour : nouveautés, acceptation, contrôle du manifeste signé et du paquet, installation puis redémarrage. **Plus tard** laisse la version actuelle utilisable. Le démarrage, l’analyse et le nettoyage n’exigent ni réseau ni compte. La distribution macOS 3.5.0 est une version de test : application signée ad hoc, sans certificat Developer ID ni notarisation Apple. Une autorisation individuelle dans Réglages Système → Confidentialité et sécurité peut être nécessaire pour le paquet puis le premier lancement. Garder Gatekeeper activé. Sparkle vérifie les archives et le flux de mise à jour avec une clé Ed25519 dédiée ; cette authentification ne remplace pas la signature Apple. Les versions ultérieures peuvent nécessiter une nouvelle autorisation macOS, notamment pour l’accès complet au disque.
+
+## Sur Mac : réactivité et diagnostics
+
+Les tailles sont mesurées en arrière-plan indépendamment de l’analyse globale, avec deux installations simultanées au maximum. Les liens ne sont pas suivis et les emplacements cloud sont exclus. Les tailles inconnues, partielles et réellement nulles restent distinctes ; les blocs alloués APFS ne constituent pas une promesse de gain après suppression.
+
+Les logos des cartes visibles utilisent un cache de session limité à 64 Mio supplémentaires, partagé lors des actualisations. Les tris sont préparés hors du thread d’interface. Le retour au premier plan conserve les dossiers en cache si les stockages n’ont pas changé.
+
+Le menu **Plus** permet d’ouvrir et d’exporter `~/Library/Application Support/StorageScope/Diagnostics/StorageScope-crashes.log` : rotation à 2 Mio, cinq sauvegardes, version et étapes, exceptions Objective-C lorsque disponibles. Les arrêts natifs sont signalés par un marqueur de session au lancement suivant ; leur code de sortie peut rester inconnu. Les rapports natifs complets de macOS restent consultables dans Console. Aucun rapport ni fichier personnel n’est envoyé automatiquement.
 
 ## Nettoyer et désinstaller
 

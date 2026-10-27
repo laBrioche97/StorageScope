@@ -35,6 +35,7 @@ struct ApplicationsView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            if model.applicationsAreLoading { ProgressView().controlSize(.small).accessibilityLabel("Actualisation des applications") }
                             Button("Actualiser les applications", systemImage: "arrow.clockwise") { model.loadApplications() }
                         }
                         Text("Les caches reconnus peuvent être sélectionnés. Les réglages, sauvegardes et autres données personnelles restent décochés ; les composants partagés restent protégés.")
@@ -43,6 +44,10 @@ struct ApplicationsView: View {
                         Picker("Applications", selection: $model.applicationProtectionFilter) {
                             Text("Toutes").tag(0); Text("Désinstallables").tag(1); Text("Protégées").tag(2)
                         }.pickerStyle(.segmented)
+                        if filteredApplications.isEmpty && !model.applicationsAreLoading {
+                            ContentUnavailableView("Aucune application à afficher", systemImage: "app.dashed", description: Text(model.applications.isEmpty ? "Actualisez pour rechercher les applications de ce Mac." : "Aucune application ne correspond à ces filtres. Les tailles encore inconnues sont masquées lorsqu’un minimum est choisi."))
+                            if !model.applications.isEmpty { Button("Effacer les filtres") { model.resetSectionFilters(); model.applicationProtectionFilter = 0 } }
+                        }
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
                             ForEach(filteredApplications) { application in
                                 ApplicationCard(application: application)
@@ -85,7 +90,7 @@ private struct ApplicationCard: View {
                 Button("Finder") { NSWorkspace.shared.activateFileViewerSelecting([application.bundleURL]) }
                 Spacer()
                 Button("Désinstaller proprement…", role: .destructive) { model.prepareUninstall(application) }
-                    .disabled(application.isProtected)
+                    .disabled(application.isProtected || model.operationsAreBusy)
             }
         }
         .task(id: model.applicationIconRevision) { await model.loadApplicationIcon(application) }

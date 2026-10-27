@@ -1,4 +1,4 @@
-# Distribution signée de StorageScope 3
+# Distribution de StorageScope 3.5
 
 ## Construire et vérifier
 
@@ -17,7 +17,13 @@ zsh scripts/build-app.sh
 
 `-Development` construit un paquet de test sans manifeste signé. Depuis la version 3.2, `-KeySigned` construit une distribution Windows avec manifeste RSA-PSS signé et vérification d’intégrité, même en l’absence de certificat Authenticode. La clé publique doit être préalablement commitée et correspondre au secret de publication. Ne jamais annoncer ces paquets comme exempts de SmartScreen ou Gatekeeper.
 
-Pour publier Windows avec cette clé dédiée, lancer manuellement **Publish Windows release with verified update manifest** (`release-windows-key.yml`) avec le tag stable. Le workflow exige les tests Windows/macOS, la corbeille réelle sur fixtures, le remplacement échoué, le maintien de l’ancienne version, le remplacement réussi et le redémarrage. Il publie ensemble l’installateur `DEVELOPMENT`, son empreinte, `windows-update.json` et sa signature. Aucun paquet macOS incomplet n’est ajouté.
+Pour la distribution de test Windows et Mac, le workflow **Publish validated desktop installers and authenticated updates** (`release-windows-key.yml`) exige un tag et l’identifiant d’une CI réussie pour le même commit. Cette CI construit un paquet macOS universel puis installe et teste ce paquet sur macOS 14 Apple Silicon, macOS 15 Intel et macOS 26 Apple Silicon. Le paquet validé est réutilisé à l’identique lors de la publication. La release brouillon n’est rendue publique qu’avec les deux installateurs, leurs empreintes et les métadonnées de mise à jour.
+
+Le mode Mac `development` de `scripts/build-macos-release.sh` est explicite : application signée ad hoc, paquet `StorageScope-macOS-universal-DEVELOPMENT.pkg` sans Developer ID ni notarisation. Le mode `production` reste distinct et échoue si les certificats ou la notarisation manquent. Aucun contournement de Gatekeeper ni suppression de quarantaine du téléchargement n’est requis.
+
+L’archive universelle et le flux Sparkle sont signés Ed25519 dans les deux modes. `SURequireSignedFeed` et `SUVerifyUpdateBeforeExtraction` sont activés. La clé publique est versionnée dans `Packaging/sparkle-public-key.txt`, le secret privé reste dans GitHub Actions. Une signature ad hoc peut nécessiter une réautorisation TCC après mise à jour ; elle n’identifie pas l’éditeur auprès d’Apple.
+
+Les hôtes Intel virtualisés ont un pilote Metal sans architecture cible. `METAL_ERROR_MODE=5` est limité à ces jobs de test pour journaliser les avertissements et permettre la compilation des shaders de secours ; cette variable n’est jamais intégrée à l’application. Les captures et les démarrages du paquet restent obligatoires. Ces tests ne certifient pas 60 images/s sur un Mac physique ni tous les parcours VoiceOver.
 
 ## Configurer les signatures avant la première publication
 
@@ -35,11 +41,11 @@ Configurer ces **secrets GitHub Actions**, sans les commiter :
 | `APPLE_API_KEY_P8_BASE64`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` | Accès à la notarisation Apple |
 | `SPARKLE_PRIVATE_KEY` | Clé privée Ed25519 exportée par les outils Sparkle ; conserver son format base64 original |
 
-Configurer également la **variable** GitHub Actions `SPARKLE_PUBLIC_KEY`, fournie par `generate_keys` de Sparkle. Générer les clés dans un environnement de confiance et sauvegarder leurs originaux de manière sécurisée. Les outils de génération des clés ne sont jamais lancés implicitement par la publication.
+Le workflow de production peut également utiliser la **variable** GitHub Actions `SPARKLE_PUBLIC_KEY` ; elle doit correspondre à la clé publique versionnée. Générer les clés dans un environnement de confiance et sauvegarder leurs originaux de manière sécurisée. Les outils de génération des clés ne sont jamais lancés implicitement par la publication.
 
 Le script Windows vérifie que la clé privée correspond au PEM public commité et embarqué. Un build Authenticode embarque aussi le sujet exact de son certificat ; après activation de cette identité, le client refuse une rétrogradation vers un paquet non signé. La clé privée reste dans les secrets GitHub Actions. Un changement de clé nécessite une transition via une version encore approuvée ou une réinstallation manuelle.
 
-Le bundle macOS embarque `SUPublicEDKey`. Sparkle vérifie la signature EdDSA avant extraction ; les applications sont signées Developer ID et notariées. Les téléchargements automatiques sans consentement sont désactivés. Un redémarrage demandé par une mise à jour est reporté pendant une opération locale.
+Le bundle macOS embarque `SUPublicEDKey`. Sparkle vérifie la signature EdDSA avant extraction ; les applications du mode production sont signées Developer ID et notariées ; le mode développement conserve la mention de test. Les téléchargements automatiques sans consentement sont désactivés. Un redémarrage demandé par une mise à jour est reporté pendant une opération locale.
 
 La signature Authenticode ne garantit pas l’absence immédiate de SmartScreen : la réputation de l’éditeur et des fichiers reste évaluée par Windows. Aucun contournement de SmartScreen, de Gatekeeper ou de la quarantaine n’est ajouté.
 

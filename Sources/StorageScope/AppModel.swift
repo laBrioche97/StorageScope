@@ -536,7 +536,8 @@ final class AppModel: ObservableObject {
     }
 
     func installationSize(at url: URL, declaredBytes: Int64? = nil) -> InstallationSize {
-        installationSizes[url.standardizedFileURL.path] ?? InstallationSize(bytes: declaredBytes, state: declaredBytes == nil ? .calculating : .declared)
+        if let measured = installationSizes[url.standardizedFileURL.path], measured.state != .unavailable || declaredBytes == nil { return measured }
+        return InstallationSize(bytes: declaredBytes, state: declaredBytes == nil ? .calculating : .declared)
     }
 
     func loadApplications() {
@@ -619,6 +620,7 @@ final class AppModel: ObservableObject {
     }
 
     func prepareUninstall(_ application: InstalledApplication) {
+        guard !operationsAreBusy else { alertMessage = "Terminez l’opération en cours avant de préparer une désinstallation."; return }
         showingUninstall = true
         uninstallIsWorking = true
         uninstallPlan = nil
