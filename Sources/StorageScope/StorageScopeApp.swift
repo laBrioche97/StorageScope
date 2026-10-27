@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct StorageScopeApp: App {
+    @NSApplicationDelegateAdaptor(DiagnosticLifecycle.self) private var lifecycle
     @StateObject private var model = AppModel()
     @StateObject private var updates = SoftwareUpdates()
 

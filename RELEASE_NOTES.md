@@ -1,13 +1,11 @@
-# StorageScope 3.4.4
+# StorageScope 3.5.0
 
-- Désinstallation officielle des composants NVIDIA CUDA 12 reconnus : développement, documentation, runtime et intégration Visual Studio. Vérification de l’enregistrement, des signatures Microsoft/NVIDIA, des architectures et de l’identité de l’exécutable et de la DLL avant lancement. Les autres commandes utilisant un interpréteur restent bloquées.
-- Chaque désinstallation cible le composant choisi, ouvre l’interface NVIDIA et ne réussit qu’après vérification de la disparition de ses enregistrements. Annuler dans StorageScope arrête uniquement le suivi. Les dossiers CUDA partagés sont signalés ; leur taille ne garantit pas l’espace libéré. Aucun dossier CUDA ni pilote graphique n’est effacé directement.
-- Navigation avec zoom doux et fondu de 220 ms. Le contenu reste visible pendant la lecture du dossier suivant ; l’état de lecture apparaît immédiatement et la brioche après 150 ms si nécessaire.
-- Cache de session des 32 derniers dossiers, limité à 64 Mio supplémentaires, avec disposition des bulles, sélection et défilement. Les vues en cache sont réaffichées immédiatement puis revalidées en arrière-plan. Les actualisations, analyses, nettoyages, désinstallations et changements de stockage invalident les vues concernées.
-- Réutilisation des contrôles des bulles et transitions discrètes des sections et commandes. Les préférences de réduction des animations sont respectées ; les transitions Windows sont également désactivées en contraste élevé.
+- Première distribution macOS universelle : Intel et Apple Silicon, macOS 14 minimum. Application native SwiftUI utilisable hors ligne.
+- Tailles des applications et jeux calculées progressivement, indépendamment de l’analyse du disque ; distinction mesurée, déclarée, partielle ou indisponible.
+- Logos conservés pendant les actualisations, lectures et tris en arrière-plan, conservation des vues de l’explorateur lorsque l’application revient au premier plan.
+- Diagnostics locaux exportables, rotation des journaux et signalement des sessions interrompues. Aucun envoi automatique.
+- Mises à jour Mac avec Sparkle : archives et flux signés Ed25519, vérification à chaque lancement, installation après accord.
+- Distribution Mac de test : application signée ad hoc, installateur sans certificat Developer ID ni notarisation Apple. macOS peut demander une autorisation individuelle dans Réglages Système > Confidentialité et sécurité. Ne désactivez pas les protections du système.
+- Installateur Windows x64/ARM64 maintenu avec vérification RSA des mises à jour. Absence de signature Authenticode ; SmartScreen peut afficher un avertissement.
 
-## Installation et confiance
-
-Téléchargez l’installateur Windows depuis https://labrioche.tech/telechargements puis ouvrez-le. Il sélectionne la version native x64 ou ARM64. Depuis 3.4.3, l’icône près du numéro de version recherche cette mise à jour à chaque ouverture et permet de l’installer.
-
-Le paquet et ses métadonnées sont vérifiés par la clé de mise à jour StorageScope. L’installateur Windows reste sans signature Authenticode d’éditeur : Windows peut afficher un avertissement SmartScreen. Aucun paquet macOS non validé et non signé/notarié n’est annoncé.
+Les sauvegardes restent conservées par défaut. Les tailles allouées APFS ne garantissent pas un gain équivalent d’espace libre (clones et instantanés). Les composants privilégiés et les désinstallations sans méthode officielle vérifiable restent protégés.

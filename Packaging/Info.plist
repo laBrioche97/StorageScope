@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>3.4.4</string>
+    <string>3.5.0</string>
     <key>CFBundleVersion</key>
-    <string>16</string>
+    <string>17</string>
     <key>SUFeedURL</key>
     <string>https://github.com/laBrioche97/StorageScope/releases/latest/download/appcast.xml</string>
     <key>SUEnableAutomaticChecks</key>
@@ -32,6 +32,8 @@
     <false/>
     <key>SUSendProfileInfo</key>
     <false/>
+    <key>SURequireSignedFeed</key>
+    <true/>
     <key>SUVerifyUpdateBeforeExtraction</key>
     <true/>
     <key>CFBundleSupportedPlatforms</key>

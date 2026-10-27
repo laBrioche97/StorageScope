@@ -6,12 +6,12 @@ import SwiftUI
 
 enum SidebarSection: String, CaseIterable, Identifiable {
     case applications = "Applications et jeux"
-    case overview = "Vue d’ensemble"
+    case overview = "Vue dâ€™ensemble"
     case explorer = "Explorateur"
     case largestFiles = "Plus gros fichiers"
     case largestFolders = "Plus gros dossiers"
-    case categories = "Catégories"
-    case cleanup = "Nettoyage conseillé"
+    case categories = "CatÃ©gories"
+    case cleanup = "Nettoyage conseillÃ©"
     case volumes = "Volumes"
     case lastScan = "Dernier scan"
     var id: String { rawValue }
@@ -45,7 +45,7 @@ enum SizeFilter: Int64, CaseIterable, Identifiable {
 }
 
 enum ItemSort: String, CaseIterable, Identifiable {
-    case allocated = "Taille décroissante"
+    case allocated = "Taille dÃ©croissante"
     case smallest = "Taille croissante"
     case name = "Nom"
     case type = "Type"
@@ -171,7 +171,7 @@ final class AppModel: ObservableObject {
             explorerHistory = Array(explorerHistory.prefix(explorerHistoryPosition + 1)); explorerHistory.append(directory); explorerHistoryPosition = explorerHistory.count - 1
         }
         explorerPendingDirectory = nil; explorerLoaderVisible = false; loaderTask?.cancel()
-        bubbleMessage = view.frame?.totalBytes.map { ByteCountFormatter.storage.string(fromByteCount: $0) + (view.frame?.isPartial == true ? " · analyse partielle" : " · tailles mesurées") } ?? "Tailles inconnues · analysez le disque pour compléter les bulles."
+        bubbleMessage = view.frame?.totalBytes.map { ByteCountFormatter.storage.string(fromByteCount: $0) + (view.frame?.isPartial == true ? " Â· analyse partielle" : " Â· tailles mesurÃ©es") } ?? "Tailles inconnues Â· analysez le disque pour complÃ©ter les bulles."
         navigationBack = back
         if animate && previous != directory { navigationRevision = UUID() }
     }
@@ -222,6 +222,20 @@ final class AppModel: ObservableObject {
     private let cache = ScanCache()
     private let trashService = TrashService()
     private let applicationDiscovery = ApplicationDiscoveryService()
+    let gameAdapter = LocalGameLibraryAdapter()
+    @Published var managedGames: [ManagedGame] = []
+    @Published private(set) var applicationsByName: [InstalledApplication] = []
+    @Published private(set) var applicationsLargest: [InstalledApplication] = []
+    @Published private(set) var applicationsSmallest: [InstalledApplication] = []
+    @Published private(set) var gamesByName: [ManagedGame] = []
+    @Published private(set) var gamesLargest: [ManagedGame] = []
+    @Published private(set) var gamesSmallest: [ManagedGame] = []
+    @Published var installationSizes: [String: InstallationSize] = [:]
+    @Published var gameIcons: [String: NSImage] = [:]
+    private var applicationsTask: Task<Void, Never>?
+    private var applicationsGeneration = UUID()
+    private var volumeRefreshTask: Task<Void, Never>?
+    private var volumeRefreshGeneration = UUID()
     private let uninstallService = UninstallService()
     private var scanTask: Task<Void, Never>?
     private var browseTask: Task<Void, Never>?
@@ -239,7 +253,7 @@ final class AppModel: ObservableObject {
     private var explorerHistory: [URL] = []
     private var explorerHistoryPosition = -1
     private var navigatingHistory = false
-    @Published var bubbleMessage = "Préparation du graphique…"
+    @Published var bubbleMessage = "PrÃ©paration du graphiqueâ€¦"
     @Published var bubbleRemainderPaths: Set<String>?
     private var bubbleTask: Task<Void, Never>?
     private var bubbleGeneration = UUID()
@@ -341,6 +355,7 @@ final class AppModel: ObservableObject {
     }
 
     func startScan() {
+        LocalDiagnostics.shared.record(action: "analyse du stockage")
         guard !isPreviewMode, let volume = selectedVolume, !isScanning, !operationsAreBusy else { return }
         let previousCount: Int?
         if let previous = snapshot, previous.root.standardizedFileURL.path == volume.url.standardizedFileURL.path, previous.completedAt != nil {
@@ -448,7 +463,7 @@ final class AppModel: ObservableObject {
         explorerCategoryContext = nil
         directoryIndexStore = nil
         bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
-        bubbleMessage = "Préparation du graphique…"
+        bubbleMessage = "PrÃ©paration du graphiqueâ€¦"
         snapshot = nil
         liveSummary = nil
         validatedCleanupReport = nil
@@ -469,9 +484,19 @@ final class AppModel: ObservableObject {
     }
 
     func refreshVolumes() {
-        explorerViewCache.clear()
         refreshTrashSummary()
-        let refreshed = StorageService.mountedVolumes()
+        volumeRefreshTask?.cancel()
+        let generation = UUID(); volumeRefreshGeneration = generation
+        volumeRefreshTask = Task { [weak self] in
+            let refreshed = await Task.detached(priority: .utility) { StorageService.mountedVolumes() }.value
+            guard let self, !Task.isCancelled, generation == volumeRefreshGeneration else { return }
+            applyRefreshedVolumes(refreshed)
+        }
+    }
+
+    private func applyRefreshedVolumes(_ refreshed: [StorageVolume]) {
+        let previousMounts = Set(volumes.map { $0.id + "|" + $0.url.path })
+        if previousMounts != Set(refreshed.map { $0.id + "|" + $0.url.path }) { explorerViewCache.clear() }
         volumes = refreshed
         if !refreshed.contains(where: { $0.id == selectedVolumeID }) {
             explorerViewCache.clear()
@@ -479,7 +504,7 @@ final class AppModel: ObservableObject {
             bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
             currentDirectory = nil; explorerItems = []; snapshot = nil; liveSummary = nil
             choosingExplorerStorage = true
-            storageChoiceMessage = "Le stockage actif a été déconnecté. Choisissez un autre stockage."
+            storageChoiceMessage = "Le stockage actif a Ã©tÃ© dÃ©connectÃ©. Choisissez un autre stockage."
         }
     }
 
@@ -504,44 +529,95 @@ final class AppModel: ObservableObject {
         choosingExplorerStorage = false
         explorerHistory = []; explorerHistoryPosition = -1
         resetSectionFilters(); resetExplorerTemporaryList()
-        storageChoiceMessage = "Racine ouverte · historique et filtres de l’explorateur réinitialisés."
+        storageChoiceMessage = "Racine ouverte Â· historique et filtres de lâ€™explorateur rÃ©initialisÃ©s."
         currentDirectory = volume.url
         loadExplorerRoot()
     }
 
+    func installationSize(at url: URL, declaredBytes: Int64? = nil) -> InstallationSize {
+        installationSizes[url.standardizedFileURL.path] ?? InstallationSize(bytes: declaredBytes, state: declaredBytes == nil ? .calculating : .declared)
+    }
+
     func loadApplications() {
         if isPreviewMode { return }
-        guard !applicationsAreLoading else { return }
+        applicationsTask?.cancel()
+        let generation = UUID(); applicationsGeneration = generation
         applicationsAreLoading = true
         let visibleApplications = explorerItems.filter { $0.isDirectory && $0.fileExtension == "app" }.map(\.url)
         let additional = Array(encounteredApplicationURLs.union(visibleApplications))
-        Task { [weak self] in
+        applicationsTask = Task { [weak self] in
             guard let self else { return }
-            let discovered = await applicationDiscovery.discover(additionalURLs: additional)
-            if let volume = selectedVolume,
-               let store = try? DirectoryIndexStore(volumeID: volume.id, root: volume.url),
-               let summaries = try? await store.summaries(forPaths: discovered.map { $0.bundleURL.path }) {
-                applications = discovered.map { application in
-                    InstalledApplication(
-                        bundleURL: application.bundleURL,
-                        bundleIdentifier: application.bundleIdentifier,
-                        displayName: application.displayName,
-                        version: application.version,
-                        allocatedBytesUpperBound: summaries[application.bundleURL.standardizedFileURL.path]?.allocatedSize ?? 0,
-                        bundleIdentity: application.bundleIdentity,
-                        protectionReason: application.protectionReason
-                    )
-                }
-            } else {
-                applications = discovered
-            }
-            var icons: [String: NSImage] = [:]
-            for application in applications {
-                icons[application.bundleURL.path] = iconCache.image(for: application.bundleURL, version: application.version)
-            }
-            applicationIcons = icons
+            async let foundApps = applicationDiscovery.discover(additionalURLs: additional)
+            async let foundGames = gameAdapter.detect()
+            let (discovered, games) = await (foundApps, foundGames)
+            guard !Task.isCancelled, applicationsGeneration == generation else { return }
+            applications = discovered
+            managedGames = games
+            let paths = Set((discovered.map(\.bundleURL) + games.map(\.installURL)).map { $0.standardizedFileURL.path })
+            installationSizes = installationSizes.filter { paths.contains($0.key) }
+            applicationIcons = applicationIcons.filter { paths.contains($0.key) }
+            gameIcons = gameIcons.filter { key, _ in games.contains { $0.id == key } }
+            await prepareInstallationOrder(generation: generation)
+            guard !Task.isCancelled, applicationsGeneration == generation else { return }
             applicationsAreLoading = false
+            // Both inventories share ONE bounded group, never four simultaneous directory walks.
+            async let sizes: Void = InstallationSizeService.measureAll(discovered.map(\.bundleURL) + games.map(\.installURL)) { [weak self] batch in
+                await self?.publishInstallationSizes(batch, generation: generation)
+            }
+            for application in discovered {
+                guard !Task.isCancelled, applicationsGeneration == generation else { return }
+                let image = await iconCache.load(for: application.bundleURL, version: application.version)
+                guard !Task.isCancelled, applicationsGeneration == generation else { return }
+                applicationIcons[application.bundleURL.path] = image
+                try? await Task.sleep(for: .milliseconds(8))
+            }
+            for game in games {
+                guard !Task.isCancelled, applicationsGeneration == generation else { return }
+                let root = game.installURL
+                let bundle = await Task.detached(priority: .utility) {
+                    if root.pathExtension == "app" { return root }
+                    return (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey]))?.prefix(100).first {
+                        $0.pathExtension == "app" && (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true
+                    }
+                }.value
+                if let bundle {
+                    let image = await iconCache.load(for: bundle)
+                    guard !Task.isCancelled, applicationsGeneration == generation else { return }
+                    gameIcons[game.id] = image
+                }
+                await Task.yield()
+            }
+            await sizes
         }
+    }
+
+    private func publishInstallationSizes(_ batch: [String: InstallationSize], generation: UUID) async {
+        guard applicationsGeneration == generation else { return }
+        installationSizes.merge(batch) { _, new in new }
+        await prepareInstallationOrder(generation: generation)
+    }
+
+    private func prepareInstallationOrder(generation: UUID) async {
+        let apps = applications, games = managedGames, sizes = installationSizes
+        let prepared = await Task.detached(priority: .utility) {
+            func before(_ left: Int64?, _ right: Int64?, small: Bool) -> Bool? {
+                if (left == nil) != (right == nil) { return left != nil }
+                if left != right { return small ? (left ?? 0) < (right ?? 0) : (left ?? 0) > (right ?? 0) }
+                return nil
+            }
+            func appOrder(_ small: Bool) -> [InstalledApplication] {
+                apps.sorted { before(sizes[$0.bundleURL.path]?.bytes, sizes[$1.bundleURL.path]?.bytes, small: small)
+                    ?? ($0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending) }
+            }
+            func gameOrder(_ small: Bool) -> [ManagedGame] {
+                games.sorted { before(sizes[$0.installURL.path]?.bytes ?? $0.estimatedBytes, sizes[$1.installURL.path]?.bytes ?? $1.estimatedBytes, small: small)
+                    ?? ($0.name.localizedStandardCompare($1.name) == .orderedAscending) }
+            }
+            return (apps.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }, appOrder(false), appOrder(true),
+                games.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }, gameOrder(false), gameOrder(true))
+        }.value
+        guard applicationsGeneration == generation else { return }
+        (applicationsByName, applicationsLargest, applicationsSmallest, gamesByName, gamesLargest, gamesSmallest) = prepared
     }
 
     func prepareUninstall(_ application: InstalledApplication) {
@@ -573,7 +649,7 @@ final class AppModel: ObservableObject {
                 guard let discovered = await applicationDiscovery.application(at: item.url) else {
                     showingUninstall = false
                     uninstallIsWorking = false
-                    alertMessage = "Cette application n’a pas pu être identifiée de façon sûre."
+                    alertMessage = "Cette application nâ€™a pas pu Ãªtre identifiÃ©e de faÃ§on sÃ»re."
                     return
                 }
                 prepareUninstall(discovered)
@@ -582,6 +658,7 @@ final class AppModel: ObservableObject {
     }
 
     func performUninstall(requestQuitIfRunning: Bool = true) {
+        LocalDiagnostics.shared.record(action: "désinstallation d’application")
         guard let plan = uninstallPlan, plan.canProceed, !uninstallIsWorking else { return }
         uninstallIsWorking = true
         Task { [weak self] in
@@ -804,7 +881,7 @@ final class AppModel: ObservableObject {
                 requestTrash(items: validatedItems)
             } catch {
                 duplicateError = error.localizedDescription
-                alertMessage = "Les doublons ont changé depuis l’analyse : \(error.localizedDescription)"
+                alertMessage = "Les doublons ont changÃ© depuis lâ€™analyse : \(error.localizedDescription)"
             }
         }
     }
@@ -958,11 +1035,11 @@ final class AppModel: ObservableObject {
             return
         }
         if !applications.isEmpty {
-            alertMessage = "Une sélection contenant une application ne peut pas utiliser la suppression générique. Désinstallez chaque application séparément."
+            alertMessage = "Une sÃ©lection contenant une application ne peut pas utiliser la suppression gÃ©nÃ©rique. DÃ©sinstallez chaque application sÃ©parÃ©ment."
             return
         }
         if normalized.contains(where: { !$0.isTrashable }) {
-            alertMessage = "La sélection contient un élément système protégé."
+            alertMessage = "La sÃ©lection contient un Ã©lÃ©ment systÃ¨me protÃ©gÃ©."
         } else {
             Task { [weak self] in
                 guard let self else { return }
@@ -970,7 +1047,7 @@ final class AppModel: ObservableObject {
                 guard generation == trashRequestGeneration else { return }
                 let failures = preflights.filter { !$0.isReady }
                 guard failures.isEmpty else {
-                    alertMessage = "La suppression a été bloquée avant confirmation.\n"
+                    alertMessage = "La suppression a Ã©tÃ© bloquÃ©e avant confirmation.\n"
                         + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
                     return
                 }
@@ -1014,7 +1091,7 @@ final class AppModel: ObservableObject {
                 }
             }
             let failures = results.filter { $0.status == .failed }
-            alertMessage = "\(succeeded.count) élément(s) dans la Corbeille, \(failures.count) échec(s). L’espace sera libéré après vidage de la Corbeille.\n" + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
+            alertMessage = "\(succeeded.count) Ã©lÃ©ment(s) dans la Corbeille, \(failures.count) Ã©chec(s). Lâ€™espace sera libÃ©rÃ© aprÃ¨s vidage de la Corbeille.\n" + failures.prefix(3).compactMap(\.errorDescription).joined(separator: "\n")
         }
     }
 
@@ -1086,7 +1163,7 @@ final class AppModel: ObservableObject {
     func openCategory(_ category: ItemCategory) {
         sort = .allocated
         guard let report = displayedCategoryReport else {
-            alertMessage = "Une analyse est nécessaire pour afficher les principaux fichiers de cette catégorie."
+            alertMessage = "Une analyse est nÃ©cessaire pour afficher les principaux fichiers de cette catÃ©gorie."
             return
         }
         categoryFilter = category
@@ -1198,7 +1275,7 @@ extension AppModel {
         do {
             let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)
             loadBubbleFrame(currentDirectory ?? volume.url, store: store)
-        } catch { bubbleMessage = error.localizedDescription }
+        } catch { LocalDiagnostics.shared.record(action: "préparation de l’explorateur", error: error); bubbleMessage = error.localizedDescription }
     }
 
     private func loadBubbleFrame(_ directory: URL, store: DirectoryIndexStore) {
@@ -1218,13 +1295,13 @@ extension AppModel {
                 guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volumeID, currentDirectory?.path == directory.path else { return }
                 bubbleFrame = frame
                 if frame.totalBytes == nil {
-                    bubbleMessage = isScanning ? "Analyse du disque… Les tailles se précisent en arrière-plan." : "Tailles des dossiers inconnues. Analysez le disque pour compléter le graphique."
+                    bubbleMessage = isScanning ? "Analyse du disqueâ€¦ Les tailles se prÃ©cisent en arriÃ¨re-plan." : "Tailles des dossiers inconnues. Analysez le disque pour complÃ©ter le graphique."
                     if !isScanning, !operationsAreBusy, !autoScanAttempts.contains(volumeID) {
                         autoScanAttempts.insert(volumeID); startScan()
                     }
-                } else { bubbleMessage = (frame.isPartial ? "Analyse partielle" : "Tailles mesurées") + " · Dossiers et fichiers de ce niveau" }
+                } else { bubbleMessage = (frame.isPartial ? "Analyse partielle" : "Tailles mesurÃ©es") + " Â· Dossiers et fichiers de ce niveau" }
             } catch is CancellationError { }
-            catch { if bubbleGeneration == generation { bubbleFrame = nil; bubbleMessage = "Graphique indisponible. La liste reste accessible." } }
+            catch { LocalDiagnostics.shared.record(action: "graphique de l’explorateur", error: error); if bubbleGeneration == generation { bubbleFrame = nil; bubbleMessage = "Graphique indisponible. La liste reste accessible." } }
         }
     }
 
@@ -1243,7 +1320,7 @@ extension AppModel {
         if isScanning { stopScan() }
         if let volume = selectedVolume { autoScanAttempts.insert(volume.id) }
         explorerIsLoading = false; bubbleIsLoading = false
-        bubbleMessage = "Chargement annulé. Ouvrez un dossier ou relancez l’analyse pour reprendre."
+        bubbleMessage = "Chargement annulÃ©. Ouvrez un dossier ou relancez lâ€™analyse pour reprendre."
     }
 
     func browseHistory(_ direction: Int) {
@@ -1278,28 +1355,28 @@ extension AppModel {
     }
 
     func selectRecognizedTemporaries() {
-        guard !operationsAreBusy else { cleanupActionMessage = "Terminez ou annulez l’opération en cours."; return }
-        guard let report = displayedCleanupReport else { cleanupActionMessage = "Calcul du nettoyage conseillé…"; calculateCleanup(); return }
+        guard !operationsAreBusy else { cleanupActionMessage = "Terminez ou annulez lâ€™opÃ©ration en cours."; return }
+        guard let report = displayedCleanupReport else { cleanupActionMessage = "Calcul du nettoyage conseillÃ©â€¦"; calculateCleanup(); return }
         resetSectionFilters()
         let allowed: Set<CleanupSuggestionKind> = [.xcodeDerivedData, .toolCaches, .applicationCaches, .diagnosticReports]
         let items = report.suggestions.filter { allowed.contains($0.id) && $0.confidence == .high && $0.action == .reviewAndTrash }.flatMap(\.items).filter(\.isTrashable)
         cleanupSelectedIDs = Set(SelectionNormalizer.normalize(items).map(\.id))
-        cleanupActionMessage = items.isEmpty ? "Aucun temporaire reconnu admissible. Les documents et sauvegardes restent conservés." : "\(cleanupSelectedIDs.count) élément(s) sélectionné(s). Examinez la sélection avant de nettoyer. Les filtres ont été réinitialisés."
+        cleanupActionMessage = items.isEmpty ? "Aucun temporaire reconnu admissible. Les documents et sauvegardes restent conservÃ©s." : "\(cleanupSelectedIDs.count) Ã©lÃ©ment(s) sÃ©lectionnÃ©(s). Examinez la sÃ©lection avant de nettoyer. Les filtres ont Ã©tÃ© rÃ©initialisÃ©s."
     }
 
     func chooseDuplicateDirectory() {
-        guard !operationsAreBusy else { duplicateError = "Terminez ou annulez l’opération en cours."; return }
+        guard !operationsAreBusy else { duplicateError = "Terminez ou annulez lâ€™opÃ©ration en cours."; return }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
-        panel.message = "Choisissez un dossier personnel. Les contenus seront comparés ; aucun fichier ne sera supprimé."
+        panel.message = "Choisissez un dossier personnel. Les contenus seront comparÃ©s ; aucun fichier ne sera supprimÃ©."
         guard panel.runModal() == .OK, let directory = panel.url else { return }
         startDuplicateAnalysis(directory: directory)
     }
 
     var trashSummaryLabel: String {
-        guard let summary = trashSummary else { return trashSummaryIsLoading ? "Corbeille · Calcul en cours" : "Corbeille · Indisponible" }
-        if summary.items.isEmpty && !summary.issues.isEmpty { return "Corbeille · Indisponible" }
+        guard let summary = trashSummary else { return trashSummaryIsLoading ? "Corbeille Â· Calcul en cours" : "Corbeille Â· Indisponible" }
+        if summary.items.isEmpty && !summary.issues.isEmpty { return "Corbeille Â· Indisponible" }
         let partial = !summary.issues.isEmpty || summary.wasCancelled
-        return "Corbeille · " + (partial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
+        return "Corbeille Â· " + (partial ? "â‰ˆ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
     }
 
     func refreshTrashSummary(force: Bool = false) {
