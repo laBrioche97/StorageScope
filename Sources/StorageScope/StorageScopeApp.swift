@@ -15,7 +15,11 @@ struct StorageScopeApp: App {
                 .onChange(of: model.localOperationsAreBusy) { _, busy in updates.activityChanged(busy) }
                 .onChange(of: updates.installing) { _, busy in model.updateIsWorking = busy }
                 .task {
-                    if model.isPreviewMode {
+                    PackagedValidation.recordUpdate("application-started-v" + AppIdentity.version)
+                    if CommandLine.arguments.contains("--verify-installation") {
+                        do { try PackagedValidation.run(); exit(0) }
+                        catch { print("Packaged installation validation failed: \(error)"); exit(1) }
+                    } else if model.isPreviewMode {
                         do { try await NativeInterfaceValidation.run(); exit(0) }
                         catch { print("Native interface validation failed: \(error)"); exit(1) }
                     } else { await model.restoreLastScan() }
@@ -23,7 +27,7 @@ struct StorageScopeApp: App {
         }
         .commands {
             CommandGroup(after: .appInfo) {
-                Button("Rechercher des mises à jour…") { updates.check() }
+                Button("Rechercher des mises Ã  jourâ€¦") { updates.check() }
                     .disabled(model.operationsAreBusy)
             }
             CommandGroup(after: .newItem) {
@@ -32,10 +36,10 @@ struct StorageScopeApp: App {
                     .disabled(model.isScanning)
             }
             CommandGroup(after: .textEditing) {
-                Button("Mettre la sélection à la corbeille") { model.requestTrashSelection() }
+                Button("Mettre la sÃ©lection Ã  la corbeille") { model.requestTrashSelection() }
                     .keyboardShortcut(.delete, modifiers: .command)
                     .disabled(model.selectedItems.isEmpty)
-                Button("Aperçu Quick Look") { model.quickLookSelection() }
+                Button("AperÃ§u Quick Look") { model.quickLookSelection() }
                     .keyboardShortcut(.space, modifiers: [])
                     .disabled(model.selectedItems.count != 1)
             }

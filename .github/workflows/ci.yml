@@ -112,3 +112,64 @@ jobs:
           name: StorageScope-windows-x64-smoke
           path: dist/windows-x64/StorageScope.exe
           if-no-files-found: error
+
+  macos-package:
+    name: Build universal macOS test installer
+    needs: build-and-test
+    runs-on: macos-14
+    timeout-minutes: 40
+    env:
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift build --disable-sandbox
+      - run: ./scripts/build-macos-release.sh v3.5.0 development
+      - name: Preserve exact verification tools from pinned Sparkle
+        run: |
+          mkdir -p validation-tools
+          cp "$(find .build -type f -name sign_update -print -quit)" validation-tools/sign_update
+      - uses: actions/upload-artifact@v5
+        with:
+          name: macos-validated-package-candidate
+          path: |
+            release-assets/*
+            validation-tools/sign_update
+          if-no-files-found: error
+
+  macos-installed:
+    name: Installed macOS package and authenticated updates (${{ matrix.runner }})
+    needs: macos-package
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15-intel, macos-26]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: ${{ matrix.runner == 'macos-14' && '/Applications/Xcode_16.2.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      STORAGESCOPE_SPARKLE_SIGNER: validation-tools/sign_update
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: macos-validated-package-candidate
+          path: .
+      - name: Restore executable permissions and unpack candidate
+        run: |
+          chmod +x validation-tools/sign_update
+          mkdir -p dist
+          ditto -x -k release-assets/StorageScope-universal.zip dist
+      - run: python3 scripts/test-macos-package.py release-assets/StorageScope-macOS-universal-DEVELOPMENT.pkg
+      - run: python3 scripts/test-macos-update.py
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: macos-package-proof-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/storagescope-package-validation.json
+            ${{ runner.temp }}/storagescope-packaged-ui/*.png
+            ${{ runner.temp }}/storagescope-update-validation/results.json
+            ${{ runner.temp }}/storagescope-update-validation/*/events.log
+            ${{ runner.temp }}/storagescope-update-validation/*/process.log
+          if-no-files-found: warn

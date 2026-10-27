@@ -33,8 +33,9 @@ if [[ "$MODE" == production ]]; then
     spctl --assess --type execute --verbose=2 dist/StorageScope.app
 fi
 ditto -c -k --sequesterRsrc --keepParent dist/StorageScope.app release-assets/StorageScope-universal.zip
-pkgbuild --analyze --root dist/StorageScope.app dist/component.plist
-# Bundle replacement stays at /Applications, never relocate another user copy.
+mkdir -p dist/pkg-root/Applications
+ditto dist/StorageScope.app dist/pkg-root/Applications/StorageScope.app
+pkgbuild --analyze --root dist/pkg-root dist/component.plist
 python3 - <<'PY'
 import plistlib
 from pathlib import Path
@@ -44,19 +45,10 @@ for component in data:
     component['BundleIsRelocatable']=False
     component['BundleOverwriteAction']='upgrade'
 p.write_bytes(plistlib.dumps(data))
+Path('dist/requirements.plist').write_bytes(plistlib.dumps({'os':['14.0'], 'arch':['arm64','x86_64']}))
 PY
-pkgbuild --component dist/StorageScope.app --component-plist dist/component.plist --install-location /Applications --identifier com.labrioche.StorageScope --version "$VERSION" dist/StorageScope-component.pkg
-productbuild --synthesize --package dist/StorageScope-component.pkg dist/distribution.xml
-python3 - <<'PY'
-from pathlib import Path
-import xml.etree.ElementTree as E
-p=Path('dist/distribution.xml'); tree=E.parse(p); root=tree.getroot()
-E.SubElement(root, 'allowed-os-versions').append(E.Element('os-version', {'min':'14.0'}))
-options=root.find('options')
-if options is None: options=E.SubElement(root,'options')
-options.set('hostArchitectures','arm64,x86_64')
-tree.write(p,encoding='utf-8',xml_declaration=True)
-PY
+pkgbuild --root dist/pkg-root --component-plist dist/component.plist --install-location / --identifier com.labrioche.StorageScope --version "$VERSION" dist/StorageScope-component.pkg
+productbuild --synthesize --product dist/requirements.plist --package dist/StorageScope-component.pkg dist/distribution.xml
 if [[ "$MODE" == production ]]; then
     productbuild --distribution dist/distribution.xml --package-path dist --sign "$STORAGESCOPE_INSTALLER_IDENTITY" "release-assets/$PACKAGE"
     xcrun notarytool submit "release-assets/$PACKAGE" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" --wait
