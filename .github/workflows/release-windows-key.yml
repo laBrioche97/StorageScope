@@ -74,13 +74,14 @@ jobs:
     permissions:
       contents: read
       actions: read
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 10
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
       GH_TOKEN: ${{ github.token }}
       VALIDATION_RUN: ${{ inputs.validation_run_id }}
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      METAL_ERROR_MODE: '5'
     steps:
       - uses: actions/checkout@v5
         with:

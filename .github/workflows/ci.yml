@@ -126,10 +126,11 @@ jobs:
     name: Build universal macOS test installer
     # Keep the same Xcode 16.2 / macOS 14 deployment target on a supported host.
     # macOS 14 remains an installed-package validation target below.
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 40
     env:
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      METAL_ERROR_MODE: '5'
     steps:
       - uses: actions/checkout@v5
       - run: swift build --disable-sandbox
