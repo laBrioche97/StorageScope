@@ -42,26 +42,35 @@ enum CategoryLayoutValidation {
             try await Task.sleep(for: .milliseconds(80))
             if !baseline {
                 let readyDeadline = Date().addingTimeInterval(2)
-                while Date() < readyDeadline && (findTable(window.contentView)?.numberOfRows != 500 || model.explorerVisibleItems.count != 500) {
+                while Date() < readyDeadline && (findTable(window.contentView)?.numberOfRows != 500
+                    || findTable(window.contentView)?.isEnabled != true || model.explorerVisibleItems.count != 500) {
                     try await Task.sleep(for: .milliseconds(20))
                 }
                 guard model.sidebar == .explorer, model.explorerCategoryContext?.category == category,
                       model.explorerItems.count == 500, model.explorerVisibleItems.count == 500,
                       model.explorerCategoryContext?.totalFileCount == 100_000,
-                      let table = findTable(window.contentView), !table.usesAutomaticRowHeights,
+                      let table = findTable(window.contentView), table.isEnabled, !table.usesAutomaticRowHeights,
                       NSStringFromClass(type(of: table)).hasSuffix("FileRowsTable"), table.numberOfRows == 500 else {
                     let state: [String: Any] = ["transition": transitions, "section": model.sidebar?.rawValue ?? "none",
                         "category": model.explorerCategoryContext?.category.rawValue ?? "none",
                         "expectedCategory": category.rawValue, "items": model.explorerItems.count,
                         "visible": model.explorerVisibleItems.count, "total": model.explorerCategoryContext?.totalFileCount ?? -1,
                         "choosingStorage": model.choosingExplorerStorage,
+                        "pendingDirectory": model.explorerPendingDirectory?.path ?? "none",
+                        "tableEnabled": findTable(window.contentView)?.isEnabled ?? false,
                         "table": findTable(window.contentView).map { NSStringFromClass(type(of: $0)) } ?? "none",
                         "nativeRows": findTable(window.contentView)?.numberOfRows ?? -1]
                     let details = String(data: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), encoding: .utf8) ?? ""
                     throw NSError(domain: "StorageScope.CategoryLayoutValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: details])
                 }
                 table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-                try await Task.sleep(for: .milliseconds(40))
+                // SwiftUI temporarily disables native controls during a section
+                // transition. Select only after that finishes, then await the
+                // coordinator's deliberately deferred model notification.
+                let selectionDeadline = Date().addingTimeInterval(2)
+                while Date() < selectionDeadline && model.selectedIDs != [model.explorerVisibleItems[0].id] {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
                 guard model.selectedIDs == [model.explorerVisibleItems[0].id] else {
                     throw NSError(domain: "StorageScope.CategoryLayoutValidation", code: 2,
                         userInfo: [NSLocalizedDescriptionKey: "Selection did not reach the model on transition \(transitions); count=\(model.selectedIDs.count), native=\(table.selectedRow), enabled=\(table.isEnabled)"])
