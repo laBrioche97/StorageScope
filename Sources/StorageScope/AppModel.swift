@@ -1231,11 +1231,13 @@ final class AppModel: ObservableObject {
             explorerPendingDirectory = nil; bubbleIsLoading = false; explorerLoaderVisible = false
             var transaction = Transaction(); transaction.disablesAnimations = true
             withTransaction(transaction) {
-                sidebar = .explorer
                 choosingExplorerStorage = false; resetExplorerTemporaryList()
+                // Install the category target before SwiftUI mounts the explorer;
+                // its initial task must never mistake this for an empty root view.
+                presentCategoryReport(report, category: category, volumeID: volumeID)
+                sidebar = .explorer
                 resetSectionFilters(); sort = .allocated; categoryFilter = category
                 explorerScrollPosition = .nan
-                presentCategoryReport(report, category: category, volumeID: volumeID)
             }
         }
     }

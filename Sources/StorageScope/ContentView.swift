@@ -21,7 +21,11 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(sections) { section in
                 Button {
+                    let previous = model.sidebar
                     model.sidebar = section
+                    // Only a deliberate sidebar entry opens the storage chooser.
+                    // Programmatic category/cleanup navigation already has a target.
+                    if section == .explorer, previous != .explorer, !model.isPreviewMode { model.enterExplorer() }
                     if compactWindow { sidebarVisible = false }
                 } label: {
                     Label(section.rawValue, systemImage: section.icon)
@@ -73,9 +77,8 @@ struct ContentView: View {
         .toolbar { toolbar }
         .navigationTitle(detailTitle)
         .onChange(of: model.sidebar) { _, section in
-            if section == .explorer {
-                if model.explorerCategoryContext == nil, !model.isPreviewMode { model.enterExplorer() }
-            } else { model.navigate(to: nil) }
+            guard section == model.sidebar else { return }
+            if section != .explorer { model.navigate(to: nil) }
             if section == .applications { model.loadApplications() }
         }
         .onChange(of: scenePhase) { _, phase in

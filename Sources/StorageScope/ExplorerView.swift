@@ -53,6 +53,7 @@ struct StorageExplorerView: View {
             if mode == .bubbles { model.ensureBubbleAnalysis() }
         }
         .task {
+            guard !Task.isCancelled, model.sidebar == .explorer else { return }
             model.ensureBubbleAnalysis()
             if model.explorerCategoryContext == nil,
                model.currentDirectory == nil || model.currentDirectory == model.selectedVolume?.url {

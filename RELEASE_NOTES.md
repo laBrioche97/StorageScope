@@ -6,6 +6,7 @@
 - Navigation latérale stable, sélection et clavier conservés ; volet superposé dans les petites fenêtres.
 - Contrôles de changements de sections et de tailles répétés dans la vraie fenêtre, y compris sur macOS 27, en plus des contrôles macOS 14 et 26.
 - Les catégories affichent au maximum leurs 500 principaux fichiers, avec le total détecté ; les anciens filtres sont réinitialisés à l’ouverture.
+- L’entrée par une catégorie ou une proposition de nettoyage conserve sa destination ; l’ouverture automatique de la racine ne peut plus la remplacer.
 - Le diagnostic local conserve la raison des exceptions de mise en page lorsqu’AppKit la fournit. Une vérification normale sans nouvelle version n’est plus enregistrée comme une erreur de mise à jour.
 - Windows : un redimensionnement différé ne masque plus l’explication lorsqu’un dossier ne peut pas être ouvert.
 - Fonctionnement hors ligne, protections de nettoyage, sauvegardes et données personnelles conservés.
