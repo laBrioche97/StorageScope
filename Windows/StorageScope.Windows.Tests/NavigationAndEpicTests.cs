@@ -75,8 +75,10 @@ internal static class NavigationAndEpicTests
                 var last = (Task)Invoke("BrowseAsync", sibling, true)!;
                 Pump(() => first.IsCompleted && last.IsCompleted); first.GetAwaiter().GetResult(); last.GetAwaiter().GetResult();
                 Require((string?)Get("_currentDirectory") == sibling && (bool)Get("_bubbleMode")!);
-                Set("_result", null); Set("_folderIndex", null); Browse(directory);
-                Require(((TextBlock)window.FindName("BubbleEmptyState")).Visibility == Visibility.Visible);
+                // Without an index, directory sizes remain unknown. An empty
+                // bubble frame is allowed but its explanatory text is shown.
+                Set("_result", null); Set("_folderIndex", null); Invoke("InvalidateExplorerCache"); Browse(directory);
+                Require(((TextBlock)window.FindName("BubbleStatus")).Text.Contains("Tailles inconnues"));
                 Require(((Grid)window.FindName("BubblePanel")).Visibility == Visibility.Visible);
                 Browse(Path.Combine(directory, "Missing"));
                 Require(((TextBlock)window.FindName("BubbleEmptyState")).Text.Contains("pas pu être lu"));

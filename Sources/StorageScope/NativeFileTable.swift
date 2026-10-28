@@ -128,7 +128,7 @@ struct NativeFileTable: NSViewRepresentable {
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !applying, let table, enabled else { return }
             let ids = Set(table.selectedRowIndexes.compactMap { items.indices.contains($0) ? items[$0].id : nil })
-            DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async { [weak self, weak table] in
                 guard let self, let table, table.dataSource === self,
                       ids.isSubset(of: Set(items.map(\.id))), model.selectedIDs != ids else { return }
                 model.selectedIDs = ids
