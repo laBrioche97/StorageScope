@@ -68,6 +68,9 @@ public partial class MainWindow
     }
     private async Task LoadBubblesAsync(string path)
     {
+        // Keep a failed folder-read explanation visible until the next navigation;
+        // a deferred resize must not replace it with the previous folder's graph.
+        if (_explorerNavigationError is not null) return;
         _bubbleCancellation?.Cancel();
         var cancellation = new CancellationTokenSource(); _bubbleCancellation = cancellation;
         var generation = ++_bubbleGeneration; var index = _folderIndex;
@@ -102,6 +105,10 @@ public partial class MainWindow
     }
     private void RenderBubbles()
     {
+        if (_explorerNavigationError is not null) {
+            BubbleEmptyState.Text = _explorerNavigationError; BubbleEmptyState.Visibility = Visibility.Visible;
+            return;
+        }
         if (BubbleCanvas is null || _folderFrame is null) return;
         var existing = BubbleCanvas.Children.OfType<BubbleButton>().ToDictionary(button => button.Circle.Path, StringComparer.OrdinalIgnoreCase);
         var wanted = _folderFrame.Circles.Select(circle => circle.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);

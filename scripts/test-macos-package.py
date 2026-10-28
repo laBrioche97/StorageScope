@@ -1,4 +1,4 @@
-"""Runs only on an ephemeral CI Mac, against a real installed universal package."""
+"""Runs only on an ephemeral CI Mac, against a real installed Apple Silicon package."""
 import hashlib
 import json
 import os
@@ -22,7 +22,7 @@ assert info['CFBundleVersion'] == expected['CFBundleVersion']
 assert info['CFBundleIdentifier'] == 'com.labrioche.StorageScope'
 assert info['LSMinimumSystemVersion'] == '14.0' and info['SURequireSignedFeed']
 architectures = subprocess.check_output(['lipo', '-archs', str(binary)], text=True).split()
-assert set(architectures) == {'arm64', 'x86_64'}
+assert set(architectures) == {'arm64'}
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
 environment = dict(os.environ, HTTP_PROXY='http://127.0.0.1:9', HTTPS_PROXY='http://127.0.0.1:9', ALL_PROXY='http://127.0.0.1:9')
 subprocess.run([str(binary), '--verify-installation'], env=environment, check=True, timeout=35)
@@ -40,7 +40,7 @@ assert not list(Path('/Applications').glob('StorageScope *.app'))
 subprocess.run([str(binary), '--verify-installation'], env=environment, check=True, timeout=35)
 report.write_text(json.dumps({'version': info['CFBundleShortVersionString'], 'architecture': os.uname().machine,
     'os': subprocess.check_output(['sw_vers', '-productVersion'], text=True).strip(),
-    'packageSha256': hashlib.sha256(package.read_bytes()).hexdigest(), 'universal': True,
+    'packageSha256': hashlib.sha256(package.read_bytes()).hexdigest(), 'supportedArchitectures': architectures,
     'offlineInstalledStartup': True, 'packagedNativeScreenshots': len(list(ui.glob('*.png'))),
     'replacementPreservesData': True, 'appleDeveloperIDSigned': False, 'notarized': False}, indent=2), encoding='utf-8')
 print(report.read_text())

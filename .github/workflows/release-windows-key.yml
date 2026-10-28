@@ -74,14 +74,13 @@ jobs:
     permissions:
       contents: read
       actions: read
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 10
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
       GH_TOKEN: ${{ github.token }}
       VALIDATION_RUN: ${{ inputs.validation_run_id }}
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-      METAL_ERROR_MODE: '5'
     steps:
       - uses: actions/checkout@v5
         with:
@@ -108,7 +107,7 @@ jobs:
           (cd release-assets && shasum -a 256 -c ./*.sha256)
           printf '%s\n' "$SPARKLE_PRIVATE_KEY" | validation-tools/sign_update --ed-key-file - --verify release-assets/appcast.xml
           mkdir -p dist
-          ditto -x -k release-assets/StorageScope-universal.zip dist
+          ditto -x -k release-assets/StorageScope-arm64.zip dist
           codesign --verify --deep --strict dist/StorageScope.app
           dist/StorageScope.app/Contents/MacOS/StorageScope --verify-installation
       - uses: actions/upload-artifact@v5
@@ -141,7 +140,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          for FILE in StorageScope-Windows-Setup-DEVELOPMENT.exe StorageScope-Windows-Setup-DEVELOPMENT.exe.sha256 windows-update.json windows-update.json.sig StorageScope-macOS-universal-DEVELOPMENT.pkg StorageScope-macOS-universal-DEVELOPMENT.pkg.sha256 StorageScope-universal.zip StorageScope-universal.zip.sha256 appcast.xml; do
+          for FILE in StorageScope-Windows-Setup-DEVELOPMENT.exe StorageScope-Windows-Setup-DEVELOPMENT.exe.sha256 windows-update.json windows-update.json.sig StorageScope-macOS-arm64-DEVELOPMENT.pkg StorageScope-macOS-arm64-DEVELOPMENT.pkg.sha256 StorageScope-arm64.zip StorageScope-arm64.zip.sha256 appcast.xml; do
             [[ -s "release-assets/$FILE" && ! -L "release-assets/$FILE" ]]
           done
           (cd release-assets && sha256sum --check ./*.sha256)

@@ -50,7 +50,7 @@ def sign(path, verify=False, signature=None):
     if signature: args.append(signature)
     return subprocess.run(args, input=secret, text=True, capture_output=True)
 
-archive = assets / 'StorageScope-universal.zip'
+archive = assets / 'StorageScope-arm64.zip'
 result = sign(archive)
 assert result.returncode == 0, 'Sparkle could not sign the test archive'
 signature = re.search(r'edSignature="([^"]+)"', result.stdout)[1]
@@ -85,7 +85,7 @@ def feed(name, filename, edsignature):
     path.write_text(f'''<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><title>Isolated validation</title>
 <item><title>StorageScope {version}</title><sparkle:version>{build}</sparkle:version><sparkle:shortVersionString>{version}</sparkle:shortVersionString>
-<sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+<sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
 <enclosure url="{base}/{filename}" sparkle:edSignature="{edsignature}" length="{(root / filename).stat().st_size}" type="application/octet-stream"/>
 </item></channel></rss>''', encoding='utf-8')
     assert sign(path).returncode == 0

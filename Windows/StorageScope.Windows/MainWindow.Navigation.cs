@@ -17,6 +17,7 @@ public partial class MainWindow
     private string? _pendingDirectory;
     private bool _navigationPending;
     private bool _navigationBack;
+    private string? _explorerNavigationError;
     private Point _navigationAnchor = new(.5, .5);
     private DispatcherTimer? _loadingDelay;
     private string NavigationKey(string path) => (_storageIdentity ?? (DrivePicker.SelectedItem as DriveChoice)?.Identity ?? "preview") + "|" + (_folderIndex is null ? 0 : RuntimeHelpers.GetHashCode(_folderIndex)) + "|" + Path.GetFullPath(path).TrimEnd('\\');
@@ -46,6 +47,7 @@ public partial class MainWindow
     private async Task BrowseAsync(string path, bool addHistory = true)
     {
         path = Path.GetFullPath(path);
+        _explorerNavigationError = null;
         _browseCancellation?.Cancel(); _bubbleCancellation?.Cancel(); _bubbleCancellation = null; ++_bubbleGeneration;
         SaveExplorerView();
         var cancellation = new CancellationTokenSource(); _browseCancellation = cancellation;
@@ -121,7 +123,8 @@ public partial class MainWindow
             if (Current()) {
                 Diagnostics.Write("lecture-dossier", error); BubbleStatus.Text = "Dossier inaccessible : " + error.Message;
                 if (cached is not null) { _allExplorerItems.Clear(); _explorer.Clear(); _folderFrame = null; BubbleCanvas.Children.Clear(); }
-                BubbleEmptyState.Text = "Ce dossier n’a pas pu être lu. Revenez au dossier parent ou réessayez."; BubbleEmptyState.Visibility = Visibility.Visible;
+                _explorerNavigationError = "Ce dossier n’a pas pu être lu. Revenez au dossier parent ou réessayez.";
+                BubbleEmptyState.Text = _explorerNavigationError; BubbleEmptyState.Visibility = Visibility.Visible;
             }
         }
         finally

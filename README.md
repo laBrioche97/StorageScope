@@ -9,7 +9,7 @@ La version 3.5 propose une application SwiftUI sur macOS et une application WPF 
 Ouvrir [Téléchargements](https://labrioche.tech/telechargements) depuis un ordinateur compatible, puis cliquer sur **Télécharger StorageScope**. Le site ne propose aucun fichier si la plateforme n'est pas prise en charge ou si son installateur n'est pas publié.
 
 - **Windows 10 version 2004 ou ultérieur / Windows 11, x64 ou ARM64** : ouvrir l’installateur proposé ; la distribution actuelle sans certificat Windows porte le nom `StorageScope-Windows-Setup-DEVELOPMENT.exe`. Il choisit le processeur natif, inclut .NET et conserve une seule version après validation du remplacement. Windows peut afficher SmartScreen.
-- **macOS 14 ou ultérieur, Intel ou Apple Silicon** : ouvrir `StorageScope-macOS-universal-DEVELOPMENT.pkg` (version de test). Le paquet universel installe le logiciel dans Applications. L'Accès complet au disque reste une permission explicite dans les réglages macOS.
+- **macOS 14 ou ultérieur, Apple Silicon uniquement** : ouvrir `StorageScope-macOS-arm64-DEVELOPMENT.pkg` (version de test). Le paquet Apple Silicon installe le logiciel dans Applications. L'Accès complet au disque reste une permission explicite dans les réglages macOS.
 
 Le premier passage depuis une version 3.0/3.1 nécessite cet installateur. La version Windows 3.2 embarque une clé publique de mise à jour : nouveautés, acceptation, contrôle du manifeste signé et du paquet, installation puis redémarrage. **Plus tard** laisse la version actuelle utilisable. Le démarrage, l’analyse et le nettoyage n’exigent ni réseau ni compte. La distribution macOS 3.5.0 est une version de test : application signée ad hoc, sans certificat Developer ID ni notarisation Apple. Une autorisation individuelle dans Réglages Système → Confidentialité et sécurité peut être nécessaire pour le paquet puis le premier lancement. Garder Gatekeeper activé. Sparkle vérifie les archives et le flux de mise à jour avec une clé Ed25519 dédiée ; cette authentification ne remplace pas la signature Apple. Les versions ultérieures peuvent nécessiter une nouvelle autorisation macOS, notamment pour l’accès complet au disque.
 
@@ -70,7 +70,7 @@ Le résultat est créé dans `dist/StorageScope.app`. Vous pouvez ensuite utilis
 Par défaut, le script compile uniquement pour l’architecture du Mac courant. Pour reproduire le bundle universel des releases GitHub :
 
 ```sh
-STORAGESCOPE_ARCHITECTURES=universal ./scripts/build-app.sh
+STORAGESCOPE_ARCHITECTURES=arm64 ./scripts/build-app.sh
 lipo -archs dist/StorageScope.app/Contents/MacOS/StorageScope
 ```
 

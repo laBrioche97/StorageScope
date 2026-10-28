@@ -3,14 +3,19 @@ set -euo pipefail
 
 REPOSITORY=${STORAGESCOPE_GITHUB_REPOSITORY:-laBrioche97/StorageScope}
 REQUESTED_VERSION=${1:-latest}
-ASSET_NAME="StorageScope-universal.zip"
-CHECKSUM_NAME="StorageScope-universal.zip.sha256"
+ASSET_NAME="StorageScope-arm64.zip"
+CHECKSUM_NAME="StorageScope-arm64.zip.sha256"
 TARGET_APPLICATION="/Applications/StorageScope.app"
 EXPECTED_BUNDLE_IDENTIFIER="com.labrioche.StorageScope"
 LAUNCH_SERVICES_REGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
 if [[ "$(/usr/bin/uname -s)" != "Darwin" ]]; then
     echo "Erreur : cet installeur fonctionne uniquement sous macOS." >&2
+    exit 1
+fi
+
+if [[ "$(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" != "1" ]]; then
+    echo "Erreur : cette version nécessite un Mac avec puce Apple Silicon." >&2
     exit 1
 fi
 
@@ -92,8 +97,8 @@ if [[ -n "$EXPECTED_VERSION" && "$BUNDLE_VERSION" != "$EXPECTED_VERSION" ]]; the
 fi
 
 ARCHITECTURES=$(/usr/bin/lipo -archs "$SOURCE_BINARY")
-if [[ " $ARCHITECTURES " != *" arm64 "* || " $ARCHITECTURES " != *" x86_64 "* ]]; then
-    echo "Erreur : la release n’est pas universelle ($ARCHITECTURES)." >&2
+if [[ "$ARCHITECTURES" != "arm64" ]]; then
+    echo "Erreur : la release n’est pas destinée à Apple Silicon ($ARCHITECTURES)." >&2
     exit 1
 fi
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$SOURCE_APPLICATION"

@@ -22,7 +22,7 @@ jobs:
     secrets: inherit
   macos:
     if: github.event_name == 'workflow_dispatch' || vars.STORAGESCOPE_SIGNED_RELEASES_ENABLED == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
@@ -117,7 +117,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for FILE in StorageScope-Windows-Setup.exe StorageScope-Windows-Setup.exe.sha256 windows-update.json windows-update.json.sig StorageScope-macOS-universal.pkg StorageScope-macOS-universal.pkg.sha256 StorageScope-universal.zip StorageScope-universal.zip.sha256 appcast.xml; do
+          for FILE in StorageScope-Windows-Setup.exe StorageScope-Windows-Setup.exe.sha256 windows-update.json windows-update.json.sig StorageScope-macOS-arm64.pkg StorageScope-macOS-arm64.pkg.sha256 StorageScope-arm64.zip StorageScope-arm64.zip.sha256 appcast.xml; do
             [[ -s "release-assets/$FILE" && ! -L "release-assets/$FILE" ]]
           done
           (cd release-assets && sha256sum --check ./*.sha256)

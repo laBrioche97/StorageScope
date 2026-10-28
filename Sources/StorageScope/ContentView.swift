@@ -73,8 +73,9 @@ struct ContentView: View {
         .toolbar { toolbar }
         .navigationTitle(detailTitle)
         .onChange(of: model.sidebar) { _, section in
-            if section == .explorer, model.explorerCategoryContext == nil, !model.isPreviewMode { model.enterExplorer() }
-            else { model.navigate(to: nil) }
+            if section == .explorer {
+                if model.explorerCategoryContext == nil, !model.isPreviewMode { model.enterExplorer() }
+            } else { model.navigate(to: nil) }
             if section == .applications { model.loadApplications() }
         }
         .onChange(of: scenePhase) { _, phase in

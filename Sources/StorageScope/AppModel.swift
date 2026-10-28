@@ -1221,10 +1221,10 @@ final class AppModel: ObservableObject {
             return
         }
         let generation = UUID(); categoryNavigationGeneration = generation
-        let volumeID = selectedVolumeID, indexGeneration = scanGeneration
+        let volumeID = selectedVolumeID, indexGeneration = scanGeneration, origin = sidebar
         DispatchQueue.main.async { [weak self] in
             guard let self, generation == categoryNavigationGeneration,
-                  volumeID == selectedVolumeID, indexGeneration == scanGeneration else { return }
+                  volumeID == selectedVolumeID, indexGeneration == scanGeneration, sidebar == origin else { return }
             LocalDiagnostics.shared.record(action: "ouvrir une catégorie", detail: category.rawValue)
             browseTask?.cancel(); browseGeneration = UUID()
             bubbleTask?.cancel(); bubbleGeneration = UUID(); loaderTask?.cancel()
@@ -1232,6 +1232,7 @@ final class AppModel: ObservableObject {
             var transaction = Transaction(); transaction.disablesAnimations = true
             withTransaction(transaction) {
                 sidebar = .explorer
+                choosingExplorerStorage = false; resetExplorerTemporaryList()
                 resetSectionFilters(); sort = .allocated; categoryFilter = category
                 explorerScrollPosition = .nan
                 presentCategoryReport(report, category: category, volumeID: volumeID)

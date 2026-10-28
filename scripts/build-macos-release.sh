@@ -10,7 +10,7 @@ export STORAGESCOPE_SPARKLE_PUBLIC_KEY=${STORAGESCOPE_SPARKLE_PUBLIC_KEY:-$(cat 
 case "$MODE" in
     development)
         export STORAGESCOPE_SIGNING_IDENTITY=-
-        PACKAGE=StorageScope-macOS-universal-DEVELOPMENT.pkg
+        PACKAGE=StorageScope-macOS-arm64-DEVELOPMENT.pkg
         ;;
     production)
         : "${STORAGESCOPE_SIGNING_IDENTITY:?Developer ID Application is required}"
@@ -18,21 +18,21 @@ case "$MODE" in
         : "${APPLE_API_KEY_PATH:?Notarization credentials are required}"
         : "${APPLE_API_KEY_ID:?Notarization credentials are required}"
         : "${APPLE_API_ISSUER_ID:?Notarization credentials are required}"
-        PACKAGE=StorageScope-macOS-universal.pkg
+        PACKAGE=StorageScope-macOS-arm64.pkg
         ;;
     *) echo 'Explicit development or production mode required' >&2; exit 1 ;;
 esac
-export STORAGESCOPE_ARCHITECTURES=universal
+export STORAGESCOPE_ARCHITECTURES=arm64
 ./scripts/build-app.sh
 mkdir -p release-assets
 if [[ "$MODE" == production ]]; then
-    ditto -c -k --sequesterRsrc --keepParent dist/StorageScope.app release-assets/StorageScope-universal.zip
-    xcrun notarytool submit release-assets/StorageScope-universal.zip --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" --wait
+    ditto -c -k --sequesterRsrc --keepParent dist/StorageScope.app release-assets/StorageScope-arm64.zip
+    xcrun notarytool submit release-assets/StorageScope-arm64.zip --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" --wait
     xcrun stapler staple dist/StorageScope.app
     xcrun stapler validate dist/StorageScope.app
     spctl --assess --type execute --verbose=2 dist/StorageScope.app
 fi
-ditto -c -k --sequesterRsrc --keepParent dist/StorageScope.app release-assets/StorageScope-universal.zip
+ditto -c -k --sequesterRsrc --keepParent dist/StorageScope.app release-assets/StorageScope-arm64.zip
 mkdir -p dist/pkg-root/Applications
 ditto dist/StorageScope.app dist/pkg-root/Applications/StorageScope.app
 pkgbuild --analyze --root dist/pkg-root dist/component.plist
@@ -45,7 +45,7 @@ for component in data:
     component['BundleIsRelocatable']=False
     component['BundleOverwriteAction']='upgrade'
 p.write_bytes(plistlib.dumps(data))
-Path('dist/requirements.plist').write_bytes(plistlib.dumps({'os':['14.0'], 'arch':['arm64','x86_64']}))
+Path('dist/requirements.plist').write_bytes(plistlib.dumps({'os':['14.0'], 'arch':['arm64']}))
 PY
 pkgbuild --root dist/pkg-root --component-plist dist/component.plist --install-location / --identifier com.labrioche.StorageScope --version "$VERSION" dist/StorageScope-component.pkg
 productbuild --synthesize --product dist/requirements.plist --package dist/StorageScope-component.pkg dist/distribution.xml
@@ -61,11 +61,11 @@ else
 fi
 SPARKLE_SIGNER=$(find .build -type f -name sign_update -print -quit)
 [[ -x "$SPARKLE_SIGNER" ]] || { echo 'Sparkle signing tool missing' >&2; exit 1; }
-export SPARKLE_SIGNATURE=$(printf '%s\n' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGNER" --ed-key-file - release-assets/StorageScope-universal.zip)
+export SPARKLE_SIGNATURE=$(printf '%s\n' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGNER" --ed-key-file - release-assets/StorageScope-arm64.zip)
 export STORAGESCOPE_RELEASE_TAG="$TAG"
 python3 scripts/create-appcast.py
 printf '%s\n' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGNER" --ed-key-file - release-assets/appcast.xml
 printf '%s\n' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_SIGNER" --ed-key-file - --verify release-assets/appcast.xml
-for ASSET in StorageScope-universal.zip "$PACKAGE"; do
+for ASSET in StorageScope-arm64.zip "$PACKAGE"; do
     (cd release-assets && shasum -a 256 "$ASSET" > "$ASSET.sha256")
 done

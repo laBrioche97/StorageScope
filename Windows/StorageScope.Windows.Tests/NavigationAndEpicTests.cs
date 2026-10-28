@@ -83,6 +83,9 @@ internal static class NavigationAndEpicTests
                 Require(((TextBlock)window.FindName("BubbleEmptyState")).Visibility == Visibility.Visible);
                 Require(((Grid)window.FindName("BubblePanel")).Visibility == Visibility.Visible);
                 Browse(Path.Combine(directory, "Missing"));
+                Invoke("RenderBubbles");
+                var errorRefresh = (Task)Invoke("LoadBubblesAsync", directory)!;
+                Pump(() => errorRefresh.IsCompleted); errorRefresh.GetAwaiter().GetResult();
                 Require(((TextBlock)window.FindName("BubbleEmptyState")).Text.Contains("pas pu être lu"));
                 Require((bool)Get("_bubbleMode")! && ((Grid)window.FindName("BubblePanel")).Visibility == Visibility.Visible);
             });
