@@ -50,11 +50,22 @@ enum CategoryLayoutValidation {
                       model.explorerCategoryContext?.totalFileCount == 100_000,
                       let table = findTable(window.contentView), !table.usesAutomaticRowHeights,
                       NSStringFromClass(type(of: table)).hasSuffix("FileRowsTable"), table.numberOfRows == 500 else {
-                    throw CocoaError(.fileReadCorruptFile)
+                    let state: [String: Any] = ["transition": transitions, "section": model.sidebar?.rawValue ?? "none",
+                        "category": model.explorerCategoryContext?.category.rawValue ?? "none",
+                        "expectedCategory": category.rawValue, "items": model.explorerItems.count,
+                        "visible": model.explorerVisibleItems.count, "total": model.explorerCategoryContext?.totalFileCount ?? -1,
+                        "choosingStorage": model.choosingExplorerStorage,
+                        "table": findTable(window.contentView).map { NSStringFromClass(type(of: $0)) } ?? "none",
+                        "nativeRows": findTable(window.contentView)?.numberOfRows ?? -1]
+                    let details = String(data: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), encoding: .utf8) ?? ""
+                    throw NSError(domain: "StorageScope.CategoryLayoutValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: details])
                 }
                 table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
                 try await Task.sleep(for: .milliseconds(40))
-                guard model.selectedIDs == [model.explorerVisibleItems[0].id] else { throw CocoaError(.fileReadCorruptFile) }
+                guard model.selectedIDs == [model.explorerVisibleItems[0].id] else {
+                    throw NSError(domain: "StorageScope.CategoryLayoutValidation", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Selection did not reach the model on transition \(transitions); count=\(model.selectedIDs.count), native=\(table.selectedRow), enabled=\(table.isEnabled)"])
+                }
                 table.scrollRowToVisible(499); table.scrollRowToVisible(0)
             }
             transitions += 1
