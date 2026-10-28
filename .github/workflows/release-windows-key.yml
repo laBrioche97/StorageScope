@@ -74,7 +74,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 10
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer

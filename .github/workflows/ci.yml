@@ -124,7 +124,9 @@ jobs:
 
   macos-package:
     name: Build universal macOS test installer
-    runs-on: macos-14
+    # Keep the same Xcode 16.2 / macOS 14 deployment target on a supported host.
+    # macOS 14 remains an installed-package validation target below.
+    runs-on: macos-15
     timeout-minutes: 40
     env:
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}

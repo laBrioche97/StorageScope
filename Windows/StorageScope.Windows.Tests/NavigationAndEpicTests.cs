@@ -75,10 +75,12 @@ internal static class NavigationAndEpicTests
                 var last = (Task)Invoke("BrowseAsync", sibling, true)!;
                 Pump(() => first.IsCompleted && last.IsCompleted); first.GetAwaiter().GetResult(); last.GetAwaiter().GetResult();
                 Require((string?)Get("_currentDirectory") == sibling && (bool)Get("_bubbleMode")!);
-                // Without an index, directory sizes remain unknown. An empty
-                // bubble frame is allowed but its explanatory text is shown.
+                // Without an index, directory sizes remain unknown. Await the
+                // resize-triggered graph refresh as well as the folder read.
                 Set("_result", null); Set("_folderIndex", null); Invoke("InvalidateExplorerCache"); Browse(directory);
-                Require(((TextBlock)window.FindName("BubbleStatus")).Text.Contains("Tailles inconnues"));
+                Pump(() => Get("_bubbleCancellation") is null);
+                Require(Get("_folderFrame") is FolderFrame { Total: null, Partial: true, Circles.Count: 0 });
+                Require(((TextBlock)window.FindName("BubbleEmptyState")).Visibility == Visibility.Visible);
                 Require(((Grid)window.FindName("BubblePanel")).Visibility == Visibility.Visible);
                 Browse(Path.Combine(directory, "Missing"));
                 Require(((TextBlock)window.FindName("BubbleEmptyState")).Text.Contains("pas pu être lu"));
