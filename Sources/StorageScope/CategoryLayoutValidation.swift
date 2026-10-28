@@ -59,6 +59,13 @@ enum CategoryLayoutValidation {
             }
             transitions += 1
         }
+        if let view = window.contentView?.superview,
+           let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            if let data = bitmap.representation(using: .png, properties: [:]) {
+                try data.write(to: destination.appendingPathComponent("macos-installed-category-results.png"))
+            }
+        }
         let result: [String: Any] = ["os": ProcessInfo.processInfo.operatingSystemVersionString,
             "categoryTransitions": transitions, "durationSeconds": 65, "longNames": true,
             "rowsPerCategory": model.explorerItems.count, "fixedHeightNativeCells": !baseline,

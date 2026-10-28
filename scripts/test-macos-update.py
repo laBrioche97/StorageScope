@@ -4,6 +4,7 @@ No real user installation is touched. The private Ed25519 seed stays in the proc
 environment/stdin; fixture packages, logs and reports contain public metadata only.
 """
 import functools
+import hashlib
 import http.server
 import json
 import os
@@ -15,6 +16,7 @@ import subprocess
 import socket
 import threading
 import time
+import urllib.request
 
 assert os.environ.get('GITHUB_ACTIONS') == 'true'
 root = Path(os.environ['RUNNER_TEMP']) / 'storagescope-update-validation'
@@ -26,6 +28,22 @@ candidate_info = plistlib.loads(Path('dist/StorageScope.app/Contents/Info.plist'
 version = candidate_info['CFBundleShortVersionString']
 build = candidate_info['CFBundleVersion']
 previous_build = str(int(build) - 1)
+# Exercise the update with the actual previously distributed executable too,
+# rather than only changing the candidate's version metadata.
+previous_app = root / 'published-previous' / 'StorageScope.app'
+if version == '3.5.1':
+    url = 'https://github.com/laBrioche97/StorageScope/releases/download/v3.5.0/StorageScope-universal.zip'
+    with urllib.request.urlopen(url, timeout=90) as response:
+        previous_archive = response.read(20_000_001)
+    assert len(previous_archive) <= 20_000_000
+    assert hashlib.sha256(previous_archive).hexdigest() == 'ce16eb706251d48906b545704648f50a92c644a98f6c1fcfcd674179be16f5c5'
+    previous_zip = root / 'published-3.5.0.zip'
+    previous_zip.write_bytes(previous_archive)
+    subprocess.run(['ditto', '-x', '-k', str(previous_zip), str(previous_app.parent)], check=True)
+    previous_info = plistlib.loads((previous_app / 'Contents/Info.plist').read_bytes())
+    assert previous_info['CFBundleShortVersionString'] == '3.5.0' and previous_info['CFBundleVersion'] == previous_build
+    assert previous_info['SUPublicEDKey'] == candidate_info['SUPublicEDKey']
+    subprocess.run(['codesign', '--verify', '--deep', '--strict', str(previous_app)], check=True)
 
 def sign(path, verify=False, signature=None):
     args = [str(signer), '--ed-key-file', '-'] + (['--verify'] if verify else []) + [str(path)]
@@ -85,10 +103,11 @@ unsigned = root / 'unsigned.xml'; unsigned.write_bytes((root / 'valid.xml').read
 def launch_scenario(name, should_succeed):
     folder = root / name; folder.mkdir(exist_ok=True)
     app = folder / 'StorageScope.app'
-    subprocess.run(['ditto', 'dist/StorageScope.app', str(app)], check=True)
+    from_published = name == 'valid' and previous_app.exists()
+    subprocess.run(['ditto', str(previous_app) if from_published else 'dist/StorageScope.app', str(app)], check=True)
     info_file = app / 'Contents/Info.plist'
     info = plistlib.loads(info_file.read_bytes())
-    info.update(CFBundleVersion=previous_build, CFBundleShortVersionString='0.0.1',
+    info.update(CFBundleVersion=previous_build, CFBundleShortVersionString='3.5.0' if from_published else '0.0.1',
         StorageScopeValidationFeedURL=base + '/' + name + '.xml',
         NSAppTransportSecurity={'NSAllowsLocalNetworking': True})
     info_file.write_bytes(plistlib.dumps(info))
@@ -114,7 +133,8 @@ def launch_scenario(name, should_succeed):
                 process.wait(timeout=30)
                 subprocess.run([str(app / 'Contents/MacOS/StorageScope'), '--verify-installation'], check=True, timeout=35, stdout=output, stderr=output)
                 assert 'accepted' in content and 'ready' in content
-                return {'installedVersion':version, 'realSparkleReplacement':True, 'newVersionStarts':True}
+                return {'installedVersion':version, 'realSparkleReplacement':True, 'newVersionStarts':True,
+                    'previousPublishedExecutable': '3.5.0' if from_published else None}
             if not should_succeed and ('failed:' in content or name == 'cancelled' and 'cancelled' in content):
                 assert current == previous_build, 'Failed verification must leave the old application in place'
                 return {'rejected':True, 'previousVersionPreserved':True}
