@@ -138,7 +138,12 @@ def launch_scenario(name, should_succeed):
             if not should_succeed and ('failed:' in content or name == 'cancelled' and 'cancelled' in content):
                 assert current == previous_build, 'Failed verification must leave the old application in place'
                 return {'rejected':True, 'previousVersionPreserved':True}
-            if process.poll() is not None:
+            exit_code = process.poll()
+            # Sparkle may quit the host normally before its external installer
+            # atomically swaps the bundle. Keep observing that verified handoff;
+            # abnormal or premature exits still fail, as does a missing replacement.
+            expected_handoff = should_succeed and exit_code == 0 and 'ready' in content
+            if exit_code is not None and not expected_handoff:
                 raise AssertionError(f'{name}: process exited before expected outcome; {content}; { (folder / "process.log").read_text()[-4000:] }')
             time.sleep(.2)
         subprocess.run(['sample', str(process.pid), '1', '-file', str(folder / 'sample.log')], check=False, capture_output=True, timeout=10)
