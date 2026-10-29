@@ -34,6 +34,14 @@ public protocol ApplicationBundleRemoving: Sendable {
 public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
     public init() {}
 
+    /// Explicit continuation also covers an empty system reply after permissions
+    /// changed. A cancellation, timeout or replaced source never authorizes retry.
+    public static func mayContinueWithFinder(userAccepted: Bool, originalIdentityStillMatches: Bool,
+        errorDomain: String?, errorCode: Int?) -> Bool {
+        userAccepted && originalIdentityStillMatches && errorCode != -128 && errorCode != -1712
+            && !(errorDomain == NSCocoaErrorDomain && errorCode == NSUserCancelledError)
+    }
+
     public static func validate(_ request: ApplicationBundleRemovalRequest) throws {
         guard BundleIdentifierValidator.isValid(request.bundleIdentifier),
               !request.bundleIdentifier.lowercased().hasPrefix("com.apple."),
@@ -92,7 +100,9 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
                 response = RecycleResponse(domain: error.domain, code: error.code, message: error.localizedDescription)
             }
         }
-        if allowFinderAuthorization, Self.isPermissionFailure(response), Self.identity(request.url) == request.identity {
+        if Self.mayContinueWithFinder(userAccepted: allowFinderAuthorization,
+            originalIdentityStillMatches: Self.identity(request.url) == request.identity,
+            errorDomain: response.domain, errorCode: response.code) {
             // Only the explicit Continue action can request Finder automation.
             // First retry the system operation: newly granted App Management may
             // already suffice, without asking for another permission.
@@ -116,6 +126,8 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
             result = .init(.authorizationDenied, message: "L’autorisation d’Automatisation du Finder a été refusée. Activez StorageScope → Finder dans Confidentialité et sécurité → Automatisation, puis continuez.")
         } else if response.code == -1712 {
             result = .init(.notConfirmed, message: "Le Finder n’a pas répondu à temps. Vérifiez son éventuelle fenêtre d’autorisation et actualisez l’inventaire avant toute nouvelle tentative. Aucun fichier associé n’a été touché.")
+        } else if response.backend != "Finder", response.code == nil, response.url == nil {
+            result = .init(.authorizationRequired, message: "Le déplacement direct n’a pas abouti. Continuez avec le Finder pour obtenir la confirmation du système. Les données associées sont conservées.")
         } else if Self.isPermissionFailure(response) {
             result = .init(allowFinderAuthorization ? .authorizationDenied : .authorizationRequired,
                 message: response.backend == "Finder"

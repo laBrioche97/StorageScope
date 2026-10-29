@@ -1,7 +1,9 @@
 import Darwin
 import CoreServices
 import Foundation
+#if canImport(FoundationXML)
 import FoundationXML
+#endif
 import StorageCore
 
 private actor RefusingBundleRemover: ApplicationBundleRemoving {
@@ -33,6 +35,17 @@ func testApplicationAuthorizationBoundaries() async throws {
     try expect(query?.eventClass == 0x636f7265 && query?.eventID == 0x67657464,
         "Object-reference replies must be resolved with Finder's typed read-only get command")
     try expect(FinderRecycleProtocol.fileURL(NSAppleEventDescriptor(string: "https://example.com/")) == nil, "Only local file destinations are accepted")
+    try expect(SystemApplicationBundleRemover.mayContinueWithFinder(userAccepted: true, originalIdentityStillMatches: true,
+        errorDomain: nil, errorCode: nil), "An empty primary reply must not silently skip the explicit Finder continuation")
+    try expect(!SystemApplicationBundleRemover.mayContinueWithFinder(userAccepted: false, originalIdentityStillMatches: true,
+        errorDomain: nil, errorCode: nil), "Finder must never launch without explicit continuation")
+    try expect(!SystemApplicationBundleRemover.mayContinueWithFinder(userAccepted: true, originalIdentityStillMatches: false,
+        errorDomain: nil, errorCode: nil), "Never retry against a missing or replaced source")
+    for code in [-128, -1712, NSUserCancelledError] {
+        try expect(!SystemApplicationBundleRemover.mayContinueWithFinder(userAccepted: true, originalIdentityStillMatches: true,
+            errorDomain: code == NSUserCancelledError ? NSCocoaErrorDomain : NSOSStatusErrorDomain, errorCode: code),
+            "Cancelled or timed-out operations must not launch another destructive method")
+    }
     let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".StorageScope-Authorization-\(UUID().uuidString)", isDirectory: true)
     let appURL = directory.appendingPathComponent("Disposable.app", isDirectory: true)
     let contents = appURL.appendingPathComponent("Contents", isDirectory: true)
