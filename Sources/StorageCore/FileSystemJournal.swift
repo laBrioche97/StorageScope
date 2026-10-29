@@ -206,7 +206,7 @@ public enum PersistentScanSynchronizer {
             let relative = change.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             let physical = URL(fileURLWithPath: source.mountPath).appendingPathComponent(relative).standardizedFileURL
             let path: URL
-            if source.mountPath == "/System/Volumes/Data", !root.path.hasPrefix("/System/Volumes/Data/") { path = URL(fileURLWithPath: "/" + relative) }
+            if source.mountPath == "/System/Volumes/Data", !root.path.hasPrefix("/System/Volumes/Data/") { path = URL(fileURLWithPath: "/" + relative).standardizedFileURL }
             else { path = physical }
             if policy.excludes(path) { continue }
             let isDirectory = change.flags & UInt32(kFSEventStreamEventFlagItemIsDir) != 0

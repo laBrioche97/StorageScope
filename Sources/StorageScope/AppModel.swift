@@ -148,17 +148,21 @@ final class AppModel: ObservableObject {
         return indexStatusMessage + "\nAnalyse complète : " + full + "\nActualisation : " + sync
     }
 
-    private func stopIndexSynchronization() {
-        synchronizationTask?.cancel(); synchronizationTask = nil; synchronizationGeneration = UUID()
+    @discardableResult private func stopIndexSynchronization() -> Task<Void, Never>? {
+        let previous = synchronizationTask
+        previous?.cancel(); synchronizationTask = nil; synchronizationGeneration = UUID()
+        return previous
     }
 
     func resumeIndexSynchronization() {
         guard !isPreviewMode, !isScanning, let volume = selectedVolume else { return }
-        stopIndexSynchronization()
+        let previous = stopIndexSynchronization()
         let generation = synchronizationGeneration
         indexFreshness = .checking
         synchronizationTask = Task { [weak self] in
             guard let self else { return }
+            await previous?.value
+            guard !Task.isCancelled, generation == synchronizationGeneration, selectedVolumeID == volume.id else { return }
             for await event in PersistentScanSynchronizer.synchronize(root: volume.url, volumeID: volume.id) {
                 guard !Task.isCancelled, generation == synchronizationGeneration, selectedVolumeID == volume.id, !isScanning else { return }
                 switch event {
@@ -435,7 +439,7 @@ final class AppModel: ObservableObject {
         } else {
             previousCount = nil
         }
-        stopIndexSynchronization(); indexFreshness = .updating; indexStatusMessage = "Analyse complète en cours…"
+        let previousSynchronization = stopIndexSynchronization(); indexFreshness = .updating; indexStatusMessage = "Analyse complète en cours…"
         explorerViewCache.clear()
         scanTask?.cancel()
         let generation = UUID()
@@ -459,6 +463,8 @@ final class AppModel: ObservableObject {
         snapshot = nil
         scanTask = Task { [weak self] in
             guard let self else { return }
+            await previousSynchronization?.value
+            guard !Task.isCancelled, generation == scanGeneration, selectedVolumeID == volume.id else { return }
             for await event in scanner.scan(root: volume.url, volumeID: volume.id) {
                 guard !Task.isCancelled, generation == scanGeneration, selectedVolumeID == volume.id else { break }
                 switch event {

@@ -5,10 +5,12 @@ import Foundation
 /// startup volume group; /System/Volumes and other mounted volumes do not.
 public struct ScanPathPolicy: Sendable {
     public let root: URL
+    private let rootPath: String
     private let devices: Set<UInt64>
     private let ownedPaths: [String]
     public init(root: URL) {
         self.root = root.standardizedFileURL
+        self.rootPath = root.standardizedFileURL.path
         var devices = Set(Self.identity(root).map { [$0.deviceID] } ?? [])
         if root.path == "/", let data = Self.identity(URL(fileURLWithPath: "/System/Volumes/Data")) {
             devices.insert(data.deviceID)
@@ -19,9 +21,10 @@ public struct ScanPathPolicy: Sendable {
     }
 
     public func excludes(_ url: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        guard root.path == "/" || path == root.path || path.hasPrefix(root.path + "/") else { return true }
-        if root.path == "/", ["/Volumes", "/System/Volumes", "/dev"].contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return true }
+        // Callers enumerate canonical roots or normalize journal paths once.
+        let path = url.path
+        guard rootPath == "/" || path == rootPath || path.hasPrefix(rootPath + "/") else { return true }
+        if rootPath == "/", ["/Volumes", "/System/Volumes", "/dev"].contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return true }
         // Only our own changing metadata is excluded, never another application's files.
         return ownedPaths.contains {
             path == $0 || path.hasPrefix($0 + "/")
@@ -35,7 +38,8 @@ public struct ScanPathPolicy: Sendable {
         return FileIdentity(deviceID: FileIdentity.deviceID(fromRawValue: info.st_dev), inode: UInt64(info.st_ino), fileType: UInt16(info.st_mode & S_IFMT))
     }
 
-    public func validateDirectory(_ url: URL) throws {
+    public func validateDirectory(_ input: URL) throws {
+        let url = input.standardizedFileURL
         guard !excludes(url), let identity = Self.identity(url), identity.fileType == UInt16(S_IFDIR), acceptsDevice(identity) else {
             throw DirectoryIndexError.outsideRoot(path: url.path, root: root.path)
         }

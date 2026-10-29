@@ -18,6 +18,22 @@ public struct TreeReplacement: Codable, Sendable {
     public init(directory: URL, recursive: Bool) { self.directory = directory; self.recursive = recursive }
 }
 
+// Path, category and sizes already have indexed columns. Avoid encoding them a
+// second time (including URL percent escaping) for every file in a large scan.
+private struct TreeFileMetadata: Codable {
+    let package: Bool
+    let hidden: Bool
+    let created: Date?
+    let modified: Date?
+    let identity: FileIdentity?
+    let safety: SafetyLevel
+    let known: Bool?
+    init(_ item: FileSystemItem) {
+        package = item.isPackage; hidden = item.isHidden; created = item.creationDate
+        modified = item.modificationDate; identity = item.indexedIdentity; safety = item.safety; known = item.sizeIsKnown
+    }
+}
+
 extension DirectoryIndexStore {
     private func prepareTreeTables() throws {
         try Self.execute("""
@@ -35,13 +51,22 @@ extension DirectoryIndexStore {
 
     public func beginTreeGeneration(_ generation: UUID) throws {
         try prepareTreeTables()
-        // Orphaned writes from a cancelled/crashed scan are never promoted.
+        // A database lease makes late writers from another task/process harmless.
         let db = try requireDatabase()
-        let statement = try Self.prepare("DELETE FROM tree_items WHERE generation <> ?", operation: "nettoyage des générations temporaires", database: db)
-        defer { sqlite3_finalize(statement) }
-        try Self.bindText(try metadataValue("tree_generation") ?? "", at: 1, to: statement, database: db)
-        try Self.stepDone(statement, operation: "nettoyage des générations temporaires", database: db)
-        guard generation.uuidString != (try metadataValue("tree_generation")) else { throw DirectoryIndexError.unavailable }
+        try Self.execute("BEGIN IMMEDIATE", operation: "nouvelle génération temporaire", database: db)
+        do {
+            guard generation.uuidString != (try metadataValue("tree_generation")) else { throw DirectoryIndexError.unavailable }
+            let statement = try Self.prepare("DELETE FROM tree_items WHERE generation <> ?", operation: "nettoyage des générations temporaires", database: db)
+            defer { sqlite3_finalize(statement) }
+            try Self.bindText(try metadataValue("tree_generation") ?? "", at: 1, to: statement, database: db)
+            try Self.stepDone(statement, operation: "nettoyage des générations temporaires", database: db)
+            try setMetadata("tree_writer", value: generation.uuidString)
+            try Self.execute("COMMIT", operation: "validation de la génération temporaire", database: db)
+        } catch { try? Self.execute("ROLLBACK", operation: "annulation de la génération temporaire", database: db); throw error }
+    }
+
+    private func validateWriter(_ generation: UUID) throws {
+        guard try metadataValue("tree_writer") == generation.uuidString else { throw DirectoryIndexError.unavailable }
     }
 
     public func discardTreeGeneration(_ generation: UUID) throws {
@@ -63,11 +88,12 @@ extension DirectoryIndexStore {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         try Self.execute("BEGIN IMMEDIATE", operation: "lot de fichiers", database: db)
         do {
+            try validateWriter(generation)
             for item in items {
                 try Task.checkCancellation()
                 try validatePath(item.url.path)
                 guard !item.isSymbolicLink else { continue }
-                let strings: [(Int32, String)] = [(1, generationID), (2, item.url.path), (3, item.parentPath), (7, item.category.rawValue), (9, String(decoding: try encoder.encode(item), as: UTF8.self))]
+                let strings: [(Int32, String)] = [(1, generationID), (2, item.url.path), (3, item.parentPath), (7, item.category.rawValue), (9, String(decoding: try encoder.encode(TreeFileMetadata(item)), as: UTF8.self))]
                 for (position, value) in strings { try Self.bindText(value, at: position, to: statement, database: db) }
                 sqlite3_bind_int(statement, 4, item.isDirectory ? 1 : 0)
                 sqlite3_bind_int64(statement, 5, item.logicalSize)
@@ -89,6 +115,7 @@ extension DirectoryIndexStore {
         try Task.checkCancellation()
         try Self.execute("BEGIN IMMEDIATE", operation: "publication de l’analyse", database: db)
         do {
+            try validateWriter(generation)
             try replaceAll(directories, scanID: snapshot.scanID, indexVersion: Self.schemaVersion, transactional: false)
             try setMetadata("tree_generation", value: generation.uuidString)
             try saveTreeState(TreeIndexState(generation: generation, checkpoint: checkpoint, snapshot: snapshot, synchronizedAt: nil))
@@ -125,7 +152,7 @@ extension DirectoryIndexStore {
 
     private func treeItems(generation: String, predicate: String, arguments: [String] = [], suffix: String = "") throws -> [FileSystemItem] {
         let db = try requireDatabase()
-        let stmt = try Self.prepare("SELECT metadata FROM tree_items WHERE generation = ? AND (\(predicate)) \(suffix)", operation: "lecture des fichiers indexés", database: db)
+        let stmt = try Self.prepare("SELECT path, logical_size, allocated_size, category, is_directory, metadata FROM tree_items WHERE generation = ? AND (\(predicate)) \(suffix)", operation: "lecture des fichiers indexés", database: db)
         defer { sqlite3_finalize(stmt) }
         for (i, value) in ([generation] + arguments).enumerated() { try Self.bindText(value, at: Int32(i + 1), to: stmt, database: db) }
         let decoder = JSONDecoder()
@@ -135,8 +162,11 @@ extension DirectoryIndexStore {
             if code == SQLITE_DONE { break }
             guard code == SQLITE_ROW else { throw DirectoryIndexError.sqlite(operation: "lecture de l’arborescence", code: code, message: String(cString: sqlite3_errmsg(db))) }
             try Task.checkCancellation()
-            let text = String(cString: sqlite3_column_text(stmt, 0))
-            result.append(try decoder.decode(FileSystemItem.self, from: Data(text.utf8)))
+            let path = String(cString: sqlite3_column_text(stmt, 0))
+            guard let category = ItemCategory(rawValue: String(cString: sqlite3_column_text(stmt, 3))) else { throw DirectoryIndexError.unavailable }
+            let text = String(cString: sqlite3_column_text(stmt, 5))
+            let metadata = try decoder.decode(TreeFileMetadata.self, from: Data(text.utf8))
+            result.append(FileSystemItem(url: URL(fileURLWithPath: path), logicalSize: sqlite3_column_int64(stmt, 1), allocatedSize: sqlite3_column_int64(stmt, 2), isDirectory: sqlite3_column_int(stmt, 4) != 0, isPackage: metadata.package, isHidden: metadata.hidden, creationDate: metadata.created, modificationDate: metadata.modified, category: category, safety: metadata.safety, sizeIsKnown: metadata.known, indexedIdentity: metadata.identity))
         }
         return result
     }
@@ -149,6 +179,7 @@ extension DirectoryIndexStore {
         let db = try requireDatabase()
         try Self.execute("BEGIN IMMEDIATE", operation: "actualisation de l’arborescence", database: db)
         do {
+            try validateWriter(staged)
             var affected = Set<String>()
             // A removed direct child can be an entire old directory. Prune its
             // descendants too; a shallow parent refresh must not leave ghosts.

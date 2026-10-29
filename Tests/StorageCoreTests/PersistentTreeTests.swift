@@ -49,6 +49,13 @@ func testPersistentTreeAndJournal() async throws {
     let stillComplete = try await reopened.indexedChildren(of: nested)
     try expect(stillComplete?.count == 2305, "Un scan temporaire ou annulé ne remplace pas la génération active")
 
+    let superseding = UUID()
+    try await reopened.beginTreeGeneration(superseding)
+    var staleWriterRejected = false
+    do { try await reopened.appendTreeItems([FileSystemItem(url: root.appendingPathComponent("late-write"), logicalSize: 1, allocatedSize: 1, isDirectory: false)], generation: temporary) }
+    catch { staleWriterRejected = true }
+    try expect(staleWriterRejected, "Une tâche remplacée ne doit plus pouvoir écrire dans l’index")
+
     // Changes while no stream is running must be replayed on the next launch.
     try Data(repeating: 7, count: 9000).write(to: changed)
     try FileManager.default.removeItem(at: nested.appendingPathComponent("small-0.txt"))
