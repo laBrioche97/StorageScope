@@ -66,3 +66,25 @@ public struct ScanPathPolicy: Sendable {
         }
     }
 }
+
+/// One parent descriptor per enumeration avoids resolving the same long path for
+/// every child. fstatat uses the same no-follow semantics as the live lstat check.
+final class ScanIdentityReader {
+    private var parent = ""
+    private var descriptor: Int32 = -1
+    deinit { if descriptor >= 0 { close(descriptor) } }
+    func identity(path: String) -> FileIdentity? {
+        let nextParent = (path as NSString).deletingLastPathComponent
+        if nextParent != parent {
+            if descriptor >= 0 { close(descriptor) }
+            parent = nextParent
+            descriptor = open(parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        var info = stat()
+        let name = (path as NSString).lastPathComponent
+        if descriptor >= 0, fstatat(descriptor, name, &info, AT_SYMLINK_NOFOLLOW) == 0 {
+            return FileIdentity(deviceID: FileIdentity.deviceID(fromRawValue: info.st_dev), inode: UInt64(info.st_ino), fileType: UInt16(info.st_mode & S_IFMT))
+        }
+        return ScanPathPolicy.identity(URL(fileURLWithPath: path))
+    }
+}

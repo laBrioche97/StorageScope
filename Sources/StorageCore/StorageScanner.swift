@@ -29,6 +29,7 @@ public final class StorageScanner: @unchecked Sendable {
                 defer { Task { await RecursiveReadBudget.shared.release() } }
                 let standardizedRoot = Self.canonicalURL(for: root)
                 let policy = ScanPathPolicy(root: standardizedRoot)
+                let identityReader = ScanIdentityReader()
                 let checkpoint = JournalCheckpoint.capture(root: standardizedRoot)
                 let scanID = UUID()
                 let volumeID = requestedVolumeID ?? standardizedRoot.path
@@ -200,7 +201,7 @@ public final class StorageScanner: @unchecked Sendable {
 
                         let isDirectory = values.isDirectory == true
                         let isPackage = values.isPackage == true
-                        let identity = ScanPathPolicy.identity(candidate)
+                        let identity = identityReader.identity(path: progress.currentPath)
                         if isDirectory, let identity, !policy.acceptsDevice(identity) {
                             enumerator.skipDescendants()
                             progress.skippedItems = SaturatingArithmetic.addNonnegative(progress.skippedItems, 1)

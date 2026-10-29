@@ -10,7 +10,13 @@ import Foundation
         guard let button = find(window.contentView, path: first.path), button.bounds.width > 20,
               let content = window.contentView else { throw failure("La bulle du dossier n’est pas un contrôle natif visible") }
         let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
-        guard content.hitTest(content.convert(point, from: content.superview)) === button else { throw failure("Le clic au centre de la bulle est intercepté") }
+        // hitTest receives its point in the superview coordinate system. A hosting
+        // view can be flipped; converting to its local space would flip it twice.
+        let parentPoint = content.superview?.convert(point, from: nil) ?? point
+        let hit = content.hitTest(parentPoint)
+        guard hit === button else {
+            throw failure("Le clic au centre de la bulle est intercepté par " + (hit.map { NSStringFromClass(type(of: $0)) } ?? "aucune vue") + "; point=" + NSStringFromPoint(point) + "; cible=" + NSStringFromRect(button.frame))
+        }
         // Exercise real AppKit tracking and mouse dispatch, not performClick/model navigation.
         let now = ProcessInfo.processInfo.systemUptime
         guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: now, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1),
