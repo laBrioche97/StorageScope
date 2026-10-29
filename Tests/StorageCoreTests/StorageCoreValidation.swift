@@ -93,6 +93,11 @@ func testScanner() async throws {
         if case .completed(let snapshot) = event { final = snapshot }
     }
     try expect(final?.progress.filesScanned == 2, "Le scanner doit trouver les deux fichiers")
+    if let final {
+        let store = try DirectoryIndexStore(volumeID: final.volumeID, root: final.root)
+        let indexed = try await store.indexedChildren(of: final.root)
+        try expect(indexed?.count == 2, "Les métadonnées d’une racine /private doivent rester persistantes sans être réécrites en lien /var")
+    }
     try expect((final?.progress.skippedItems ?? 0) >= 1, "Le lien symbolique doit être ignoré")
     try expect(final?.topFiles.contains(where: { $0.name == ".hidden" }) == true, "Le fichier caché doit être indexé")
     try expect(sawProgress && sawFinalizing, "Le scanner doit publier progression légère et finalisation")

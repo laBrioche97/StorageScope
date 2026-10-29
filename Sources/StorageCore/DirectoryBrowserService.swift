@@ -144,7 +144,14 @@ public struct DirectoryBrowserService: Sendable {
                         return
                     }
 
-                    let candidate = child.standardized
+                    let enumerated = child.standardized
+                    // Foundation can return the physical /private root even when
+                    // the explicitly selected root uses its /var alias.
+                    let candidate: URL
+                    let physicalPrefix = resolvedRequested.path == "/" ? "/" : resolvedRequested.path + "/"
+                    if requested.path != resolvedRequested.path, enumerated.path.hasPrefix(physicalPrefix) {
+                        candidate = requested.appendingPathComponent(String(enumerated.path.dropFirst(physicalPrefix.count))).standardized
+                    } else { candidate = enumerated }
                     guard Self.isInsideRoot(candidate.path, rootPath: root.path),
                           !Self.isExcludedMountNamespace(candidate.path, rootPath: root.path) else {
                         continue

@@ -23,10 +23,15 @@ import StorageCore
         let volume = StorageVolume(id: root.lastPathComponent, url: root, name: "Navigation fixture", capacity: 1_000_000_000, available: 500_000_000, isLocal: true, isInternal: true)
         let previousVolumes = model.volumes, previousID = model.selectedVolumeID, previousSnapshot = model.snapshot
         defer { model.volumes = previousVolumes; model.selectedVolumeID = previousID; model.snapshot = previousSnapshot; model.sidebar = .applications }
-        let store = try DirectoryIndexStore(volumeID: volume.id, root: root)
-        try await store.replaceAll([root, first, second].map { DirectorySummary(volumeID: volume.id, url: $0, logicalSize: 1000, allocatedSize: 4_096_000) }, scanID: UUID(), indexVersion: DirectoryIndexStore.schemaVersion)
+        var complete = false
+        for await event in StorageScanner().scan(root: root, volumeID: volume.id) {
+            if case .completed(let result) = event { complete = result.progress.filesScanned == 2000 && result.indexVersion == DirectoryIndexStore.schemaVersion }
+        }
+        guard complete else { throw CocoaError(.fileReadUnknown) }
         model.volumes = [volume]; model.selectedVolumeID = volume.id
-        model.currentDirectory = first; model.snapshot = ScanSnapshot(root: root, progress: ScanProgress(), topFiles: [], topDirectories: [], directoryContents: [:], issues: [], completedAt: Date(), volumeID: volume.id)
+        model.snapshot = nil; model.currentDirectory = first
+        await model.restoreLastScan()
+        guard model.snapshot?.progress.filesScanned == 2000 else { throw CocoaError(.fileReadCorruptFile) }
         model.sidebar = .explorer; model.resetSectionFilters(); model.explorerDisplayMode = .bubbles
         window.setContentSize(NSSize(width: 1120, height: 800))
         for folder in [first, second] {
