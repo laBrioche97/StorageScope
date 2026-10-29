@@ -72,7 +72,7 @@ struct NativeFileTable: NSViewRepresentable {
                 self.enabled = enabled; table.isEnabled = enabled
                 if items != incoming {
                     let old = items; items = incoming
-                    if old.count == incoming.count && zip(old, incoming).allSatisfy({ $0.id == $1.id }) {
+                    if old.count == incoming.count && zip(old, incoming).allSatisfy({ $0.0.id == $0.1.id }) {
                         let changed = IndexSet(incoming.indices.filter { old[$0] != incoming[$0] })
                         table.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
                     } else { table.reloadData() }
