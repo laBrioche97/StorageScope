@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>3.5.1</string>
+    <string>3.6.0</string>
     <key>CFBundleVersion</key>
-    <string>18</string>
+    <string>19</string>
     <key>SUFeedURL</key>
     <string>https://github.com/laBrioche97/StorageScope/releases/latest/download/appcast.xml</string>
     <key>SUEnableAutomaticChecks</key>
@@ -48,6 +48,12 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSAppBundlesUsageDescription</key>
+    <string>StorageScope examine les applications sélectionnées et les place dans la corbeille uniquement après votre confirmation.</string>
+    <key>NSAppDataUsageDescription</key>
+    <string>StorageScope mesure les données des applications et vous permet d’examiner les résidus avant de choisir ceux à mettre dans la corbeille.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>StorageScope demande au Finder de placer uniquement l’application que vous avez confirmée dans la corbeille lorsque macOS exige une autorisation supplémentaire.</string>
     <key>NSDesktopFolderUsageDescription</key>
     <string>StorageScope analyse les fichiers du Bureau uniquement pour mesurer l’espace disque qu’ils occupent.</string>
     <key>NSDocumentsFolderUsageDescription</key>

@@ -6,6 +6,11 @@ enum MotionTokens {
     @MainActor static var enabled: Bool { !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 }
 
+enum AppTheme {
+    static let accent = Color(red: 0.76, green: 0.18, blue: 0.43)
+    static let canvas = Color(nsColor: .underPageBackgroundColor)
+}
+
 private struct SoftTransition: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let token: String
@@ -27,6 +32,8 @@ private struct SoftTransition: ViewModifier {
                     guard generation == next else { return }
                     withAnimation(.easeOut(duration: duration)) { scale = 1; opacity = 1 }
                 }
+            }.onChange(of: reduceMotion) { _, value in
+                if value { generation = UUID(); scale = 1; opacity = 1 }
             }.onDisappear { generation = UUID() }
     }
 }
@@ -40,6 +47,7 @@ struct SoftButtonStyle: ButtonStyle {
         configuration.label.padding(.horizontal, 8).padding(.vertical, 5)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
             .opacity(configuration.isPressed ? 0.75 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: MotionTokens.feedback), value: configuration.isPressed)
     }
 }

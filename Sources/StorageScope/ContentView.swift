@@ -37,6 +37,8 @@ struct ContentView: View {
                 .accessibilityAddTraits(model.sidebar == section ? .isSelected : [])
             }
             Spacer(minLength: 0)
+            Label("Analyse locale", systemImage: "lock.shield")
+                .font(.caption).foregroundStyle(.secondary).padding(12)
         }.padding(10).frame(width: 220).background(.regularMaterial)
     }
 
@@ -45,7 +47,7 @@ struct ContentView: View {
             HStack(spacing: 10) {
                 Button("Afficher ou masquer la navigation", systemImage: "sidebar.left") { sidebarVisible.toggle() }.labelStyle(.iconOnly)
                 BriocheMark().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)).frame(width: 32, height: 32).accessibilityHidden(true)
-                Text(AppIdentity.title).font(.title3.bold()).lineLimit(1)
+                Text(AppIdentity.title).font(.system(.title3, design: .rounded, weight: .bold)).lineLimit(1)
                 Button { updates.activate() } label: { Image(systemName: updates.symbol) }
                     .help(updates.status).accessibilityLabel(updates.status)
                     .disabled(updates.checking || updates.installing || (updates.availableVersion != nil && model.operationsAreBusy))
@@ -73,6 +75,9 @@ struct ContentView: View {
             sidebarVisible = !compact
         })
         .task { model.refreshTrashSummary(force: true) }
+        .environmentObject(model.inventory)
+        .accentColor(AppTheme.accent)
+        .background(AppTheme.canvas)
         .buttonStyle(SoftButtonStyle())
         .toolbar { toolbar }
         .navigationTitle(detailTitle)
@@ -116,18 +121,20 @@ struct ContentView: View {
         .sheet(isPresented: $model.showingUninstall) {
             UninstallView()
                 .environmentObject(model)
-                .frame(minWidth: 760, minHeight: 620)
+                .environmentObject(model.inventory)
+                .frame(minWidth: 660, minHeight: 560)
         }
     }
 
     private var sectionContent: some View {
             VStack(spacing: 0) {
                 HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Rechercher dans cette section", text: $model.searchText).textFieldStyle(.roundedBorder)
                     if !model.searchText.isEmpty || model.sizeFilter != .all || model.kindFilter != .all || model.categoryFilter != nil {
                         Button("Effacer les filtres") { model.resetSectionFilters() }
                     }
-                }.padding(12)
+                }.padding(.horizontal, 24).padding(.vertical, 12)
                 Group {
                 if model.sidebar == .volumes {
                     VolumesView()

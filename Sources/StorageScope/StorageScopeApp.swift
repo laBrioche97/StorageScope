@@ -52,7 +52,7 @@ struct StorageScopeApp: App {
         }
         Settings {
             PermissionView()
-                .frame(width: 540, height: 320)
+                .frame(width: 600, height: 380)
                 .environmentObject(model)
         }
     }

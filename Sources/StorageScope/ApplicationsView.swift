@@ -2,106 +2,9 @@ import AppKit
 import StorageCore
 import SwiftUI
 
-struct ApplicationsView: View {
-    @EnvironmentObject private var model: AppModel
-
-    private var filteredApplications: [InstalledApplication] {
-        let query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let ordered = model.sort == .name ? model.applicationsByName : model.sort == .smallest ? model.applicationsSmallest : model.applicationsLargest
-        return ordered.filter {
-            (model.sizeFilter == .all || (model.installationSize(at: $0.bundleURL).bytes ?? -1) >= model.sizeFilter.rawValue) &&
-            (model.applicationProtectionFilter == 0 || $0.isProtected == (model.applicationProtectionFilter == 2)) &&
-            (query.isEmpty || $0.displayName.lowercased().contains(query) || ($0.bundleIdentifier?.lowercased().contains(query) == true))
-        }
-    }
-
-    var body: some View {
-        Group {
-            if model.applicationsAreLoading && model.applications.isEmpty {
-                VStack(spacing: 14) {
-                    ProgressView().controlSize(.large)
-                    Text("Recherche des applications…").font(.title2.bold())
-                    Text("Lecture de /Applications et ~/Applications sans exécuter les apps.").foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        ManagedGamesPanel()
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading) {
-                                Text("Applications").font(.largeTitle.bold())
-                                Text("\(filteredApplications.count.formatted()) application(s) · désinstallation prudente par identifiant de bundle")
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if model.applicationsAreLoading { ProgressView().controlSize(.small).accessibilityLabel("Actualisation des applications") }
-                            Button("Actualiser les applications", systemImage: "arrow.clockwise") { model.loadApplications() }
-                        }
-                        Text("Les caches reconnus peuvent être sélectionnés. Les réglages, sauvegardes et autres données personnelles restent décochés ; les composants partagés restent protégés.")
-                            .padding(12).background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                        ResultFilters(showsKind: false)
-                        Picker("Applications", selection: $model.applicationProtectionFilter) {
-                            Text("Toutes").tag(0); Text("Désinstallables").tag(1); Text("Protégées").tag(2)
-                        }.pickerStyle(.segmented)
-                        if filteredApplications.isEmpty && !model.applicationsAreLoading {
-                            ContentUnavailableView("Aucune application à afficher", systemImage: "app.dashed", description: Text(model.applications.isEmpty ? "Actualisez pour rechercher les applications de ce Mac." : "Aucune application ne correspond à ces filtres. Les tailles encore inconnues sont masquées lorsqu’un minimum est choisi."))
-                            if !model.applications.isEmpty { Button("Effacer les filtres") { model.resetSectionFilters(); model.applicationProtectionFilter = 0 } }
-                        }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
-                            ForEach(filteredApplications) { application in
-                                ApplicationCard(application: application)
-                            }
-                        }
-                    }
-                    .padding(24)
-                }
-            }
-        }
-        .task { if model.applications.isEmpty && !model.applicationsAreLoading { model.loadApplications() } }
-    }
-}
-
-private struct ApplicationCard: View {
-    @EnvironmentObject private var model: AppModel
-    let application: InstalledApplication
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(nsImage: model.applicationIcons[application.bundleURL.path] ?? NSImage(systemSymbolName: "app", accessibilityDescription: "Application")!)
-                    .resizable().scaledToFit().frame(width: 52, height: 52).accessibilityLabel(application.displayName)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(application.displayName).font(.headline).lineLimit(1)
-                    Text(application.bundleIdentifier ?? "Identifiant absent").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                    if let version = application.version { Text("Version \(version)").font(.caption).foregroundStyle(.secondary) }
-                }
-                Spacer()
-            }
-            HStack {
-                Text(model.installationSize(at: application.bundleURL).label)
-                    .font(.title3.bold()).monospacedDigit()
-                Spacer()
-                if let reason = application.protectionReason {
-                    Label("Protégée", systemImage: "lock.fill").font(.caption.bold()).foregroundStyle(.secondary).help(reason)
-                }
-            }
-            HStack {
-                Button("Finder") { NSWorkspace.shared.activateFileViewerSelecting([application.bundleURL]) }
-                Spacer()
-                Button("Désinstaller proprement…", role: .destructive) { model.prepareUninstall(application) }
-                    .disabled(application.isProtected || model.operationsAreBusy)
-            }
-        }
-        .task(id: model.applicationIconRevision) { await model.loadApplicationIcon(application) }
-        .onDisappear { model.applicationIcons[application.bundleURL.path] = nil }
-        .padding(15)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
 struct UninstallView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var inventory: InventoryPresentation
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -141,6 +44,10 @@ struct UninstallView: View {
                     Text("Sauvegardes conservées par défaut · résidus examinés séparément").font(.caption).foregroundStyle(.secondary)
                     if plan.isRunning { Label("L’application est ouverte et devra être quittée normalement.", systemImage: "exclamationmark.circle.fill").foregroundStyle(.orange) }
                     if let reason = plan.blockingReason { Label(reason, systemImage: "lock.fill").foregroundStyle(.red) }
+                    if plan.application.eligibility == .authorizationRequired {
+                        Label("macOS peut vous demander une autorisation. Vos identifiants sont saisis uniquement dans sa fenêtre système.", systemImage: "person.badge.key.fill")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
             }
@@ -157,6 +64,7 @@ struct UninstallView: View {
             }
             Divider()
             HStack {
+                if model.uninstallIsWorking { ProgressView().controlSize(.small) }
                 Text(model.uninstallSelectionSummary(plan))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -167,6 +75,13 @@ struct UninstallView: View {
                 .disabled(!plan.canProceed || model.uninstallIsWorking)
             }
             .padding(16)
+            if case .officialUninstallerRequired = plan.application.eligibility {
+                HStack {
+                    Text("Ouvrez l’application pour utiliser sa méthode officielle, ou consultez son emplacement.").font(.caption).foregroundStyle(.secondary)
+                    Button("Ouvrir l’application") { NSWorkspace.shared.open(plan.application.bundleURL) }
+                    Button("Finder") { NSWorkspace.shared.activateFileViewerSelecting([plan.application.bundleURL]) }
+                }.padding(.horizontal, 20).padding(.bottom, 16)
+            }
         }
     }
 
@@ -211,6 +126,17 @@ struct UninstallView: View {
             Text(result.message ?? "L’application et les éléments sélectionnés ont été traités.")
             Text(model.uninstallResultSummary(result))
                 .font(.title3.bold())
+            if result.status == .authorizationRequired || result.status == .authorizationDenied {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Autorisez uniquement l’accès nécessaire, puis continuez avec la même sélection.").foregroundStyle(.secondary)
+                    HStack {
+                        Button("Gestion des apps") { PermissionActions.openAppManagement() }
+                        Button("Automatisation du Finder") { PermissionActions.openAutomation() }
+                    }
+                    Button("Autoriser et continuer") { model.performUninstall(allowFinderAuthorization: true) }
+                        .buttonStyle(.borderedProminent).disabled(model.uninstallIsWorking)
+                }
+            }
             if !result.associatedResults.isEmpty {
                 let failures = result.associatedResults.filter { $0.status == .failed }
                 Text("\(result.associatedResults.count - failures.count) associé(s) déplacé(s), \(failures.count) échec(s).").foregroundStyle(.secondary)

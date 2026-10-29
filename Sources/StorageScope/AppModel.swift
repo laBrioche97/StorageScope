@@ -205,7 +205,8 @@ final class AppModel: ObservableObject {
     @Published var emptyTrashResult: EmptyTrashResult?
     @Published var trashInventoryIsLoading = false
     @Published var applicationProtectionFilter = 0
-    @Published var applications: [InstalledApplication] = []
+    let inventory = InventoryPresentation()
+    var applications: [InstalledApplication] { get { inventory.applications } set { inventory.applications = newValue } }
     @Published var applicationsAreLoading = false
     @Published var showingUninstall = false
     @Published var uninstallPlan: UninstallPlan?
@@ -225,14 +226,14 @@ final class AppModel: ObservableObject {
     private let applicationDiscovery = ApplicationDiscoveryService()
     let gameAdapter = LocalGameLibraryAdapter()
     @Published var managedGames: [ManagedGame] = []
-    @Published private(set) var applicationsByName: [InstalledApplication] = []
-    @Published private(set) var applicationsLargest: [InstalledApplication] = []
-    @Published private(set) var applicationsSmallest: [InstalledApplication] = []
-    @Published private(set) var gamesByName: [ManagedGame] = []
-    @Published private(set) var gamesLargest: [ManagedGame] = []
-    @Published private(set) var gamesSmallest: [ManagedGame] = []
-    @Published var installationSizes: [String: InstallationSize] = [:]
-    @Published var gameIcons: [String: NSImage] = [:]
+    var applicationsByName: [InstalledApplication] { get { inventory.applicationsByName } set { inventory.applicationsByName = newValue } }
+    var applicationsLargest: [InstalledApplication] { get { inventory.applicationsLargest } set { inventory.applicationsLargest = newValue } }
+    var applicationsSmallest: [InstalledApplication] { get { inventory.applicationsSmallest } set { inventory.applicationsSmallest = newValue } }
+    var gamesByName: [ManagedGame] { get { inventory.gamesByName } set { inventory.gamesByName = newValue } }
+    var gamesLargest: [ManagedGame] { get { inventory.gamesLargest } set { inventory.gamesLargest = newValue } }
+    var gamesSmallest: [ManagedGame] { get { inventory.gamesSmallest } set { inventory.gamesSmallest = newValue } }
+    var installationSizes: [String: InstallationSize] { get { inventory.sizes } set { inventory.sizes = newValue } }
+    var gameIcons: [String: NSImage] { get { inventory.gameIcons } set { inventory.gameIcons = newValue } }
     @Published private(set) var applicationIconRevision = UUID()
     private var applicationsTask: Task<Void, Never>?
     private var applicationsGeneration = UUID()
@@ -244,7 +245,7 @@ final class AppModel: ObservableObject {
     private var cleanupTask: Task<Void, Never>?
     private var duplicateTask: Task<Void, Never>?
     let iconCache = SessionIconCache()
-    @Published var applicationIcons: [String: NSImage] = [:]
+    var applicationIcons: [String: NSImage] { get { inventory.applicationIcons } set { inventory.applicationIcons = newValue } }
     @Published var bubbleFrame: FolderBubbleFrame?
     @Published var bubbleIsLoading = false
     @Published var explorerHoveredID: String?
@@ -555,6 +556,9 @@ final class AppModel: ObservableObject {
             async let foundGames = gameAdapter.detect()
             let (discovered, games) = await (foundApps, foundGames)
             guard !Task.isCancelled, applicationsGeneration == generation else { return }
+            let unchanged = Set(discovered.filter { next in applications.contains { $0.id == next.id && $0.version == next.version && $0.bundleIdentity == next.bundleIdentity } }.map(\.id))
+            applicationIcons = applicationIcons.filter { unchanged.contains($0.key) }
+            iconCache.refreshValidation()
             applications = discovered
             managedGames = games
             let paths = Set((discovered.map(\.bundleURL) + games.map(\.installURL)).map { $0.standardizedFileURL.path })
@@ -619,6 +623,7 @@ final class AppModel: ObservableObject {
         }.value
         guard applicationsGeneration == generation else { return }
         (applicationsByName, applicationsLargest, applicationsSmallest, gamesByName, gamesLargest, gamesSmallest) = prepared
+        inventory.revision = UUID()
     }
 
     func prepareUninstall(_ application: InstalledApplication) {
@@ -662,7 +667,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func performUninstall(requestQuitIfRunning: Bool = true) {
+    func performUninstall(requestQuitIfRunning: Bool = true, allowFinderAuthorization: Bool = false) {
         LocalDiagnostics.shared.record(action: "désinstallation d’application")
         guard let plan = uninstallPlan, plan.canProceed, !uninstallIsWorking else { return }
         // Folder metadata alone is not an installation's size. Carry the current
@@ -674,12 +679,14 @@ final class AppModel: ObservableObject {
                 isRemovable: candidate.isRemovable, isSelectedByDefault: candidate.isSelectedByDefault)
         }, isRunning: plan.isRunning, blockingReason: plan.blockingReason, generatedAt: plan.generatedAt)
         uninstallIsWorking = true
+        uninstallResult = nil
         Task { [weak self] in
             guard let self else { return }
             let result = await uninstallService.uninstall(
                 operationPlan,
                 selectedCandidateIDs: uninstallSelectedIDs,
-                requestQuitIfRunning: requestQuitIfRunning
+                requestQuitIfRunning: requestQuitIfRunning,
+                allowFinderAuthorization: allowFinderAuthorization
             )
             uninstallResult = result
             uninstallIsWorking = false

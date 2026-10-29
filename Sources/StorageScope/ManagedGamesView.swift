@@ -4,13 +4,14 @@ import SwiftUI
 
 struct ManagedGamesPanel: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var inventory: InventoryPresentation
     private var games: [ManagedGame] { model.managedGames }
     @State private var selected: ManagedGame?
     @State private var message: String?
     @State private var loading = true
     @State private var uninstallTask: Task<Void, Never>?
     @State private var source = "Toutes les sources"
-    private var icons: [String: NSImage] { model.gameIcons }
+    private var icons: [String: NSImage] { inventory.gameIcons }
     @State private var epicGuide: EpicGuideController?
     private var adapter: LocalGameLibraryAdapter { model.gameAdapter }
 

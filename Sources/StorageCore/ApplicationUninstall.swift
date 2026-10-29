@@ -24,6 +24,24 @@ private func uninstallFileMetadata(at url: URL) -> UninstallFileMetadata? {
     )
 }
 
+public enum UninstallEligibility: Hashable, Sendable {
+    case removable
+    case authorizationRequired
+    case officialUninstallerRequired(String)
+    case blocked(String)
+
+    public var canRemoveBundle: Bool {
+        switch self { case .removable, .authorizationRequired: true; default: false }
+    }
+    public var explanation: String? {
+        switch self {
+        case .removable: nil
+        case .authorizationRequired: "macOS peut demander une autorisation pour déplacer cette application."
+        case .officialUninstallerRequired(let reason), .blocked(let reason): reason
+        }
+    }
+}
+
 public struct InstalledApplication: Identifiable, Hashable, Sendable {
     public var id: String { bundleURL.standardizedFileURL.path }
     public let bundleURL: URL
@@ -33,13 +51,14 @@ public struct InstalledApplication: Identifiable, Hashable, Sendable {
     public let allocatedBytesUpperBound: Int64
     public let bundleIdentity: FileIdentity?
     public let protectionReason: String?
+    public let eligibility: UninstallEligibility
 
-    public var isProtected: Bool { protectionReason != nil }
+    public var isProtected: Bool { !eligibility.canRemoveBundle }
 
     public init(
         bundleURL: URL, bundleIdentifier: String?, displayName: String, version: String?,
         allocatedBytesUpperBound: Int64, bundleIdentity: FileIdentity? = nil,
-        protectionReason: String? = nil
+        protectionReason: String? = nil, eligibility: UninstallEligibility? = nil
     ) {
         self.bundleURL = bundleURL
         self.bundleIdentifier = bundleIdentifier
@@ -48,6 +67,7 @@ public struct InstalledApplication: Identifiable, Hashable, Sendable {
         self.allocatedBytesUpperBound = allocatedBytesUpperBound
         self.bundleIdentity = bundleIdentity
         self.protectionReason = protectionReason
+        self.eligibility = eligibility ?? protectionReason.map(UninstallEligibility.blocked) ?? .removable
     }
 }
 
@@ -119,6 +139,9 @@ public enum UninstallStatus: String, Codable, Sendable {
     case blockedRunning
     case bundleFailed
     case cancelled
+    case authorizationRequired
+    case authorizationDenied
+    case notConfirmed
 }
 
 public struct UninstallResult: Sendable {
@@ -205,11 +228,16 @@ public actor ApplicationDiscoveryService {
         let metadata = uninstallFileMetadata(at: url)
         let protection = Self.protectionReason(url: url, identifier: identifier, displayName: name)
             ?? (metadata == nil ? "Impossible de capturer l’identité du bundle." : nil)
-            ?? (metadata?.ownerUID == 0 ? "Application appartenant à root : aucun helper administrateur n’est utilisé." : nil)
+        let privileged = !(info?["SMPrivilegedExecutables"] as? [String: Any] ?? [:]).isEmpty
+            || fileManager.fileExists(atPath: url.appendingPathComponent("Contents/Library/SystemExtensions").path)
+            || fileManager.fileExists(atPath: url.appendingPathComponent("Contents/Library/LaunchDaemons").path)
+        let eligibility: UninstallEligibility = protection.map(UninstallEligibility.blocked)
+            ?? (privileged ? .officialUninstallerRequired("Cette application comprend un service privilégié ou une extension. Utilisez son désinstalleur officiel pour retirer ces composants proprement.")
+                : metadata?.ownerUID == 0 || !fileManager.isDeletableFile(atPath: url.path) ? .authorizationRequired : .removable)
         return InstalledApplication(
             bundleURL: url, bundleIdentifier: identifier, displayName: name, version: version,
             allocatedBytesUpperBound: 0, bundleIdentity: metadata?.identity,
-            protectionReason: protection
+            protectionReason: protection, eligibility: eligibility
         )
     }
 
@@ -359,7 +387,7 @@ public actor AppAssociationFinder {
             .isDirectoryKey, .isPackageKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey
         ])
         let metadata = uninstallFileMetadata(at: url)
-        let canRemove = removable && metadata != nil && metadata?.ownerUID != 0
+        let canRemove = removable && metadata != nil && (group == .applicationBundle || metadata?.ownerUID != 0)
         candidates.append(UninstallCandidate(
             url: url, group: group, reason: reason,
             allocatedBytesUpperBound: Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0),
@@ -405,13 +433,16 @@ public actor AppAssociationFinder {
 public actor UninstallService {
     private let associationFinder: AppAssociationFinder
     private let trashService: TrashService
+    private let bundleRemover: any ApplicationBundleRemoving
 
     public init(
         associationFinder: AppAssociationFinder = AppAssociationFinder(),
-        trashService: TrashService = TrashService()
+        trashService: TrashService = TrashService(),
+        bundleRemover: any ApplicationBundleRemoving = SystemApplicationBundleRemover()
     ) {
         self.associationFinder = associationFinder
         self.trashService = trashService
+        self.bundleRemover = bundleRemover
     }
 
     public func makePlan(for application: InstalledApplication) async -> UninstallPlan {
@@ -425,7 +456,7 @@ public actor UninstallService {
         }
         return UninstallPlan(
             application: application, candidates: candidates, isRunning: running,
-            blockingReason: application.protectionReason ?? identifierBlock
+            blockingReason: application.isProtected ? application.eligibility.explanation : identifierBlock
         )
     }
 
@@ -448,7 +479,8 @@ public actor UninstallService {
 
     /// Moves the app bundle first. Associated data is untouched if that mandatory step fails.
     public func uninstall(
-        _ plan: UninstallPlan, selectedCandidateIDs: Set<String>, requestQuitIfRunning: Bool = false
+        _ plan: UninstallPlan, selectedCandidateIDs: Set<String>, requestQuitIfRunning: Bool = false,
+        allowFinderAuthorization: Bool = false
     ) async -> UninstallResult {
         let app = plan.application
         guard plan.canProceed else {
@@ -478,16 +510,22 @@ public actor UninstallService {
             return UninstallResult(application: app, status: .bundleFailed,
                 message: "Le bundle a été remplacé ou modifié depuis la préparation du plan.")
         }
-        let bundleItem = fileSystemItem(from: bundleCandidate, category: .application)
-        let bundlePreflight = TrashPreflightResult(
-            item: bundleItem, identity: expectedBundleIdentity,
-            authorization: .verifiedApplicationAssociation(bundleIdentifier: bundleIdentifier),
-            errorDescription: nil
-        )
-        let bundleAttempt = await trashService.trashWithResults([bundlePreflight]).first
-        guard let bundleResult = bundleAttempt, bundleResult.status == .trashed else {
-            return UninstallResult(application: app, status: .bundleFailed, bundleResult: bundleAttempt,
-                message: "Le bundle principal n’a pas été déplacé ; aucun fichier associé n’a été touché.")
+        let removal = await bundleRemover.remove(ApplicationBundleRemovalRequest(
+            url: app.bundleURL, bundleIdentifier: bundleIdentifier, identity: expectedBundleIdentity
+        ), allowFinderAuthorization: allowFinderAuthorization)
+        let bundleResult = TrashOperationResult(originalURL: app.bundleURL, resultingURL: removal.resultingURL,
+            expectedIdentity: expectedBundleIdentity, status: removal.status == .trashed ? .trashed : .failed,
+            allocatedBytesUpperBound: bundleCandidate.allocatedBytesUpperBound, errorDescription: removal.message)
+        guard removal.status == .trashed else {
+            let status: UninstallStatus = switch removal.status {
+            case .authorizationRequired: .authorizationRequired
+            case .authorizationDenied: .authorizationDenied
+            case .cancelled: .cancelled
+            case .notConfirmed: .notConfirmed
+            default: .bundleFailed
+            }
+            return UninstallResult(application: app, status: status, bundleResult: bundleResult,
+                message: removal.message ?? "Le déplacement n’a pas été confirmé ; aucun fichier associé n’a été touché.")
         }
 
         let selectedAssociations = plan.candidates.filter {

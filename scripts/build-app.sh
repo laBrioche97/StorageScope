@@ -174,6 +174,7 @@ done < <(/usr/bin/find "$STAGING_APPLICATION/Contents/Frameworks/Sparkle.framewo
     "${RUNTIME_ARGUMENTS[@]}" \
     "${TIMESTAMP_ARGUMENTS[@]}" \
     --sign "$SIGNING_IDENTITY" \
+    --entitlements "$PROJECT_DIRECTORY/Packaging/StorageScope.entitlements" \
     "$STAGING_APPLICATION"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$STAGING_APPLICATION"
 
@@ -187,6 +188,7 @@ fi
     "${RUNTIME_ARGUMENTS[@]}" \
     "${TIMESTAMP_ARGUMENTS[@]}" \
     --sign "$SIGNING_IDENTITY" \
+    --entitlements "$PROJECT_DIRECTORY/Packaging/StorageScope.entitlements" \
     "$APPLICATION_PATH"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APPLICATION_PATH"
 
