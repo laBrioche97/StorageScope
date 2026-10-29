@@ -99,7 +99,7 @@ struct ApplicationsView: View {
             }.value
             guard !Task.isCancelled else { return }
             rows = prepared
-            if !rows.contains(where: { $0.id == selectedID }) { selectedID = rows.first?.id }
+            if !rows.contains(where: { $0.id == selectedID }) { selectedID = rows.first(where: { !$0.application.isProtected })?.id ?? rows.first?.id }
         }
         .task { if model.applications.isEmpty && !model.applicationsAreLoading { model.loadApplications() } }
     }

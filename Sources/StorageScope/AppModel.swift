@@ -820,6 +820,7 @@ final class AppModel: ObservableObject {
             let result = await trashService.emptyTrash(inventory, authorization: authorization, volumes: volumes)
             emptyTrashResult = result
             emptyTrashStep = .result
+            if result.deletedBytesUpperBound > 0 { invalidateExplorerCacheAfterMutation() }
             refreshTrashSummary(force: true)
             recoverableTrashBytes = max(0, recoverableTrashBytes - result.deletedBytesUpperBound)
             refreshVolumes()
