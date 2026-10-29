@@ -46,9 +46,8 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
             throw TrashError.protectedItem(request.url.path)
         }
         let info = Bundle(url: request.url)?.infoDictionary ?? [:]
-        guard (info["SMPrivilegedExecutables"] as? [String: Any] ?? [:]).isEmpty,
-              !FileManager.default.fileExists(atPath: request.url.appendingPathComponent("Contents/Library/SystemExtensions").path),
-              !FileManager.default.fileExists(atPath: request.url.appendingPathComponent("Contents/Library/LaunchDaemons").path) else {
+        guard !ApplicationRemovalPolicy.requiresOfficialUninstaller(at: request.url, bundleIdentifier: request.bundleIdentifier,
+                declaredHelpers: Array((info["SMPrivilegedExecutables"] as? [String: Any] ?? [:]).keys)) else {
             throw TrashError.operationFailed(path: request.url.path, message: "Cette application exige sa méthode officielle de désinstallation.")
         }
         var ancestor = request.url.standardizedFileURL

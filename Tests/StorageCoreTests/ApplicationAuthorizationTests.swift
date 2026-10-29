@@ -20,6 +20,9 @@ func testApplicationAuthorizationBoundaries() async throws {
     let info = ["CFBundleIdentifier": "com.labrioche.permission-fixture", "CFBundleName": "Disposable fixture", "CFBundlePackageType": "APPL", "CFBundleVersion": "1"]
     try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
     let discovery = ApplicationDiscoveryService()
+    try expect(!ApplicationRemovalPolicy.requiresOfficialUninstaller(at: appURL, bundleIdentifier: "org.mozilla.firefox", declaredHelpers: ["org.mozilla.updater"]), "An updater declaration must not block Firefox's official bundle removal")
+    try expect(!ApplicationRemovalPolicy.requiresOfficialUninstaller(at: appURL, bundleIdentifier: "com.google.Chrome", declaredHelpers: ["com.google.updater"]), "A shared updater must not block Chrome bundle removal")
+    try expect(ApplicationRemovalPolicy.requiresOfficialUninstaller(at: appURL, bundleIdentifier: "com.example.unknown", declaredHelpers: ["com.example.helper"]), "Unknown privileged services must retain the official-method requirement")
     guard let app = await discovery.application(at: appURL), let identity = app.bundleIdentity else { throw ValidationError.failed("Disposable application was not discovered") }
     try SystemApplicationBundleRemover.validate(.init(url: appURL, bundleIdentifier: "com.labrioche.permission-fixture", identity: identity))
     let authorized = InstalledApplication(bundleURL: appURL, bundleIdentifier: app.bundleIdentifier, displayName: app.displayName, version: app.version,

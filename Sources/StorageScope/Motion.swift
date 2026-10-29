@@ -8,7 +8,9 @@ enum MotionTokens {
 
 enum AppTheme {
     static let accent = Color(red: 0.76, green: 0.18, blue: 0.43)
-    static let canvas = Color(nsColor: .underPageBackgroundColor)
+    static func canvas(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.10, green: 0.11, blue: 0.14) : Color(red: 0.965, green: 0.970, blue: 0.985)
+    }
 }
 
 private struct SoftTransition: ViewModifier {

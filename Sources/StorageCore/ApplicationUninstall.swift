@@ -228,9 +228,8 @@ public actor ApplicationDiscoveryService {
         let metadata = uninstallFileMetadata(at: url)
         let protection = Self.protectionReason(url: url, identifier: identifier, displayName: name)
             ?? (metadata == nil ? "Impossible de capturer l’identité du bundle." : nil)
-        let privileged = !(info?["SMPrivilegedExecutables"] as? [String: Any] ?? [:]).isEmpty
-            || fileManager.fileExists(atPath: url.appendingPathComponent("Contents/Library/SystemExtensions").path)
-            || fileManager.fileExists(atPath: url.appendingPathComponent("Contents/Library/LaunchDaemons").path)
+        let privileged = ApplicationRemovalPolicy.requiresOfficialUninstaller(at: url, bundleIdentifier: identifier,
+            declaredHelpers: Array((info?["SMPrivilegedExecutables"] as? [String: Any] ?? [:]).keys))
         let eligibility: UninstallEligibility = protection.map(UninstallEligibility.blocked)
             ?? (privileged ? .officialUninstallerRequired("Cette application comprend un service privilégié ou une extension. Utilisez son désinstalleur officiel pour retirer ces composants proprement.")
                 : metadata?.ownerUID == 0 || !fileManager.isDeletableFile(atPath: url.path) ? .authorizationRequired : .removable)

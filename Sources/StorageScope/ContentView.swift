@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var compactWindow = false
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var updates: SoftwareUpdates
 
     private var detailTitle: String {
@@ -78,7 +79,7 @@ struct ContentView: View {
         .task { model.refreshTrashSummary(force: true) }
         .environmentObject(model.inventory)
         .accentColor(AppTheme.accent)
-        .background(AppTheme.canvas)
+        .background(AppTheme.canvas(colorScheme))
         .buttonStyle(SoftButtonStyle())
         .toolbar { toolbar }
         .navigationTitle(detailTitle)
@@ -175,7 +176,7 @@ struct ContentView: View {
             )) {
                 ForEach(model.volumes) { Text($0.name).tag($0.id) }
             }
-            .frame(maxWidth: 190)
+            .frame(width: 170)
             .disabled(model.operationsAreBusy && !model.isScanning)
 
             Menu("Plus", systemImage: "ellipsis.circle") {
