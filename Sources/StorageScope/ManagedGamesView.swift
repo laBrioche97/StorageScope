@@ -108,6 +108,7 @@ struct ManagedGamesPanel: View {
                 try? OperationJournal.append(operation: "désinstallation officielle", path: game.installURL.path, status: "confirmée")
                 message = "Désinstallation confirmée. Les sauvegardes et fichiers personnels n’ont pas été nettoyés par StorageScope."
                 await reload()
+                model.invalidateExplorerCacheAfterMutation()
                 model.refreshVolumes()
                 return
             }

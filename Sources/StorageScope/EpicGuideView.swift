@@ -62,6 +62,7 @@ final class EpicGuideController: NSWindowController, NSWindowDelegate, Observabl
         guard !finished else { return }
         try? OperationJournal.append(operation: "désinstallation Epic", path: game.installURL.path, status: "confirmée")
         complete("Désinstallation confirmée localement. Les sauvegardes et composants partagés sont conservés.")
+        model.invalidateExplorerCacheAfterMutation()
         model.refreshVolumes(); model.loadApplications()
     }
     private func complete(_ message: String) {

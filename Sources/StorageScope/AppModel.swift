@@ -133,6 +133,7 @@ final class AppModel: ObservableObject {
     @Published var snapshot: ScanSnapshot?
     @Published var liveSummary: ScanLiveSummary?
     @Published var isScanning = false
+    @Published private(set) var scanNeedsRefresh = false
     @Published var searchText = ""
     @Published var sizeFilter: SizeFilter = .all
     @Published var categoryFilter: ItemCategory?
@@ -291,6 +292,11 @@ final class AppModel: ObservableObject {
 
     var displayedCategoryReport: CategoryReport? {
         if isScanning, let liveSummary { return liveSummary.categoryReport }
+        if scanNeedsRefresh, let report = snapshot?.categoryReport {
+            return CategoryReport(summaries: report.summaries, identifiedLogicalBytes: report.identifiedLogicalBytes,
+                identifiedAllocatedBytes: report.identifiedAllocatedBytes, permissionErrors: report.permissionErrors,
+                isComplete: false, generatedAt: report.generatedAt)
+        }
         return snapshot?.categoryReport
     }
 
@@ -420,6 +426,7 @@ final class AppModel: ObservableObject {
                 case .update(let value): snapshot = value
                 case .completed(let value):
                     snapshot = value
+                    scanNeedsRefresh = false
                     scanStatus.update(value.progress)
                     isScanning = false
                     try? await cache.save(value)
@@ -1073,7 +1080,7 @@ final class AppModel: ObservableObject {
                             if cached != nil { explorerItems = []; bubbleFrame = nil }
                             return
                         }
-                        let partial = isScanning || snapshot?.completedAt == nil || !issues.isEmpty
+                        let partial = scanNeedsRefresh || isScanning || snapshot?.completedAt == nil || !issues.isEmpty
                         do {
                             let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial, items: pending, maximumVisible: maximum, availableDiameter: diameter)
                             let preparedItems = pending
@@ -1172,7 +1179,12 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func invalidateExplorerCacheAfterMutation() {
+        explorerViewCache.clear(); explorerFilterMemo = nil; scanNeedsRefresh = true
+    }
+
     private func removeFromSnapshot(_ items: [FileSystemItem]) {
+        invalidateExplorerCacheAfterMutation()
         guard let old = snapshot else { return }
         let normalized = SelectionNormalizer.normalize(items)
         let removed = Set(normalized.map(\.id))
@@ -1396,7 +1408,7 @@ extension AppModel {
             guard let self else { return }
             defer { if bubbleGeneration == generation { bubbleIsLoading = false } }
             do {
-                let partial = isScanning || snapshot?.completedAt == nil || (snapshot?.progress.permissionErrors ?? 0) > 0
+                let partial = scanNeedsRefresh || isScanning || snapshot?.completedAt == nil || (snapshot?.progress.permissionErrors ?? 0) > 0
                 let frame = try await store.bubbleFrame(forPath: directory.path, partial: partial, items: items, maximumVisible: maximum, availableDiameter: diameter)
                 guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volumeID, currentDirectory?.path == directory.path else { return }
                 bubbleFrame = frame
