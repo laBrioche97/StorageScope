@@ -567,6 +567,7 @@ struct StorageCoreTests {
         let tests: [(String, () async throws -> Void)] = [
             ("Autorisations applicatives et identité", { try await testApplicationAuthorizationBoundaries() }),
             ("Budget commun de lectures récursives", { try await testSharedRecursiveReadBudget() }),
+            ("Liens exclus et couverture des dossiers voisins", { try await testLinkedEntriesPreserveSiblingCoverage() }),
             ("Bulles proportionnelles et autorisation de corbeille", { try await testFolderBubbles() }),
             ("Agrégation", { try testAggregation() }),
             ("Agrégation consommatrice", { try testConsumingAggregationMatchesSnapshot() }),

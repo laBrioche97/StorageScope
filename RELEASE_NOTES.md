@@ -7,6 +7,7 @@
 - Transitions discrètes, navigation avec zoom et fondu, respect de la réduction des animations et conservation du contenu pendant le chargement.
 - États des logos et tailles isolés du scan, décodage des icônes en arrière-plan, lectures récursives limitées à deux et ouverture de l’index hors interface. Les dossiers en cache conservent sélection et défilement.
 - Comparaison automatisée des scans avec 3.5.1 et tests isolés des autorisations, de l’installation et des mises à jour. Aucun essai de désinstallation ne vise une application personnelle.
+- Les liens restent exclus du parcours sans risquer de sauter le contenu d’un dossier voisin lors du scan ou du calcul des tailles.
 - Windows reste pris en charge avec ses fonctions et protections existantes. Aucun paquet Mac Intel n’est publié.
 
 Version Mac de test, macOS 14 minimum, sans Developer ID ni notarisation Apple. Archives et flux Sparkle authentifiés par Ed25519. Le paquet Windows conserve son manifeste RSA-PSS vérifié et reste sans signature Authenticode. Les autorisations macOS peuvent devoir être renouvelées après une mise à jour de cette version de test. Les restrictions système et méthodes officielles des applications restent applicables.

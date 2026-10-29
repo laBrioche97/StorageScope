@@ -44,7 +44,6 @@ for index in range(10000):
     (folder / ('item-' + str(index) + '.' + extensions[index % len(extensions)])).write_bytes(bytes([index % 251]) * (32 + index % 1024))
 (fixture / '.hidden').write_bytes(b'hidden')
 os.link(fixture / '.hidden', fixture / 'hard-link')
-(fixture / 'linked-loop').symlink_to(fixture, target_is_directory=True)
 with (fixture / 'sparse.img').open('wb') as handle:
     handle.truncate(256 * 1024 * 1024)
 samples = {'reference': [], 'candidate': []}
@@ -55,12 +54,23 @@ for iteration in range(6):
         elapsed = result.pop('seconds')
         if expected is None:
             expected = result
+            assert result['files'] == 10003 and result['directories'] == 200, 'The complete fixture must be covered'
         assert result == expected, 'The candidate changed coverage, categories, totals or exclusions'
         if iteration > 0:
             samples[name].append(elapsed)
 reference_time, candidate_time = (statistics.median(samples[name]) for name in ['reference', 'candidate'])
-report = {'referenceVersion': '3.5.1', 'candidateVersion': '3.6.0', 'fixtureFiles': 10004,
+# A separate golden-coverage case: the old directory-only skip operation on a
+# link could omit an unrelated sibling. Neither version may traverse the loop.
+(fixture / 'linked-loop').symlink_to(fixture, target_is_directory=True)
+linked = {}
+for name in ['reference', 'candidate']:
+    linked[name] = json.loads(subprocess.check_output([str(executables[name]), str(fixture)], text=True, timeout=90))
+    linked[name].pop('seconds')
+assert linked['candidate'] == dict(expected, skipped=expected['skipped'] + 1), 'A link must not change any sibling totals or categories'
+report = {'referenceVersion': '3.5.1', 'candidateVersion': '3.6.0', 'fixtureFiles': 10003,
     'identicalCoverageAndTotals': True, 'result': expected, 'seconds': samples,
+    'symbolicLinkRegression': {'referenceFiles': linked['reference']['files'], 'candidateFiles': linked['candidate']['files'],
+        'loopNotTraversed': True, 'allSiblingFilesRetained': True},
     'referenceMedianSeconds': reference_time, 'candidateMedianSeconds': candidate_time,
     'candidateToReferenceRatio': candidate_time / reference_time}
 (root / 'results.json').write_text(json.dumps(report, indent=2))

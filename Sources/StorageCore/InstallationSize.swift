@@ -47,17 +47,18 @@ public enum InstallationSizeService {
             do {
                 let values = try child.resourceValues(forKeys: keys)
                 guard let entry = identity(child), entry.device == start.device else {
-                    enumerator.skipDescendants(); partial = true; continue
+                    if values.isDirectory == true { enumerator.skipDescendants() }; partial = true; continue
                 }
-                if values.isSymbolicLink == true || values.isUbiquitousItem == true || DeletionSafetyPolicy.isCloudPath(child.path) {
-                    enumerator.skipDescendants(); partial = true; continue
+                if values.isSymbolicLink == true { partial = true; continue }
+                if values.isUbiquitousItem == true || DeletionSafetyPolicy.isCloudPath(child.path) {
+                    if values.isDirectory == true { enumerator.skipDescendants() }; partial = true; continue
                 }
                 if values.isDirectory != true, seen.insert("\(entry.device):\(entry.inode)").inserted {
                     if let size = values.totalFileAllocatedSize ?? values.fileAllocatedSize {
                         total = total > Int64.max - Int64(size) ? Int64.max : total + Int64(size)
                     } else { partial = true }
                 }
-            } catch { enumerator.skipDescendants(); partial = true }
+            } catch { partial = true }
         }
         guard identity(root) == start, !hasLinkedAncestor(root) else { return InstallationSize(state: .unavailable) }
         return InstallationSize(bytes: total, state: partial ? .partial : .measured)

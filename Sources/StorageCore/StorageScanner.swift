@@ -182,7 +182,9 @@ public final class StorageScanner: @unchecked Sendable {
                             try candidate.resourceValues(forKeys: keySet)
                         }
                         if values.isSymbolicLink == true {
-                            enumerator.skipDescendants()
+                            // Foundation never traverses a symbolic link. Calling
+                            // skipDescendants on a non-directory can instead skip
+                            // the next sibling directory in the enumerator.
                             progress.skippedItems = SaturatingArithmetic.addNonnegative(progress.skippedItems, 1)
                             continue
                         }

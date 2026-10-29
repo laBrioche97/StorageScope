@@ -67,13 +67,7 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
         catch { return .init(.failed, message: error.localizedDescription) }
         if Task.isCancelled { return .init(.cancelled) }
         try? OperationJournal.append(operation: "désinstallation", path: request.url.path, status: "préparé")
-        let response: RecycleResponse
-        if allowFinderAuthorization {
-            // Permission UI is requested only by the explicit Continue action. The
-            // typed descriptor carries the file reference; no generated shell/script.
-            response = await Task.detached(priority: .userInitiated) { Self.recycleWithFinder(request) }.value
-        } else {
-            response = await withCheckedContinuation { continuation in
+        var response: RecycleResponse = await withCheckedContinuation { continuation in
                 Task { @MainActor in
                     do { try Self.validate(request) }
                     catch { continuation.resume(returning: RecycleResponse(message: error.localizedDescription)); return }
@@ -84,7 +78,26 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
                             domain: failure?.domain, code: failure?.code, message: failure?.localizedDescription))
                     }
                 }
+        }
+        // The workspace service can reject root ownership even when the current
+        // account may move the bundle. Foundation still enforces the account's
+        // filesystem/TCC permissions and never substitutes permanent deletion.
+        if Self.isPermissionFailure(response), Self.identity(request.url) == request.identity {
+            do {
+                try Self.validate(request)
+                var destination: NSURL?
+                try FileManager.default.trashItem(at: request.url, resultingItemURL: &destination)
+                response = RecycleResponse(url: destination as URL?)
+            } catch {
+                let error = error as NSError
+                response = RecycleResponse(domain: error.domain, code: error.code, message: error.localizedDescription)
             }
+        }
+        if allowFinderAuthorization, Self.isPermissionFailure(response), Self.identity(request.url) == request.identity {
+            // Only the explicit Continue action can request Finder automation.
+            // First retry the system operation: newly granted App Management may
+            // already suffice, without asking for another permission.
+            response = await Task.detached(priority: .userInitiated) { Self.recycleWithFinder(request) }.value
         }
         let result: ApplicationBundleRemovalOutcome
         if let destination = response.url, Self.identity(destination) == request.identity,

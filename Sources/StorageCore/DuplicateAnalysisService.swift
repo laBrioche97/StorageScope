@@ -294,8 +294,9 @@ public struct DuplicateAnalysisService: @unchecked Sendable {
             progress.currentPath = url.path
             do {
                 let values = try url.resourceValues(forKeys: Set(keys))
+                if values.isSymbolicLink == true { progress.skippedSensitiveItems += 1; continue }
                 if values.isDirectory == true {
-                    if values.isSymbolicLink == true || values.isPackage == true || isSensitiveDirectory(url) {
+                    if values.isPackage == true || isSensitiveDirectory(url) {
                         enumerator.skipDescendants()
                         progress.skippedSensitiveItems += 1
                     }

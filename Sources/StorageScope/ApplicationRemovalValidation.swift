@@ -22,7 +22,7 @@ import StorageCore
         let record: [String: Any] = ["version": AppIdentity.version, "status": result.status.rawValue,
             "rootOwnedBundleSelectable": true, "resultingURL": result.bundleResult?.resultingURL?.path ?? "",
             "associatedDataUntouched": result.associatedResults.isEmpty,
-            "message": result.message ?? "", "systemAPI": "NSWorkspace.recycle"]
+            "message": result.message ?? "", "systemAPI": "NSWorkspace.recycle / FileManager.trashItem"]
         try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output).appendingPathComponent("storagescope-application-removal-validation.json"))
         guard result.status == .succeeded, !FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileWriteNoPermission) }
         print("PASS actual installed application's system recycle of a root-owned disposable bundle")

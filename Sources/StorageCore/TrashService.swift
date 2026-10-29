@@ -512,7 +512,8 @@ public actor TrashService {
         for case let url as URL in enumerator {
             if Task.isCancelled { throw CancellationError() }
             let values = try url.resourceValues(forKeys: keys)
-            if values.isSymbolicLink == true { enumerator.skipDescendants() }
+            // Foundation's enumerator does not follow links. Never call the
+            // directory-only skip operation on a link returned between siblings.
             total += Int64(values.fileAllocatedSize ?? 0)
         }
         if let enumerationError { throw enumerationError }
