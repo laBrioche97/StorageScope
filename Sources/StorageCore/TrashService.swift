@@ -202,8 +202,10 @@ public actor TrashService {
         SelectionNormalizer.normalize(items).map { item in
             do {
                 try validateTrashable(item, authorization: authorization)
+                let liveIdentity = try identity(at: item.url)
+                if let indexed = item.indexedIdentity, indexed != liveIdentity { throw TrashError.identityChanged(item.url.path) }
                 return TrashPreflightResult(
-                    item: item, identity: try identity(at: item.url),
+                    item: item, identity: liveIdentity,
                     authorization: authorization, errorDescription: nil
                 )
             } catch {

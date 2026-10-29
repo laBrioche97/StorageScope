@@ -42,6 +42,7 @@ struct StorageExplorerView: View {
             }
             explorerSelectionBar
         }
+        .background(ExplorerGestureCapture(model: model))
         .softTransition(model.navigationRevision.uuidString, duration: MotionTokens.navigation, back: model.navigationBack, anchor: model.navigationAnchor, zoom: false)
         .overlay(alignment: .topTrailing) {
             if let destination = model.explorerPendingDirectory {
@@ -67,8 +68,8 @@ struct StorageExplorerView: View {
     private var explorerHeader: some View {
         VStack(spacing: 10) {
             HStack(spacing: 6) {
-                Button("Précédent", systemImage: "chevron.left") { model.browseHistory(-1) }.labelStyle(.iconOnly)
-                Button("Suivant", systemImage: "chevron.right") { model.browseHistory(1) }.labelStyle(.iconOnly)
+                Button("Précédent", systemImage: "chevron.left") { model.browseHistory(-1) }.labelStyle(.iconOnly).disabled(!model.canBrowseBack)
+                Button("Suivant", systemImage: "chevron.right") { model.browseHistory(1) }.labelStyle(.iconOnly).disabled(!model.canBrowseForward)
                 ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 6) {
                 if let volume = model.selectedVolume {
                     Button {

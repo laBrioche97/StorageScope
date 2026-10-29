@@ -136,6 +136,48 @@ final class AppModel: ObservableObject {
     @Published var liveSummary: ScanLiveSummary?
     @Published var isScanning = false
     @Published private(set) var scanNeedsRefresh = false
+    @Published private(set) var indexFreshness: IndexFreshness = .requiresScan
+    @Published private(set) var indexStatusMessage = "Une analyse complète conserve toute l’arborescence accessible."
+    @Published private(set) var indexSynchronizedAt: Date?
+    private var synchronizationTask: Task<Void, Never>?
+    private var synchronizationGeneration = UUID()
+
+    var indexStatusHelp: String {
+        let full = snapshot?.completedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Jamais"
+        let sync = indexSynchronizedAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "Pas encore vérifiée"
+        return indexStatusMessage + "\nAnalyse complète : " + full + "\nActualisation : " + sync
+    }
+
+    private func stopIndexSynchronization() {
+        synchronizationTask?.cancel(); synchronizationTask = nil; synchronizationGeneration = UUID()
+    }
+
+    func resumeIndexSynchronization() {
+        guard !isPreviewMode, !isScanning, let volume = selectedVolume else { return }
+        stopIndexSynchronization()
+        let generation = synchronizationGeneration
+        indexFreshness = .checking
+        synchronizationTask = Task { [weak self] in
+            guard let self else { return }
+            for await event in PersistentScanSynchronizer.synchronize(root: volume.url, volumeID: volume.id) {
+                guard !Task.isCancelled, generation == synchronizationGeneration, selectedVolumeID == volume.id, !isScanning else { return }
+                switch event {
+                case let .status(status, message): indexFreshness = status; indexStatusMessage = message; scanNeedsRefresh = status != .current
+                case let .updated(state, settled):
+                    let changed = snapshot?.categoryReport != state.snapshot.categoryReport
+                    snapshot = state.snapshot; indexSynchronizedAt = state.synchronizedAt
+                    let partial = !state.pending.isEmpty || !state.snapshot.issues.isEmpty || state.snapshot.progress.permissionErrors > 0
+                    indexFreshness = !settled ? .checking : partial ? .partial : .current
+                    indexStatusMessage = partial ? "Certains emplacements restent inaccessibles. Consultez les résultats partiels." : !settled ? "Reprise du journal de changements…" : "Les changements connus du stockage ont été intégrés."
+                    scanNeedsRefresh = !settled || partial
+                    if changed {
+                        explorerViewCache.clear(); explorerFilterMemo = nil; validatedCleanupReport = nil
+                        if sidebar == .explorer, explorerPendingDirectory == nil, let directory = currentDirectory { loadExplorerDirectory(directory) }
+                    }
+                }
+            }
+        }
+    }
     @Published var searchText = ""
     @Published var sizeFilter: SizeFilter = .all
     @Published var categoryFilter: ItemCategory?
@@ -393,6 +435,7 @@ final class AppModel: ObservableObject {
         } else {
             previousCount = nil
         }
+        stopIndexSynchronization(); indexFreshness = .updating; indexStatusMessage = "Analyse complète en cours…"
         explorerViewCache.clear()
         scanTask?.cancel()
         let generation = UUID()
@@ -444,6 +487,7 @@ final class AppModel: ObservableObject {
                     } else if sidebar == .explorer {
                         explorerViewCache.clear(); loadExplorerDirectory(explorerPendingDirectory ?? currentDirectory ?? volume.url)
                     }
+                    resumeIndexSynchronization()
                     if pendingCleanupAnalysis { calculateCleanup() }
                 case .cancelled(let value):
                     snapshot = value
@@ -466,6 +510,7 @@ final class AppModel: ObservableObject {
         scanGeneration = UUID()
         isScanning = false
         pendingCleanupAnalysis = false
+        resumeIndexSynchronization()
     }
 
     func selectVolume(id: String) {
@@ -475,6 +520,7 @@ final class AppModel: ObservableObject {
             return
         }
         if isScanning { stopScan() }
+        stopIndexSynchronization(); indexSynchronizedAt = nil; indexFreshness = .checking
         let generation = UUID()
         scanGeneration = generation
         explorerViewCache.clear()
@@ -501,16 +547,7 @@ final class AppModel: ObservableObject {
         cleanupTask?.cancel()
         cleanupIsAnalyzing = false
         cancelDuplicateAnalysis()
-        Task { [weak self] in
-            guard let self else { return }
-            let restored = try? await cache.load(volumeID: id)
-            guard !Task.isCancelled,
-                  generation == scanGeneration,
-                  selectedVolumeID == id,
-                  snapshot == nil,
-                  restored?.volumeID == id else { return }
-            snapshot = restored
-        }
+        Task { [weak self] in await self?.restoreLastScan() }
         if sidebar == .explorer { openExplorerStorage(id: id) }
     }
 
@@ -531,7 +568,8 @@ final class AppModel: ObservableObject {
         volumes = refreshed
         if !refreshed.contains(where: { $0.id == selectedVolumeID }) {
             explorerViewCache.clear()
-            stopScan(); browseTask?.cancel(); browseGeneration = UUID()
+            stopScan(); stopIndexSynchronization(); indexFreshness = .disconnected; indexStatusMessage = "Le stockage a été déconnecté."
+            browseTask?.cancel(); browseGeneration = UUID()
             bubbleTask?.cancel(); bubbleGeneration = UUID(); bubbleFrame = nil
             currentDirectory = nil; explorerItems = []; snapshot = nil; liveSummary = nil
             choosingExplorerStorage = true
@@ -984,16 +1022,16 @@ final class AppModel: ObservableObject {
     }
 
     func restoreLastScan() async {
-        guard snapshot == nil else { return }
-        let volumeID = selectedVolumeID
+        guard !isPreviewMode, let volume = selectedVolume else { return }
         let generation = scanGeneration
-        let restored = try? await cache.load(volumeID: volumeID)
-        guard !Task.isCancelled,
-              generation == scanGeneration,
-              selectedVolumeID == volumeID,
-              snapshot == nil,
-              restored?.volumeID == volumeID else { return }
-        snapshot = restored
+        let restored = await Task.detached(priority: .userInitiated) { () -> ScanSnapshot? in
+            if let store = try? DirectoryIndexStore(volumeID: volume.id, root: volume.url), let state = try? await store.treeState() { return state.snapshot }
+            return nil
+        }.value
+        let legacy = restored == nil ? (try? await cache.load(volumeID: volume.id)) : nil
+        guard !Task.isCancelled, generation == scanGeneration, selectedVolumeID == volume.id, !isScanning else { return }
+        if snapshot == nil { snapshot = restored ?? legacy }
+        resumeIndexSynchronization()
     }
 
     func open(_ item: FileSystemItem) { NSWorkspace.shared.open(item.url) }
@@ -1084,6 +1122,15 @@ final class AppModel: ObservableObject {
                 else { store = try await Task.detached(priority: .userInitiated) { try DirectoryIndexStore(volumeID: volume.id, root: volume.url) }.value }
                 guard isCurrent() else { return }
                 directoryIndexStore = store
+                if cached == nil, let indexed = try await store.indexedChildren(of: directory) {
+                    let frame = try await store.bubbleFrame(forPath: directory.path, partial: indexFreshness != .current, items: indexed, maximumVisible: maximum, availableDiameter: diameter)
+                    let view = await Task.detached { ExplorerViewSnapshot(items: indexed, frame: frame, layout: layout) }.value
+                    guard isCurrent() else { return }
+                    explorerViewCache.put(key, view)
+                    publishExplorerView(view, directory: directory, back: back, animate: true, recordHistory: recordHistory)
+                    try? await Task.sleep(for: .milliseconds(180))
+                    guard isCurrent() else { return }
+                }
                 let browser = DirectoryBrowserService(volumeID: volume.id, root: volume.url, indexStore: store)
                 var pending: [FileSystemItem] = []
                 var issues: [ScanIssue] = []
@@ -1200,6 +1247,7 @@ final class AppModel: ObservableObject {
 
     func invalidateExplorerCacheAfterMutation() {
         explorerViewCache.clear(); explorerFilterMemo = nil; scanNeedsRefresh = true
+        indexFreshness = .updating; indexStatusMessage = "Vérification du stockage après modification…"
     }
 
     private func removeFromSnapshot(_ items: [FileSystemItem]) {
@@ -1459,6 +1507,9 @@ extension AppModel {
         explorerIsLoading = false; bubbleIsLoading = false
         bubbleMessage = "Chargement annulé. Ouvrez un dossier ou relancez l’analyse pour reprendre."
     }
+
+    var canBrowseBack: Bool { explorerPendingDirectory != nil || explorerHistoryPosition > 0 }
+    var canBrowseForward: Bool { explorerHistory.indices.contains(explorerHistoryPosition + 1) }
 
     func browseHistory(_ direction: Int) {
         if explorerPendingDirectory != nil && direction < 0 { cancelExplorerLoading(); return }

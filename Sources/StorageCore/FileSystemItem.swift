@@ -46,6 +46,8 @@ public struct FileSystemItem: Identifiable, Hashable, Codable, Sendable {
     public let modificationDate: Date?
     public let category: ItemCategory
     public let safety: SafetyLevel
+    /// Identity observed while indexing; never replaces the live deletion preflight.
+    public let indexedIdentity: FileIdentity?
 
     public init(
         url: URL,
@@ -60,8 +62,10 @@ public struct FileSystemItem: Identifiable, Hashable, Codable, Sendable {
         modificationDate: Date? = nil,
         category: ItemCategory = .other,
         safety: SafetyLevel = .review,
-        sizeIsKnown: Bool? = nil
+        sizeIsKnown: Bool? = nil,
+        indexedIdentity: FileIdentity? = nil
     ) {
+        self.indexedIdentity = indexedIdentity
         self.sizeIsKnown = sizeIsKnown
         self.id = url.path
         self.url = url

@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>StorageScope</AssemblyName>
     <RootNamespace>StorageScope.Windows</RootNamespace>
-    <Version>3.6.1</Version>
+    <Version>3.7.0</Version>
     <StartupObject>StorageScope.Windows.EntryPoint</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>../../Packaging/Branding/StorageScope.ico</ApplicationIcon>

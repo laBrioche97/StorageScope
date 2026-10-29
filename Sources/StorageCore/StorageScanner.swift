@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 
 public final class StorageScanner: @unchecked Sendable {
-    public static let currentIndexVersion = 1
+    public static let currentIndexVersion = DirectoryIndexStore.schemaVersion
     public let topFileLimit: Int
     public let topDirectoryLimit: Int
     /// Minimum delay between bounded partial result snapshots.
@@ -28,7 +28,8 @@ public final class StorageScanner: @unchecked Sendable {
                 await RecursiveReadBudget.shared.acquire()
                 defer { Task { await RecursiveReadBudget.shared.release() } }
                 let standardizedRoot = Self.canonicalURL(for: root)
-                let rootDeviceID = Self.deviceID(for: standardizedRoot)
+                let policy = ScanPathPolicy(root: standardizedRoot)
+                let checkpoint = JournalCheckpoint.capture(root: standardizedRoot)
                 let scanID = UUID()
                 let volumeID = requestedVolumeID ?? standardizedRoot.path
                 var progress = ScanProgress()
@@ -41,6 +42,14 @@ public final class StorageScanner: @unchecked Sendable {
                 var categoryAccumulator = CategoryAccumulator()
                 var cleanupAnalyzer = CleanupAnalyzer()
                 var issues: [ScanIssue] = []
+                var treeStore: DirectoryIndexStore?
+                var pendingTreeItems: [FileSystemItem] = []
+                pendingTreeItems.reserveCapacity(1024)
+                do {
+                    let store = try DirectoryIndexStore(volumeID: volumeID, root: standardizedRoot)
+                    try await store.beginTreeGeneration(scanID)
+                    treeStore = store
+                } catch { issues.append(ScanIssue(path: standardizedRoot.path, message: "L’arborescence ne peut pas être enregistrée : \(error.localizedDescription)", isPermissionError: false)) }
                 var lastProgressAt = ContinuousClock.now
                 var lastLiveSummaryAt = ContinuousClock.now
                 var containerStack: [(path: String, category: ItemCategory)] = []
@@ -56,7 +65,7 @@ public final class StorageScanner: @unchecked Sendable {
                 let keySet: Set<URLResourceKey> = [
                     .isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey, .isPackageKey,
                     .isHiddenKey, .fileSizeKey, .fileAllocatedSizeKey,
-                    .contentModificationDateKey
+                    .creationDateKey, .contentModificationDateKey
                 ]
 
                 let errorBox = ErrorBox()
@@ -127,24 +136,7 @@ public final class StorageScanner: @unchecked Sendable {
                     let allDirectories = aggregator.takeDirectoryItems()
                     var directoryHeap = TopItemHeap(limit: topDirectoryLimit)
                     for directory in allDirectories { directoryHeap.insert(directory) }
-                    do {
-                        let index = try DirectoryIndexStore(volumeID: volumeID, root: standardizedRoot)
-                        let summaries = allDirectories.map { DirectorySummary(item: $0, volumeID: volumeID) }
-                        try await index.replaceAll(
-                            summaries,
-                            scanID: scanID,
-                            indexVersion: DirectoryIndexStore.schemaVersion
-                        )
-                    } catch {
-                        if issues.count < 500 {
-                            issues.append(ScanIssue(
-                                path: standardizedRoot.path,
-                                message: "L’index de navigation n’a pas pu être enregistré : \(error.localizedDescription)",
-                                isPermissionError: false
-                            ))
-                        }
-                    }
-                    return ScanSnapshot(
+                    let result = ScanSnapshot(
                         root: standardizedRoot,
                         progress: progress,
                         topFiles: topFiles.descending(),
@@ -158,6 +150,16 @@ public final class StorageScanner: @unchecked Sendable {
                         indexVersion: DirectoryIndexStore.schemaVersion,
                         categoryReport: categoryAccumulator.makeReport(permissionErrors: progress.permissionErrors, isComplete: true)
                     )
+                    if let treeStore {
+                        do {
+                            try await treeStore.appendTreeItems(pendingTreeItems, generation: scanID)
+                            try await treeStore.completeTreeGeneration(scanID, directories: allDirectories.map { DirectorySummary(item: $0, volumeID: volumeID) }, snapshot: result, checkpoint: checkpoint)
+                        } catch {
+                            issues.append(ScanIssue(path: standardizedRoot.path, message: "L’arborescence complète n’a pas été enregistrée : \(error.localizedDescription)", isPermissionError: false))
+                            return ScanSnapshot(root: result.root, progress: result.progress, topFiles: result.topFiles, topDirectories: result.topDirectories, directoryContents: [:], issues: issues, cleanupReport: result.cleanupReport, completedAt: result.completedAt, scanID: scanID, volumeID: volumeID, indexVersion: 0, categoryReport: result.categoryReport)
+                        }
+                    }
+                    return result
                 }
 
                 while let candidate = enumerator.nextObject() as? URL {
@@ -171,7 +173,7 @@ public final class StorageScanner: @unchecked Sendable {
                     progress.currentPath = candidate.path
                     // `/` exposes other mounted disks under /Volumes and duplicate APFS views
                     // under /System/Volumes. Canonical firmlinks such as /Users are still visited.
-                    if standardizedRoot.path == "/" && (candidate.path == "/Volumes" || candidate.path == "/System/Volumes") {
+                    if policy.excludes(candidate) {
                         enumerator.skipDescendants()
                         progress.skippedItems = SaturatingArithmetic.addNonnegative(progress.skippedItems, 1)
                         continue
@@ -191,10 +193,8 @@ public final class StorageScanner: @unchecked Sendable {
 
                         let isDirectory = values.isDirectory == true
                         let isPackage = values.isPackage == true
-                        if isDirectory,
-                           let rootDeviceID,
-                           let candidateDeviceID = Self.deviceID(for: candidate),
-                           candidateDeviceID != rootDeviceID {
+                        let identity = ScanPathPolicy.identity(candidate)
+                        if isDirectory, let identity, !policy.acceptsDevice(identity) {
                             enumerator.skipDescendants()
                             progress.skippedItems = SaturatingArithmetic.addNonnegative(progress.skippedItems, 1)
                             continue
@@ -222,11 +222,14 @@ public final class StorageScanner: @unchecked Sendable {
                             isDirectory: isDirectory,
                             isPackage: isPackage,
                             isHidden: values.isHidden == true,
+                            creationDate: values.creationDate,
                             modificationDate: values.contentModificationDate,
                             category: category,
-                            safety: FileTypeClassifier.safety(for: candidate, isDirectory: isDirectory)
+                            safety: FileTypeClassifier.safety(for: candidate, isDirectory: isDirectory),
+                            indexedIdentity: identity
                         )
 
+                        if isDirectory || values.isRegularFile == true { pendingTreeItems.append(item) }
                         if isDirectory {
                             progress.directoriesScanned = SaturatingArithmetic.addNonnegative(
                                 progress.directoriesScanned, 1
@@ -263,6 +266,16 @@ public final class StorageScanner: @unchecked Sendable {
                         if issues.count < 500 { issues.append(issue) }
                     }
 
+                    if pendingTreeItems.count >= 1024 {
+                        if let store = treeStore {
+                            do { try await store.appendTreeItems(pendingTreeItems, generation: scanID) }
+                            catch {
+                                treeStore = nil
+                                issues.append(ScanIssue(path: standardizedRoot.path, message: "Échec de sauvegarde de l’arborescence : \(error.localizedDescription)", isPermissionError: false))
+                            }
+                        }
+                        pendingTreeItems.removeAll(keepingCapacity: true)
+                    }
                     let itemCount = SaturatingArithmetic.addNonnegative(
                         progress.filesScanned,
                         progress.directoriesScanned

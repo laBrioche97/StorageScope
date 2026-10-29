@@ -178,6 +178,9 @@ struct ContentView: View {
                 ForEach(model.volumes) { Text($0.name).tag($0.id) }
             }
             .frame(width: 170)
+            Label(model.indexFreshness.rawValue, systemImage: model.indexFreshness == .current ? "checkmark.circle.fill" : model.indexFreshness == .checking || model.indexFreshness == .updating ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
+                .foregroundStyle(model.indexFreshness == .current ? Color.green : Color.secondary)
+                .font(.caption).help(model.indexStatusHelp).accessibilityLabel(model.indexFreshness.rawValue + ". " + model.indexStatusMessage)
             .disabled(model.operationsAreBusy && !model.isScanning)
 
             Menu("Plus", systemImage: "ellipsis.circle") {

@@ -130,7 +130,7 @@ public struct DirectoryBrowserService: Sendable {
                     return
                 }
 
-                let rootDevice = Self.deviceID(for: root)
+                let policy = ScanPathPolicy(root: root)
                 var pending: [FileSystemItem] = []
                 pending.reserveCapacity(options.batchSize)
 
@@ -147,9 +147,8 @@ public struct DirectoryBrowserService: Sendable {
                           !Self.isExcludedMountNamespace(candidate.path, rootPath: root.path) else {
                         continue
                     }
-                    if let rootDevice,
-                       let childDevice = Self.deviceID(for: candidate),
-                       childDevice != rootDevice {
+                    if policy.excludes(candidate) { continue }
+                    if let identity = ScanPathPolicy.identity(candidate), !policy.acceptsDevice(identity) {
                         continuation.yield(.issue(ScanIssue(
                             path: candidate.path,
                             message: "Ce point de montage appartient à un autre volume et a été ignoré.",

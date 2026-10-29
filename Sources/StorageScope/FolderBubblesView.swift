@@ -42,7 +42,7 @@ struct FolderBubblesView: View {
     }
 }
 
-private enum BubbleGeometry {
+enum BubbleGeometry {
     static func rect(_ node: FolderBubble, size: CGSize) -> CGRect {
         let diameter = max(0, min(size.width, size.height) - 12)
         let radius = CGFloat(node.circle.radius) * diameter / 2
@@ -60,11 +60,8 @@ private struct FolderBubbleDiagram: View {
         let _ = explorerState.currentDirectory
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                FolderBubbleDrawing(nodes: nodes)
-                ForEach(nodes) { node in
-                    FolderBubbleControl(model: model, node: node, bounds: BubbleGeometry.rect(node, size: proxy.size),
-                        enabled: model.explorerPendingDirectory == nil, operationsAreBusy: model.operationsAreBusy).equatable()
-                }
+                FolderBubbleDrawing(nodes: nodes).allowsHitTesting(false)
+                NativeBubbleControls(model: model, nodes: nodes, enabled: model.explorerPendingDirectory == nil)
                 if nodes.isEmpty && !model.bubbleIsLoading && !model.explorerIsLoading && !model.isScanning {
                     ContentUnavailableView("Aucun élément mesuré", systemImage: "folder", description: Text(model.explorerIssues.first?.message ?? "Les tailles inconnues restent disponibles dans la liste."))
                         .frame(width: proxy.size.width, height: proxy.size.height)
@@ -102,47 +99,5 @@ private struct FolderBubbleDrawing: View {
                 }
             }
         }.accessibilityHidden(true)
-    }
-}
-
-private struct FolderBubbleControl: View, Equatable {
-    let model: AppModel
-    @FocusState private var focused: Bool
-    let node: FolderBubble
-    let bounds: CGRect
-    let enabled: Bool
-    let operationsAreBusy: Bool
-    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.node.id == rhs.node.id && lhs.node.name == rhs.node.name && lhs.node.bytes == rhs.node.bytes
-            && lhs.node.parentBytes == rhs.node.parentBytes && lhs.node.isDirectory == rhs.node.isDirectory
-            && lhs.node.circle == rhs.node.circle && lhs.node.skipCount == rhs.node.skipCount && lhs.node.depth == rhs.node.depth
-            && lhs.bounds == rhs.bounds && lhs.enabled == rhs.enabled && lhs.operationsAreBusy == rhs.operationsAreBusy
-    }
-    var body: some View {
-        Button { model.openBubble(node) } label: { Circle().fill(Color.clear).contentShape(Circle()) }
-            .buttonStyle(.plain).disabled(!enabled).focused($focused)
-            .frame(width: bounds.width, height: bounds.height).position(x: bounds.midX, y: bounds.midY)
-            .accessibilityLabel(node.name).accessibilityValue(ByteCountFormatter.storage.string(fromByteCount: node.bytes))
-            .help(annotation)
-            .onHover { model.explorerHoveredID = $0 ? node.path : nil }
-            .onChange(of: focused) { _, value in if value { model.explorerHoveredID = node.path } }
-            .contextMenu { contextActions }
-    }
-    @ViewBuilder private var contextActions: some View {
-        if !node.isAggregate {
-            Button("Ouvrir") { if node.isDirectory { model.openBubble(node) } else { NSWorkspace.shared.open(URL(fileURLWithPath: node.path)) } }
-            Button("Afficher dans le Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)]) }
-            Button("Mettre à la corbeille…", role: .destructive, action: requestTrash).disabled(operationsAreBusy)
-            Button("Copier le chemin") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(node.path, forType: .string) }
-        }
-    }
-    private func requestTrash() {
-        guard let item = model.explorerItems.first(where: { $0.id == node.path }) else { return }
-        model.requestTrash(items: [item])
-    }
-    private var annotation: String {
-        var text = node.name + "\n" + node.path + "\n" + ByteCountFormatter.storage.string(fromByteCount: node.bytes)
-        if node.parentBytes > 0 { text += String(format: " · %.1f %% du dossier parent", Double(node.bytes) * 100 / Double(node.parentBytes)) }
-        return text
     }
 }

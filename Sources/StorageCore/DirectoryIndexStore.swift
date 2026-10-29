@@ -30,7 +30,7 @@ public enum DirectoryIndexError: Error, LocalizedError, Sendable {
 /// UI tasks without adding their own locks. Replacements are atomic: readers see the
 /// previous complete scan until the new transaction commits.
 public actor DirectoryIndexStore {
-    public static let schemaVersion = 1
+    public static let schemaVersion = 2
 
     public nonisolated let volumeID: String
     public nonisolated let root: URL
@@ -98,7 +98,8 @@ public actor DirectoryIndexStore {
             .appendingPathComponent("StorageScope", isDirectory: true)
             .appendingPathComponent("DirectoryIndexes", isDirectory: true)
         let hash = stableHash(volumeID)
-        return directory.appendingPathComponent("directories-v\(schemaVersion)-\(hash).sqlite", isDirectory: false)
+        // Stable location: schema migrations must preserve the previous complete scan.
+        return directory.appendingPathComponent("directories-v1-\(hash).sqlite", isDirectory: false)
     }
 
     public func metadata() throws -> DirectoryIndexMetadata {
@@ -122,12 +123,13 @@ public actor DirectoryIndexStore {
         _ summaries: [DirectorySummary],
         scanID: UUID? = nil,
         indexVersion: Int = 1,
-        batchSize: Int = 2_000
+        batchSize: Int = 2_000,
+        transactional: Bool = true
     ) throws {
         for summary in summaries { try validate(summary) }
 
         let database = try requireDatabase()
-        try Self.execute("BEGIN IMMEDIATE TRANSACTION", operation: "démarrage du remplacement", database: database)
+        if transactional { try Self.execute("BEGIN IMMEDIATE TRANSACTION", operation: "démarrage du remplacement", database: database) }
         do {
             try Self.execute("DELETE FROM directories", operation: "nettoyage de l’ancien index", database: database)
             let sql = """
@@ -157,9 +159,9 @@ public actor DirectoryIndexStore {
             try setMetadata("scan_id", value: scanID?.uuidString)
             try setMetadata("index_version", value: String(max(0, indexVersion)))
             try setMetadata("updated_at", value: String(Date().timeIntervalSince1970))
-            try Self.execute("COMMIT", operation: "validation du nouvel index", database: database)
+            if transactional { try Self.execute("COMMIT", operation: "validation du nouvel index", database: database) }
         } catch {
-            try? Self.execute("ROLLBACK", operation: "annulation du remplacement", database: database)
+            if transactional { try? Self.execute("ROLLBACK", operation: "annulation du remplacement", database: database) }
             throw error
         }
     }
@@ -316,26 +318,26 @@ public actor DirectoryIndexStore {
         try validatePath(summary.path)
     }
 
-    private func validatePath(_ path: String) throws {
+    func validatePath(_ path: String) throws {
         let rootPath = root.path
         guard rootPath == "/" || path == rootPath || path.hasPrefix(rootPath + "/") else {
             throw DirectoryIndexError.outsideRoot(path: path, root: rootPath)
         }
     }
 
-    private func requireDatabase() throws -> OpaquePointer {
+    func requireDatabase() throws -> OpaquePointer {
         connection.handle
     }
 
-    private func metadataValue(_ key: String) throws -> String? {
+    func metadataValue(_ key: String) throws -> String? {
         try Self.metadataValue(key, database: requireDatabase())
     }
 
-    private func setMetadata(_ key: String, value: String?) throws {
+    func setMetadata(_ key: String, value: String?) throws {
         try Self.setMetadata(key, value: value, database: requireDatabase())
     }
 
-    private static let summaryColumns = """
+    static let summaryColumns = """
         path, logical_size, allocated_size,
         direct_file_count, direct_directory_count,
         descendant_file_count, descendant_directory_count,
@@ -361,8 +363,7 @@ public actor DirectoryIndexStore {
         if currentVersion != schemaVersion {
             try execute("BEGIN IMMEDIATE TRANSACTION", operation: "migration du schéma", database: database)
             do {
-                try execute("DROP TABLE IF EXISTS directories", operation: "réinitialisation des dossiers", database: database)
-                try execute("DROP TABLE IF EXISTS metadata", operation: "réinitialisation des métadonnées", database: database)
+                guard currentVersion <= schemaVersion else { throw DirectoryIndexError.unavailable }
                 try createTables(database)
                 try execute("PRAGMA user_version=\(schemaVersion)", operation: "versionnage du schéma", database: database)
                 try execute("COMMIT", operation: "validation du schéma", database: database)
@@ -404,7 +405,7 @@ public actor DirectoryIndexStore {
         )
     }
 
-    private static func bind(_ summary: DirectorySummary, to statement: OpaquePointer, database: OpaquePointer) throws {
+    static func bind(_ summary: DirectorySummary, to statement: OpaquePointer, database: OpaquePointer) throws {
         try bindText(summary.path, at: 1, to: statement, database: database)
         try bindText(summary.parentPath, at: 2, to: statement, database: database)
         sqlite3_bind_int64(statement, 3, summary.logicalSize)
@@ -419,7 +420,7 @@ public actor DirectoryIndexStore {
         bindDate(summary.modificationDate, at: 12, to: statement)
     }
 
-    private static func decodeSummary(_ statement: OpaquePointer, volumeID: String) -> DirectorySummary {
+    static func decodeSummary(_ statement: OpaquePointer, volumeID: String) -> DirectorySummary {
         let path = String(cString: sqlite3_column_text(statement, 0))
         return DirectorySummary(
             volumeID: volumeID,
@@ -497,7 +498,7 @@ public actor DirectoryIndexStore {
         }
     }
 
-    private static func prepare(_ sql: String, operation: String, database: OpaquePointer) throws -> OpaquePointer {
+    static func prepare(_ sql: String, operation: String, database: OpaquePointer) throws -> OpaquePointer {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
               let statement else {
@@ -506,7 +507,7 @@ public actor DirectoryIndexStore {
         return statement
     }
 
-    private static func bindText(_ value: String, at index: Int32, to statement: OpaquePointer, database: OpaquePointer) throws {
+    static func bindText(_ value: String, at index: Int32, to statement: OpaquePointer, database: OpaquePointer) throws {
         let result = value.withCString { pointer in
             sqlite3_bind_text(
                 statement,
@@ -521,13 +522,13 @@ public actor DirectoryIndexStore {
         }
     }
 
-    private static func stepDone(_ statement: OpaquePointer, operation: String, database: OpaquePointer) throws {
+    static func stepDone(_ statement: OpaquePointer, operation: String, database: OpaquePointer) throws {
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw sqliteError(operation: operation, database: database)
         }
     }
 
-    private static func execute(_ sql: String, operation: String, database: OpaquePointer) throws {
+    static func execute(_ sql: String, operation: String, database: OpaquePointer) throws {
         var errorMessage: UnsafeMutablePointer<CChar>?
         let result = sqlite3_exec(database, sql, nil, nil, &errorMessage)
         guard result == SQLITE_OK else {
