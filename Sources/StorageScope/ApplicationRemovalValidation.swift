@@ -27,9 +27,18 @@ import StorageCore
             let permission = AEDeterminePermissionToAutomateTarget(target.aeDesc, FinderRecycleProtocol.eventClass, FinderRecycleProtocol.eventID, false)
             var record: [String: Any] = ["version": AppIdentity.version, "permissionCode": permission,
                 "command": "core/delo", "consentWasNotModified": true, "actualFinderMoveVerified": false]
+            let reportURL = URL(fileURLWithPath: output).appendingPathComponent("storagescope-application-removal-finder.json")
+            func saveReport() throws {
+                try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys]).write(to: reportURL)
+            }
+            try saveReport()
             if permission == noErr {
                 let reply = try FinderRecycleProtocol.deleteEvent(for: url).sendEvent(options: [.waitForReply, .neverInteract], timeout: 15)
                 let code = reply.paramDescriptor(forKeyword: AEKeyword(keyErrorNumber))?.int32Value ?? 0
+                record["replyErrorCode"] = code
+                record["replyDescriptorType"] = reply.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.descriptorType ?? 0
+                record["sourceStillPresent"] = FileManager.default.fileExists(atPath: url.path)
+                try saveReport()
                 guard code == 0, !FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileWriteUnknown) }
                 let object = reply.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))
                 var destination = FinderRecycleProtocol.fileURL(object)
@@ -47,8 +56,7 @@ import StorageCore
                 record["limitation"] = "Interactive Automation consent is unavailable on this runner; no event was sent and the fixture remains intact."
                 guard FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileReadNoSuchFile) }
             }
-            try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys]).write(to:
-                URL(fileURLWithPath: output).appendingPathComponent("storagescope-application-removal-finder.json"))
+            try saveReport()
             print("Finder protocol integration: \(record)")
             return
         }
