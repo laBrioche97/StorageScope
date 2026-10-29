@@ -179,6 +179,7 @@ struct ContentView: View {
             }
             .frame(width: 170)
             Label(model.indexFreshness.rawValue, systemImage: model.indexFreshness == .current ? "checkmark.circle.fill" : model.indexFreshness == .checking || model.indexFreshness == .updating ? "arrow.triangle.2.circlepath" : "exclamationmark.circle")
+                .labelStyle(.titleAndIcon).fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(model.indexFreshness == .current ? Color.green : Color.secondary)
                 .font(.caption).help(model.indexStatusHelp).accessibilityLabel(model.indexFreshness.rawValue + ". " + model.indexStatusMessage)
             .disabled(model.operationsAreBusy && !model.isScanning)
