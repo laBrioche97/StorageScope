@@ -42,6 +42,7 @@ func testPersistentTreeAndJournal() async throws {
     let children = try await reopened.indexedChildren(of: nested)
     try expect(children?.count == 2305 && children?.allSatisfy { $0.indexedIdentity != nil } == true, "Une nouvelle instance doit retrouver tous les petits fichiers et leur identité")
     let baseline = try await reopened.treeState()
+    try expect(baseline?.checkpoint?.sources.contains(where: { $0.cursor > 0 }) == true, "Le repère FSEvents du volume de test actif doit utiliser l’époque Unix, pas une date de 1995")
     try expect(baseline?.snapshot.progress.filesScanned == 2306 && baseline?.checkpoint != nil, "Le résumé et le repère du journal sont persistants")
     let temporary = UUID()
     try await reopened.beginTreeGeneration(temporary)

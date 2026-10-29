@@ -30,7 +30,9 @@ public struct JournalCheckpoint: Codable, Equatable, Sendable {
             guard statfs(url.path, &info) == 0 else { continue }
             let mount = withUnsafeBytes(of: info.f_mntonname) { bytes in String(cString: bytes.baseAddress!.assumingMemoryBound(to: CChar.self)) }
             let watch = url.path == mount ? "/" : mount != "/" && url.path.hasPrefix(mount + "/") ? String(url.path.dropFirst(mount.count)) : url.path
-            sources.append(JournalSource(device: identity.deviceID, uuid: CFUUIDCreateString(nil, uuid) as String, mountPath: mount, watchPath: watch, cursor: FSEventsGetLastEventIdForDeviceBeforeTime(device, CFAbsoluteTimeGetCurrent())))
+            // This particular API uses POSIX seconds since 1970 despite its
+            // CFAbsoluteTime parameter type (unlike CFAbsoluteTimeGetCurrent).
+            sources.append(JournalSource(device: identity.deviceID, uuid: CFUUIDCreateString(nil, uuid) as String, mountPath: mount, watchPath: watch, cursor: FSEventsGetLastEventIdForDeviceBeforeTime(device, Date().timeIntervalSince1970)))
         }
         guard !sources.isEmpty else { return nil }
         let uuid = (try? root.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? root.path
