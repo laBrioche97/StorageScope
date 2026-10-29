@@ -1,5 +1,7 @@
 # StorageScope 3.6.0
 
+- Le logo officiel de labrioche.tech remplace le dessin approximatif dans l’identité et le chargement Mac ; le fichier d’origine reste intégré hors ligne, avec les mêmes icônes de distribution.
+
 - Mac : les applications tierces appartenant à root ne sont plus bloquées par leur propriétaire seul. Le plan distingue désinstallation admissible, autorisation macOS, méthode officielle nécessaire et protection système.
 - Mise à la corbeille native, vérification de l’identité et du résultat avant les résidus. Après un refus, « Autoriser et continuer » explique Gestion des apps et le recours facultatif au Finder. Les identifiants administrateur restent dans les fenêtres système ; aucun service administrateur permanent n’est installé.
 - Nouvelle liste native avec logos, tailles, état des autorisations et panneau de détails. Les jeux reconnus sont accessibles depuis le même écran.

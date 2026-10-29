@@ -16,7 +16,7 @@ let package = Package(
         .executableTarget(
             name: "StorageScope",
             dependencies: ["StorageCore", .product(name: "Sparkle", package: "Sparkle")],
-            resources: [.copy("Resources/EpicGuide")],
+            resources: [.copy("Resources/EpicGuide"), .copy("Resources/Branding")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .executableTarget(

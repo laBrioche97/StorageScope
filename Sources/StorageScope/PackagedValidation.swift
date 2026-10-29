@@ -1,6 +1,7 @@
 import AppKit
 import Sparkle
 import StorageCore
+import CryptoKit
 
 @MainActor
 enum PackagedValidation {
@@ -19,6 +20,10 @@ enum PackagedValidation {
         }
     }
     static func run() throws {
+        guard let logo = BriocheBrand.url,
+              SHA256.hash(data: try Data(contentsOf: logo)).map({ String(format: "%02x", $0) }).joined() == "54c7f7dd29ca12877b41614baf25784613bd8ac02c9dc01a21650db5f96db8ec" else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
         let bundle = Bundle.main
         guard bundle.bundleIdentifier == "com.labrioche.StorageScope",
               bundle.object(forInfoDictionaryKey: "LSMinimumSystemVersion") as? String == "14.0",

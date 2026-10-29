@@ -46,17 +46,15 @@ extension ItemCategory {
     }
 }
 
-struct BriocheMark: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let w = rect.width, h = rect.height
-        path.move(to: CGPoint(x: w * 0.16, y: h * 0.82))
-        path.addCurve(to: CGPoint(x: w * 0.17, y: h * 0.49), control1: CGPoint(x: 0, y: h * 0.74), control2: CGPoint(x: 0, y: h * 0.49))
-        path.addCurve(to: CGPoint(x: w * 0.43, y: h * 0.29), control1: CGPoint(x: w * 0.15, y: h * 0.27), control2: CGPoint(x: w * 0.30, y: h * 0.23))
-        path.addCurve(to: CGPoint(x: w * 0.80, y: h * 0.40), control1: CGPoint(x: w * 0.50, y: h * 0.02), control2: CGPoint(x: w * 0.88, y: h * 0.08))
-        path.addLine(to: CGPoint(x: w * 0.30, y: h * 0.86))
-        path.addQuadCurve(to: CGPoint(x: w * 0.16, y: h * 0.82), control: CGPoint(x: w * 0.23, y: h * 0.91))
-        return path
+@MainActor enum BriocheBrand {
+    static let url = EpicGuideResources.bundle.url(forResource: "logo-brioche", withExtension: "png", subdirectory: "Branding")
+    static let image = url.flatMap(NSImage.init(contentsOf:)) ?? NSImage(systemSymbolName: "app", accessibilityDescription: "StorageScope")!
+}
+
+struct BriocheLogo: View {
+    var body: some View {
+        Image(nsImage: BriocheBrand.image).renderingMode(.original).resizable().interpolation(.high).scaledToFit()
+            .accessibilityLabel("Logo La Brioche")
     }
 }
 
@@ -67,8 +65,9 @@ struct BriocheLoadingView: View {
     let cancel: () -> Void
     var body: some View {
         VStack(spacing: 16) {
-            BriocheMark().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
-                .frame(width: 76, height: 76).offset(y: raised && !reduceMotion ? -7 : 0)
+            BriocheLogo()
+                .frame(width: 82, height: 82).clipShape(RoundedRectangle(cornerRadius: 16))
+                .offset(y: raised && !reduceMotion ? -7 : 0)
                 .opacity(raised || reduceMotion ? 1 : 0.6)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: raised)
                 .accessibilityHidden(true)

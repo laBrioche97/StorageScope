@@ -48,7 +48,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Button("Afficher ou masquer la navigation", systemImage: "sidebar.left") { sidebarVisible.toggle() }.labelStyle(.iconOnly)
-                BriocheMark().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)).frame(width: 32, height: 32).accessibilityHidden(true)
+                BriocheLogo().frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
                 Text(AppIdentity.title).font(.system(.title3, design: .rounded, weight: .bold)).lineLimit(1)
                 Button { updates.activate() } label: { Image(systemName: updates.symbol) }
                     .help(updates.status).accessibilityLabel(updates.status)
