@@ -29,12 +29,14 @@ import StorageCore
             guard model.currentDirectory == folder, model.explorerItems.count == 1000, !model.explorerIsLoading else { throw CocoaError(.fileReadUnknown) }
         }
         var publication: [Double] = [], rendered: [Double] = []
-        for index in 0..<24 {
+        let profiling = ProcessInfo.processInfo.environment["STORAGESCOPE_PROFILE_EXPLORER"] == "1"
+        if profiling { try await Task.sleep(for: .seconds(3)) }
+        for index in 0..<(profiling ? 120 : 24) {
             let folder = index % 2 == 0 ? first : second
             let start = ContinuousClock.now
             model.loadExplorerDirectory(folder)
             let deadline = Date().addingTimeInterval(2)
-            while model.currentDirectory != folder && Date() < deadline { await Task.yield() }
+            while model.currentDirectory != folder && Date() < deadline { try await Task.sleep(for: .milliseconds(1)) }
             publication.append(milliseconds(start.duration(to: .now)))
             while Date() < deadline {
                 if let table = findFileTable(window.contentView), table.numberOfRows == 1000,

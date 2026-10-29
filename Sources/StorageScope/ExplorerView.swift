@@ -40,7 +40,7 @@ struct StorageExplorerView: View {
             }
             explorerSelectionBar
         }
-        .softTransition(model.navigationRevision.uuidString, duration: MotionTokens.navigation, back: model.navigationBack, anchor: model.navigationAnchor)
+        .softTransition(model.navigationRevision.uuidString, duration: MotionTokens.navigation, back: model.navigationBack, anchor: model.navigationAnchor, zoom: false)
         .overlay(alignment: .topTrailing) {
             if let destination = model.explorerPendingDirectory {
                 Text("Ouverture de \(destination.lastPathComponent.isEmpty ? destination.path : destination.lastPathComponent)… · \(model.explorerVisited) éléments parcourus").font(.caption).padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8)).accessibilityAddTraits(.updatesFrequently)

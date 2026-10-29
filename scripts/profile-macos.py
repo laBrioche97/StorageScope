@@ -14,6 +14,7 @@ binary = Path('/Applications/StorageScope.app/Contents/MacOS/StorageScope')
 allowed = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG', 'LC_ALL', 'DEVELOPER_DIR', '__CF_USER_TEXT_ENCODING']
 environment = {key: os.environ[key] for key in allowed if key in os.environ}
 environment.update(GITHUB_ACTIONS='true', RUNNER_TEMP=str(root), STORAGESCOPE_ISOLATED_VALIDATION='1',
+    STORAGESCOPE_PROFILE_EXPLORER='1',
     HTTP_PROXY='http://127.0.0.1:9', HTTPS_PROXY='http://127.0.0.1:9', ALL_PROXY='http://127.0.0.1:9')
 record = {'template': 'Time Profiler', 'version': '3.6.0', 'captured': False, 'frameRateMeasured': False}
 with (output / 'application.log').open('w') as handle:

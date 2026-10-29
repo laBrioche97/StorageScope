@@ -17,16 +17,17 @@ private struct SoftTransition: ViewModifier {
     let duration: Double
     let back: Bool
     let anchor: UnitPoint
+    let zoom: Bool
     @State private var scale = 1.0
     @State private var opacity = 1.0
     @State private var generation = UUID()
     func body(content: Content) -> some View {
-        content.scaleEffect(reduceMotion ? 1 : scale, anchor: anchor).opacity(reduceMotion ? 1 : opacity)
+        content.scaleEffect(reduceMotion || !zoom ? 1 : scale, anchor: anchor).opacity(reduceMotion ? 1 : opacity)
             .onChange(of: token) { _, _ in
                 let next = UUID(); generation = next
                 guard !reduceMotion, MotionTokens.enabled else { scale = 1; opacity = 1; return }
                 var transaction = Transaction(); transaction.disablesAnimations = true
-                withTransaction(transaction) { scale = back ? 1.04 : 0.98; opacity = 0.82 }
+                withTransaction(transaction) { scale = zoom ? (back ? 1.04 : 0.98) : 1; opacity = 0.82 }
                 Task { @MainActor in
                     await Task.yield()
                     guard generation == next else { return }
@@ -38,7 +39,7 @@ private struct SoftTransition: ViewModifier {
     }
 }
 extension View {
-    func softTransition(_ token: String, duration: Double = MotionTokens.section, back: Bool = false, anchor: UnitPoint = .center) -> some View { modifier(SoftTransition(token: token, duration: duration, back: back, anchor: anchor)) }
+    func softTransition(_ token: String, duration: Double = MotionTokens.section, back: Bool = false, anchor: UnitPoint = .center, zoom: Bool = true) -> some View { modifier(SoftTransition(token: token, duration: duration, back: back, anchor: anchor, zoom: zoom)) }
 }
 
 struct SoftButtonStyle: ButtonStyle {

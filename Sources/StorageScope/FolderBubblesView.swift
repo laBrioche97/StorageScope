@@ -18,13 +18,13 @@ struct FolderBubblesView: View {
                 }
                 if proxy.size.width >= 720 {
                     HSplitView {
-                        ExplorerListTable(items: model.explorerVisibleItems).frame(minWidth: 270, idealWidth: 320)
+                        ExplorerListTable(items: model.explorerVisibleItems).disabled(model.explorerPendingDirectory != nil).frame(minWidth: 270, idealWidth: 320)
                         FolderBubbleDiagram().frame(minWidth: 280)
                     }
                 } else {
                     VSplitView {
                         FolderBubbleDiagram().frame(minHeight: 160)
-                        ExplorerListTable(items: model.explorerVisibleItems).frame(minHeight: 130)
+                        ExplorerListTable(items: model.explorerVisibleItems).disabled(model.explorerPendingDirectory != nil).frame(minHeight: 130)
                     }
                 }
                 Text("Surfaces proportionnelles · Les espaces entre bulles ne représentent pas l’espace libre.")
@@ -70,6 +70,7 @@ private struct FolderBubbleDiagram: View {
             .onAppear { model.resizeBubbleLayout(width: proxy.size.width, height: proxy.size.height) }
             .onChange(of: proxy.size) { _, size in model.resizeBubbleLayout(width: size.width, height: size.height) }
         }
+        .softTransition(model.navigationRevision.uuidString, duration: MotionTokens.navigation, back: model.navigationBack, anchor: model.navigationAnchor)
     }
 }
 

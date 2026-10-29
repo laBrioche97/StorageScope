@@ -1053,13 +1053,17 @@ final class AppModel: ObservableObject {
                 explorerLoaderVisible = true
             }
         }
+        if let cached {
+            // Warm navigation is a single synchronous publication, before any
+            // queued UI/layout work or background metadata revalidation.
+            publishExplorerView(cached, directory: directory, back: back, animate: true, recordHistory: recordHistory)
+        }
         browseTask = Task { [weak self] in
                 guard let self else { return }
                 @MainActor func isCurrent() -> Bool { !Task.isCancelled && selectedVolumeID == volume.id && browseGeneration == generation }
                 defer { if browseGeneration == generation { explorerIsLoading = false; explorerLoaderVisible = false; explorerPendingDirectory = nil; loaderTask?.cancel() } }
-                if let cached {
-                    publishExplorerView(cached, directory: directory, back: back, animate: true, recordHistory: recordHistory)
-                }
+                if cached != nil { try? await Task.sleep(for: .milliseconds(180)) }
+                guard isCurrent() else { return }
                 do {
                 let store: DirectoryIndexStore
                 if let existing = directoryIndexStore, existing.volumeID == volume.id, existing.root == volume.url.standardizedFileURL { store = existing }
@@ -1401,7 +1405,7 @@ extension AppModel {
         bubbleTask?.cancel()
         let generation = UUID(); bubbleGeneration = generation
         let volumeID = selectedVolumeID
-        let items = explorerIsLoading ? nil : explorerItems
+        let items = explorerPendingDirectory != nil ? nil : explorerItems
         let maximum = maximumBubbles
         let diameter = bubbleAvailableDiameter
         bubbleIsLoading = true

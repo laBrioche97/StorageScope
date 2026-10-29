@@ -15,6 +15,10 @@ enum NativeLiveInterfaceValidation {
             try await Task.sleep(for: .milliseconds(100))
         }
         guard window.toolbar != nil, !model.applications.isEmpty, updates.checksStarted > 0 else { throw CocoaError(.fileReadUnknown) }
+        if ProcessInfo.processInfo.environment["STORAGESCOPE_PROFILE_EXPLORER"] == "1" {
+            try await ExplorerPerformanceValidation.run(model: model, window: window, destination: destination)
+            return
+        }
         for dark in [false, true] {
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             window.appearance = NSApp.appearance

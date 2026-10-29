@@ -158,7 +158,7 @@ struct ContentView: View {
                 }
             }
             }
-            .softTransition(model.sidebar?.rawValue ?? "", duration: MotionTokens.section)
+            .softTransition(model.sidebar?.rawValue ?? "", duration: MotionTokens.section, zoom: false)
     }
 
     private func openLocalFolder(_ name: String) {
