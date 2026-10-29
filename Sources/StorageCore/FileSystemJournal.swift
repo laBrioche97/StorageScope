@@ -29,7 +29,7 @@ public struct JournalCheckpoint: Codable, Equatable, Sendable {
             var info = statfs()
             guard statfs(url.path, &info) == 0 else { continue }
             let mount = withUnsafeBytes(of: info.f_mntonname) { bytes in String(cString: bytes.baseAddress!.assumingMemoryBound(to: CChar.self)) }
-            let watch = url.path == mount ? "/" : String(url.path.dropFirst(mount == "/" ? 0 : mount.count))
+            let watch = url.path == mount ? "/" : mount != "/" && url.path.hasPrefix(mount + "/") ? String(url.path.dropFirst(mount.count)) : url.path
             sources.append(JournalSource(device: identity.deviceID, uuid: CFUUIDCreateString(nil, uuid) as String, mountPath: mount, watchPath: watch, cursor: FSEventsGetLastEventIdForDeviceBeforeTime(device, CFAbsoluteTimeGetCurrent())))
         }
         guard !sources.isEmpty else { return nil }
@@ -206,7 +206,7 @@ public enum PersistentScanSynchronizer {
             let relative = change.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             let physical = URL(fileURLWithPath: source.mountPath).appendingPathComponent(relative).standardizedFileURL
             let path: URL
-            if root.path == "/", source.mountPath == "/System/Volumes/Data" { path = URL(fileURLWithPath: "/" + relative) }
+            if source.mountPath == "/System/Volumes/Data", !root.path.hasPrefix("/System/Volumes/Data/") { path = URL(fileURLWithPath: "/" + relative) }
             else { path = physical }
             if policy.excludes(path) { continue }
             let isDirectory = change.flags & UInt32(kFSEventStreamEventFlagItemIsDir) != 0

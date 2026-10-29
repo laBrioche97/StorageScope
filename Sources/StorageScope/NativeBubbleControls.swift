@@ -87,7 +87,7 @@ struct NativeBubbleControls: NSViewRepresentable {
     }
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 49 || event.keyCode == 36 { openBubble() }
-        else if event.keyCode == 121 && event.modifierFlags.contains(.shift), let menu = menu(for: event) {
+        else if event.keyCode == 109 && event.modifierFlags.contains(.shift), let menu = menu(for: event) {
             menu.popUp(positioning: nil, at: NSPoint(x: bounds.midX, y: bounds.midY), in: self)
         } else { super.keyDown(with: event) }
     }

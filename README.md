@@ -284,3 +284,13 @@ Aucune licence open source n’est accordée pour le moment. Sauf mention contra
 - Les catégories sont heuristiques ; le scan de fichiers reste la source de vérité.
 - La mesure APFS ne peut pas attribuer exactement les snapshots ou les blocs clonés à un fichier unique.
 - Un volume réseau, externe ou Time Machine n’est analysé que si l’utilisateur le choisit explicitement.
+
+## Analyse persistante sur Mac (3.7)
+
+L’analyse complète écrit les métadonnées de tous les fichiers et dossiers admissibles dans une base SQLite locale, sous `~/Library/Application Support/StorageScope/DirectoryIndexes`. Aucun contenu de fichier n’est copié. Les récapitulatifs et caches en mémoire restent bornés ; l’arborescence persistante ne se limite pas aux plus gros fichiers.
+
+Au lancement, StorageScope restaure l’index et reprend le journal FSEvents de chaque volume. Les modifications sont préparées hors interface et publiées avec leur curseur dans une transaction. Une analyse interrompue conserve la génération complète précédente. Les emplacements refusés restent partiels et les modifications non confirmées sont conservées pour une nouvelle tentative ; un journal manquant ou remplacé demande une nouvelle analyse complète. La coche « À jour » décrit la dernière vérification des changements connus sur le stockage sélectionné, sans promettre l’accès aux dossiers interdits par macOS.
+
+Le groupe APFS système/données est parcouru sans doubler `/System/Volumes/Data`. Les autres stockages sont indexés séparément. Les fichiers cloud sont interrogés par leurs métadonnées sans demander leur téléchargement. Les propres bases et caches de StorageScope sont exclus pour éviter des actualisations sans fin. Fermer StorageScope arrête les flux ; aucun service permanent n’est installé.
+
+Les gestes horizontaux de navigation suivent les réglages macOS ; le défilement des listes conserve la priorité lorsqu’elles peuvent encore défiler horizontalement. Les raccourcis ⌘[ et ⌘] et les boutons Précédent/Suivant utilisent le même historique. La validation automatisée exerce un clic souris réel et le retour clavier ; les sensations et gestes d’un trackpad physique nécessitent aussi un contrôle manuel sur Mac.
