@@ -61,7 +61,10 @@ private struct FolderBubbleDiagram: View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 FolderBubbleDrawing(nodes: nodes)
-                ForEach(nodes) { node in FolderBubbleControl(node: node, bounds: BubbleGeometry.rect(node, size: proxy.size)) }
+                ForEach(nodes) { node in
+                    FolderBubbleControl(model: model, node: node, bounds: BubbleGeometry.rect(node, size: proxy.size),
+                        enabled: model.explorerPendingDirectory == nil, operationsAreBusy: model.operationsAreBusy).equatable()
+                }
                 if nodes.isEmpty && !model.bubbleIsLoading && !model.explorerIsLoading && !model.isScanning {
                     ContentUnavailableView("Aucun élément mesuré", systemImage: "folder", description: Text(model.explorerIssues.first?.message ?? "Les tailles inconnues restent disponibles dans la liste."))
                         .frame(width: proxy.size.width, height: proxy.size.height)
@@ -102,16 +105,22 @@ private struct FolderBubbleDrawing: View {
     }
 }
 
-private struct FolderBubbleControl: View {
-    @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var explorerState: ExplorerPresentation
+private struct FolderBubbleControl: View, Equatable {
+    let model: AppModel
     @FocusState private var focused: Bool
     let node: FolderBubble
     let bounds: CGRect
+    let enabled: Bool
+    let operationsAreBusy: Bool
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.node.id == rhs.node.id && lhs.node.name == rhs.node.name && lhs.node.bytes == rhs.node.bytes
+            && lhs.node.parentBytes == rhs.node.parentBytes && lhs.node.isDirectory == rhs.node.isDirectory
+            && lhs.node.circle == rhs.node.circle && lhs.node.skipCount == rhs.node.skipCount && lhs.node.depth == rhs.node.depth
+            && lhs.bounds == rhs.bounds && lhs.enabled == rhs.enabled && lhs.operationsAreBusy == rhs.operationsAreBusy
+    }
     var body: some View {
-        let _ = explorerState.currentDirectory
         Button { model.openBubble(node) } label: { Circle().fill(Color.clear).contentShape(Circle()) }
-            .buttonStyle(.plain).disabled(model.explorerPendingDirectory != nil).focused($focused)
+            .buttonStyle(.plain).disabled(!enabled).focused($focused)
             .frame(width: bounds.width, height: bounds.height).position(x: bounds.midX, y: bounds.midY)
             .accessibilityLabel(node.name).accessibilityValue(ByteCountFormatter.storage.string(fromByteCount: node.bytes))
             .help(annotation)
@@ -123,7 +132,7 @@ private struct FolderBubbleControl: View {
         if !node.isAggregate {
             Button("Ouvrir") { if node.isDirectory { model.openBubble(node) } else { NSWorkspace.shared.open(URL(fileURLWithPath: node.path)) } }
             Button("Afficher dans le Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)]) }
-            Button("Mettre à la corbeille…", role: .destructive, action: requestTrash).disabled(model.operationsAreBusy)
+            Button("Mettre à la corbeille…", role: .destructive, action: requestTrash).disabled(operationsAreBusy)
             Button("Copier le chemin") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(node.path, forType: .string) }
         }
     }

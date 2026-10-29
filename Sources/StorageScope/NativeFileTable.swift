@@ -73,7 +73,11 @@ struct NativeFileTable: NSViewRepresentable {
             guard mode == .explorer else { return }
             rowSubscription = model.explorerRowsDidChange.sink { [weak self] items in
                 guard let self else { return }
-                schedule(items: items, enabled: model.explorerPendingDirectory == nil, hovered: model.explorerHoveredID)
+                pending = (items, model.explorerPendingDirectory == nil, model.explorerHoveredID)
+                // This explicit controller publication occurs after an atomic
+                // navigation, outside updateNSView. Native fixed-height cells
+                // can update now; representable/layout callbacks still defer.
+                applyPending()
             }
         }
 
@@ -86,8 +90,14 @@ struct NativeFileTable: NSViewRepresentable {
             // A representable's update can itself run inside AppKit layout. Defer
             // reloads and selection changes until that layout has finished.
             DispatchQueue.main.async { [weak self] in
-                guard let self, generation == revision, let table, let next = pending else { return }
-                updateQueued = false; pending = nil
+                guard let self, generation == revision else { return }
+                updateQueued = false
+                applyPending()
+            }
+        }
+        private func applyPending() {
+                guard let table, let next = pending else { return }
+                pending = nil
                 let incoming = next.items, enabled = next.enabled, hovered = next.hovered
                 ExplorerPerformanceValidation.note("native-apply")
                 applying = true
@@ -112,7 +122,6 @@ struct NativeFileTable: NSViewRepresentable {
                 }
                 applying = false
                 ExplorerPerformanceValidation.note("native-applied")
-            }
         }
         func numberOfRows(in tableView: NSTableView) -> Int { items.count }
         func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {

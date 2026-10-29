@@ -139,7 +139,7 @@ def launch_scenario(name, should_succeed):
                 subprocess.run([str(app / 'Contents/MacOS/StorageScope'), '--verify-installation'], check=True, timeout=35, stdout=output, stderr=output)
                 assert 'accepted' in content and 'ready' in content
                 return {'installedVersion':version, 'realSparkleReplacement':True, 'newVersionStarts':True,
-                    'previousPublishedExecutable': '3.5.0' if from_published else None}
+                    'previousPublishedExecutable': previous_version if from_published else None}
             if not should_succeed and ('failed:' in content or name == 'cancelled' and 'cancelled' in content):
                 assert current == previous_build, 'Failed verification must leave the old application in place'
                 return {'rejected':True, 'previousVersionPreserved':True}
