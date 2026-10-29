@@ -14,16 +14,24 @@ import StorageCore
               try String(contentsOf: url.appendingPathComponent("Contents/Resources/StorageScope-QA-marker"), encoding: .utf8) == "Disposable CI fixture" else {
             throw CocoaError(.fileReadNoPermission)
         }
-        guard let app = await ApplicationDiscoveryService().application(at: url), app.eligibility == .authorizationRequired,
-              !app.isProtected else { throw CocoaError(.fileReadCorruptFile) }
+        let rootOwned = (try FileManager.default.attributesOfItem(atPath: url.path)[.ownerAccountID] as? NSNumber)?.intValue == 0
+        guard let app = await ApplicationDiscoveryService().application(at: url), !app.isProtected,
+              !rootOwned || app.eligibility == .authorizationRequired else { throw CocoaError(.fileReadCorruptFile) }
         let service = UninstallService(), plan = await service.makePlan(for: app)
         guard plan.canProceed else { throw CocoaError(.fileWriteNoPermission) }
         let result = await service.uninstall(plan, selectedCandidateIDs: [])
         let record: [String: Any] = ["version": AppIdentity.version, "status": result.status.rawValue,
-            "rootOwnedBundleSelectable": true, "resultingURL": result.bundleResult?.resultingURL?.path ?? "",
+            "rootOwnedBundleSelectable": rootOwned && !app.isProtected, "rootOwned": rootOwned,
+            "systemTrashVerified": result.status == .succeeded, "interactiveAuthorizationValidated": false,
+            "resultingURL": result.bundleResult?.resultingURL?.path ?? "",
             "associatedDataUntouched": result.associatedResults.isEmpty,
             "message": result.message ?? "", "systemAPI": "NSWorkspace.recycle / FileManager.trashItem"]
-        try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output).appendingPathComponent("storagescope-application-removal-validation.json"))
+        try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: output).appendingPathComponent("storagescope-application-removal-\(rootOwned ? "root" : "user").json"))
+        if rootOwned && environment["STORAGESCOPE_QA_EXPECT"] == "permission-boundary" && [.authorizationRequired, .authorizationDenied].contains(result.status) {
+            guard FileManager.default.fileExists(atPath: url.path), result.associatedResults.isEmpty else { throw CocoaError(.fileWriteUnknown) }
+            print("PASS real root-owned bundle: system consent required, source and associated data preserved; interactive approval is a separate manual scenario")
+            return
+        }
         guard result.status == .succeeded, !FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileWriteNoPermission) }
         print("PASS actual installed application's system recycle of a root-owned disposable bundle")
     }

@@ -70,7 +70,9 @@ struct NativeApplicationsTable: NSViewRepresentable {
                 let visible = table.rows(in: table.visibleRect)
                 if visible.location != NSNotFound {
                     let indexes = max(0, visible.location)..<min(rows.count, NSMaxRange(visible))
-                    next.model.inventory.visibleApplicationIDs = Set(indexes.map { rows[$0].id })
+                    var retained = Set(indexes.map { rows[$0].id })
+                    if let selection = next.selection { retained.insert(selection) }
+                    next.model.inventory.visibleApplicationIDs = retained
                     if revalidateIcons {
                         for index in indexes where iconTasks[rows[index].id] == nil {
                             let app = rows[index].application

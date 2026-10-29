@@ -23,7 +23,7 @@ Le mode Mac `development` de `scripts/build-macos-release.sh` est explicite : ap
 
 L’archive Apple Silicon et le flux Sparkle sont signés Ed25519 dans les deux modes. `SURequireSignedFeed` et `SUVerifyUpdateBeforeExtraction` sont activés. La clé publique est versionnée dans `Packaging/sparkle-public-key.txt`, le secret privé reste dans GitHub Actions. Une signature ad hoc peut nécessiter une réautorisation TCC après mise à jour ; elle n’identifie pas l’éditeur auprès d’Apple.
 
-Les hôtes Intel virtualisés ont un pilote Metal sans architecture cible. `METAL_ERROR_MODE=5` est limité à ces jobs de test pour journaliser les avertissements et permettre la compilation des shaders de secours ; cette variable n’est jamais intégrée à l’application. Les captures et les démarrages du paquet restent obligatoires. Ces tests ne certifient pas 60 images/s sur un Mac physique ni tous les parcours VoiceOver.
+Les captures natives et les métriques de navigation sont archivées par la CI Apple Silicon. Une capture Instruments est tentée sans transmettre les clés de signature au processus profilé. Ces contrôles ne certifient pas 60 images/s sur un Mac physique ni tous les parcours VoiceOver. Les demandes interactives Administrateur et Automatisation du Finder nécessitent une validation manuelle avec consentement, séparée du refus réel et de la corbeille user-owned testés automatiquement.
 
 ## Configurer les signatures avant la première publication
 
@@ -71,6 +71,6 @@ Le site ne propose que les installateurs effectivement présents dans la derniè
 - Windows télécharge après acceptation et vérifie le manifeste signé, la version, la taille et le SHA-256 ; Authenticode et l’identité d’éditeur sont obligatoires dès leur activation. Un paquet invalide est refusé.
 - L’installateur Windows vérifie hors ligne l’interface avant de déclarer la version active. Un échec conserve la précédente, restaure son raccourci et renvoie un code d’échec. Après réussite, les anciennes versions gérées sont supprimées. Liens/jonctions et dossiers non reconnus ne sont jamais suivis pendant ce nettoyage.
 - Sparkle gère le remplacement de l’application macOS. La première migration depuis une version ancienne sans updater exige une installation manuelle.
-- Tester la première installation et une mise à jour sur Windows x64/ARM64 et Mac Intel/Apple Silicon ; tester aussi annulation, réseau interrompu, signature invalide et maintien de la version précédente.
+- Tester la première installation et une mise à jour sur Windows x64/ARM64 et Mac Apple Silicon ; tester aussi annulation, réseau interrompu, signature invalide et maintien de la version précédente.
 - La CI Windows vérifie les frontières de suppression, substitutions de fichiers, liens physiques, doublons, annulation, échecs partiels, signatures et rendus WPF. Les captures utilisent des données de test, pas une désinstallation réelle.
 - Les contrôles d’interface sur des machines Windows et macOS réelles restent nécessaires avant publication publique ; les tests de rendu ne certifient pas à eux seuls tous les réglages d’accessibilité.

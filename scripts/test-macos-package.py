@@ -39,7 +39,13 @@ assert fixture.parent == Path('/Applications') and not fixture.exists()
 subprocess.run(['cp', '/usr/bin/true', str(fixture / 'Contents/MacOS/Fixture')], check=True)
 subprocess.run(['codesign', '--force', '--sign', '-', str(fixture)], check=True)
 subprocess.run(['sudo', 'chown', '-R', 'root:wheel', str(fixture)], check=True)
-subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(fixture)), check=True, timeout=45)
+subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(fixture), STORAGESCOPE_QA_EXPECT='permission-boundary'), check=True, timeout=45)
+# Separately require a real successful move for an ordinary user-owned app.
+user_fixture = Path('/Applications') / ('StorageScope-QA-' + str(uuid.uuid4()) + '.app')
+assert user_fixture.parent == Path('/Applications') and not user_fixture.exists()
+subprocess.run(['ditto', str(fixture), str(user_fixture)], check=True)
+subprocess.run(['sudo', 'chown', '-R', str(os.getuid()) + ':' + str(os.getgid()), str(user_fixture)], check=True)
+subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(user_fixture)), check=True, timeout=45)
 ui = Path(os.environ['RUNNER_TEMP']) / 'storagescope-packaged-ui'
 subprocess.run([str(binary), '--verify-interface', str(ui)], env=environment, check=True, timeout=120)
 subprocess.run([str(binary), '--verify-live-interface', str(ui)], env=environment, check=True, timeout=180)
@@ -56,5 +62,7 @@ report.write_text(json.dumps({'version': info['CFBundleShortVersionString'], 'ar
     'os': subprocess.check_output(['sw_vers', '-productVersion'], text=True).strip(),
     'packageSha256': hashlib.sha256(package.read_bytes()).hexdigest(), 'supportedArchitectures': architectures,
     'offlineInstalledStartup': True, 'packagedNativeScreenshots': len(list(ui.glob('*.png'))),
-    'replacementPreservesData': True, 'appleDeveloperIDSigned': False, 'notarized': False}, indent=2), encoding='utf-8')
+    'replacementPreservesData': True, 'appleDeveloperIDSigned': False, 'notarized': False,
+    'userOwnedApplicationTrashed': True, 'rootApplicationPermissionBoundaryVerified': True,
+    'interactiveAdminAndFinderConsentRequiresManualValidation': True}, indent=2), encoding='utf-8')
 print(report.read_text())
