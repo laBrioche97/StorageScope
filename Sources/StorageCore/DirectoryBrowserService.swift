@@ -77,8 +77,8 @@ public struct DirectoryBrowserService: Sendable {
                     return
                 }
 
-                let resolvedRoot = root.resolvingSymlinksInPath().standardized
-                let resolvedRequested = requested.resolvingSymlinksInPath().standardized
+                let resolvedRoot = ScanPathPolicy.physicalURL(root)
+                let resolvedRequested = ScanPathPolicy.physicalURL(requested)
                 guard Self.isInsideRoot(resolvedRequested.path, rootPath: resolvedRoot.path) else {
                     finishWithIssue("Un lien symbolique mène hors du volume sélectionné.")
                     return

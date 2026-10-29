@@ -32,6 +32,13 @@ public struct ScanPathPolicy: Sendable {
     }
 
     public func acceptsDevice(_ identity: FileIdentity) -> Bool { devices.contains(identity.deviceID) }
+    /// Foundation's resolvingSymlinksInPath can shorten /private again. Use the
+    /// kernel's physical path only for containment checks and root resolution.
+    public static func physicalURL(_ url: URL) -> URL {
+        guard let path = realpath(url.path, nil) else { return url.standardized }
+        defer { free(path) }
+        return URL(fileURLWithPath: String(cString: path), isDirectory: true)
+    }
     public static func identity(_ url: URL) -> FileIdentity? {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { return nil }

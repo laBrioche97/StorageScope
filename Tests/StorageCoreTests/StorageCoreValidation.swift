@@ -251,10 +251,12 @@ func testExhaustiveDirectoryBrowser() async throws {
     ], scanID: UUID(), indexVersion: 1)
     let browser = DirectoryBrowserService(volumeID: volumeID, root: root, indexStore: store)
     var items: [FileSystemItem] = []
+    var browseIssues: [String] = []
     for await event in browser.browse(directory: root, options: DirectoryBrowseOptions(batchSize: 17)) {
         if case .batch(_, let batch) = event { items.append(contentsOf: batch) }
+        if case .issue(let issue) = event { browseIssues.append(issue.message) }
     }
-    try expect(items.count == 302, "Le navigateur doit restituer tous les enfants au-delà de l’ancienne limite de 250")
+    try expect(items.count == 302, "Le navigateur doit restituer tous les enfants au-delà de l’ancienne limite de 250 (reçus=\(items.count), racine=\(root.path), physique=\(ScanPathPolicy.physicalURL(root).path), erreurs=\(browseIssues))")
     try expect(items.first(where: { $0.url.path == indexedFolder.path })?.allocatedSize == 4_242, "La taille SQLite du sous-dossier doit enrichir la navigation à la demande")
 }
 
