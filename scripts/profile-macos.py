@@ -20,8 +20,13 @@ record = {'template': 'Time Profiler', 'version': '3.6.0', 'captured': False, 'f
 with (output / 'application.log').open('w') as handle:
     process = subprocess.Popen([str(binary), '--verify-live-interface', str(output / 'ui')], env=environment, stdout=handle, stderr=handle)
     try:
-        time.sleep(3)
+        deadline = time.monotonic() + 60
+        while not (output / 'ui/profile-ready').exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.1)
         assert process.poll() is None, 'The profiling fixture exited before Instruments attached'
+        sample = subprocess.run(['/usr/bin/sample', str(process.pid), '8', '1', '-file', str(output / 'main-thread-sample.log')],
+            env=environment, text=True, capture_output=True, timeout=20)
+        (output / 'sample.log').write_text(sample.stdout + sample.stderr)
         result = subprocess.run(['xcrun', 'xctrace', 'record', '--template', 'Time Profiler', '--time-limit', '12s',
             '--output', str(output / 'StorageScope.trace'), '--attach', str(process.pid)], env=environment, text=True, capture_output=True, timeout=70)
         (output / 'instruments.log').write_text(result.stdout + result.stderr)

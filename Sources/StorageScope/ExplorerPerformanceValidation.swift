@@ -3,6 +3,13 @@ import Foundation
 import StorageCore
 
 @MainActor enum ExplorerPerformanceValidation {
+    static var measuring = false
+    static var started = ContinuousClock.now
+    static var stages: [[String: Any]] = []
+    static func note(_ stage: String) {
+        guard measuring, stages.count < 1000 else { return }
+        stages.append(["stage": stage, "milliseconds": milliseconds(started.duration(to: .now))])
+    }
     static func run(model: AppModel, window: NSWindow, destination: URL) async throws {
         guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" else { return }
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".StorageScope-Navigation-\(UUID().uuidString)", isDirectory: true)
@@ -30,10 +37,16 @@ import StorageCore
         }
         var publication: [Double] = [], rendered: [Double] = []
         let profiling = ProcessInfo.processInfo.environment["STORAGESCOPE_PROFILE_EXPLORER"] == "1"
-        if profiling { try await Task.sleep(for: .seconds(3)) }
+        if profiling {
+            try Data().write(to: destination.appendingPathComponent("profile-ready"))
+            try await Task.sleep(for: .seconds(3))
+        }
+        measuring = true
+        defer { measuring = false }
         for index in 0..<(profiling ? 120 : 24) {
             let folder = index % 2 == 0 ? first : second
             let start = ContinuousClock.now
+            started = start
             model.loadExplorerDirectory(folder)
             let deadline = Date().addingTimeInterval(2)
             while model.currentDirectory != folder && Date() < deadline { try await Task.sleep(for: .milliseconds(1)) }
@@ -50,7 +63,7 @@ import StorageCore
         func p95(_ values: [Double]) -> Double { values.sorted()[min(values.count - 1, Int(ceil(Double(values.count) * 0.95)) - 1)] }
         let result: [String: Any] = ["version": AppIdentity.version, "itemsPerFolder": 1000, "navigations": publication.count,
             "cachedPublicationP95Milliseconds": p95(publication), "nativeRowsP95Milliseconds": p95(rendered),
-            "preferredModePreserved": true, "frameRateTarget": 60, "frameRateMeasured": false]
+            "preferredModePreserved": true, "frameRateTarget": 60, "frameRateMeasured": false, "stages": stages]
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: destination.appendingPathComponent("macos-navigation-performance.json"))
         guard p95(publication) < 50, p95(rendered) < 100 else {
             throw NSError(domain: "StorageScope.Performance", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cached navigation exceeded its publication/feedback budget: \(result)"])

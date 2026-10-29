@@ -62,12 +62,14 @@ struct NativeFileTable: NSViewRepresentable {
         init(model: AppModel, mode: Mode) { self.model = model; self.mode = mode }
 
         func schedule(items incoming: [FileSystemItem], enabled: Bool, hovered: String?) {
+            ExplorerPerformanceValidation.note("native-update")
             generation += 1
             let revision = generation
             // A representable's update can itself run inside AppKit layout. Defer
             // reloads and selection changes until that layout has finished.
             DispatchQueue.main.async { [weak self] in
                 guard let self, generation == revision, let table else { return }
+                ExplorerPerformanceValidation.note("native-apply")
                 applying = true
                 self.enabled = enabled; table.isEnabled = enabled
                 if items != incoming {
@@ -87,6 +89,7 @@ struct NativeFileTable: NSViewRepresentable {
                     }
                 }
                 applying = false
+                ExplorerPerformanceValidation.note("native-applied")
             }
         }
         func numberOfRows(in tableView: NSTableView) -> Int { items.count }
