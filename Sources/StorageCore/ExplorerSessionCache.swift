@@ -5,6 +5,9 @@ public struct ExplorerViewSnapshot: Sendable {
     public let largest: [FileSystemItem]
     public let smallest: [FileSystemItem]
     public let names: [FileSystemItem]
+    public let types: [FileSystemItem]
+    public let dates: [FileSystemItem]
+    public let paths: [FileSystemItem]
     public var frame: FolderBubbleFrame?
     public var layout: String
     public var selection: Set<String>
@@ -15,7 +18,10 @@ public struct ExplorerViewSnapshot: Sendable {
         largest = items.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize > $1.allocatedSize }
         smallest = items.sorted { $0.allocatedSize == $1.allocatedSize ? $0.id < $1.id : $0.allocatedSize < $1.allocatedSize }
         names = items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        cost = 512 + items.reduce(0) { $0 + 368 + ($1.url.path.utf16.count + $1.name.utf16.count) * 2 }
+        types = items.sorted { $0.category == $1.category ? $0.id < $1.id : $0.category.rawValue < $1.category.rawValue }
+        dates = items.sorted { ($0.modificationDate ?? .distantPast) == ($1.modificationDate ?? .distantPast) ? $0.id < $1.id : ($0.modificationDate ?? .distantPast) > ($1.modificationDate ?? .distantPast) }
+        paths = items.sorted { $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending }
+        cost = 512 + items.reduce(0) { $0 + MemoryLayout<FileSystemItem>.stride * 7 + ($1.url.path.utf16.count + $1.name.utf16.count) * 2 }
     }
 }
 

@@ -16,7 +16,10 @@ struct StorageScopeApp: App {
                 .onChange(of: updates.installing) { _, busy in model.updateIsWorking = busy }
                 .task {
                     PackagedValidation.recordUpdate("application-started-v" + AppIdentity.version)
-                    if CommandLine.arguments.contains("--verify-installation") {
+                    if CommandLine.arguments.contains("--verify-application-removal") {
+                        do { try await ApplicationRemovalValidation.run(); exit(0) }
+                        catch { print("Application removal validation failed: \(error)"); exit(1) }
+                    } else if CommandLine.arguments.contains("--verify-installation") {
                         do { try PackagedValidation.run(); exit(0) }
                         catch { print("Packaged installation validation failed: \(error)"); exit(1) }
                     } else if model.isPreviewMode {

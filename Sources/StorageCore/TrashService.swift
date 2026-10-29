@@ -315,6 +315,8 @@ public actor TrashService {
     /// Inventories direct children of the current user's trash directories. Trash roots
     /// themselves are never returned and therefore cannot be removed by `emptyTrash`.
     public func inventoryTrash(volumes: [StorageVolume] = StorageService.mountedVolumes()) async -> TrashInventory {
+        await RecursiveReadBudget.shared.acquire()
+        defer { Task { await RecursiveReadBudget.shared.release() } }
         var items: [TrashInventoryItem] = []
         var issues: [TrashInventoryIssue] = []
         var wasCancelled = false

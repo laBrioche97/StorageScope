@@ -259,6 +259,8 @@ public struct DuplicateAnalysisService: @unchecked Sendable {
         root: URL, minimumSize: Int64,
         continuation: AsyncStream<DuplicateAnalysisEvent>.Continuation
     ) async {
+        await RecursiveReadBudget.shared.acquire()
+        defer { Task { await RecursiveReadBudget.shared.release() } }
         var progress = DuplicateAnalysisProgress()
         var candidatesBySize: [Int64: [Candidate]] = [:]
         var lastEmission = Date.distantPast

@@ -6,6 +6,7 @@ from pathlib import Path
 import plistlib
 import subprocess
 import sys
+import uuid
 
 if os.environ.get('GITHUB_ACTIONS') != 'true' or not os.environ.get('RUNNER_TEMP'):
     raise RuntimeError('Package installation tests require an isolated GitHub runner')
@@ -21,11 +22,23 @@ assert info['CFBundleShortVersionString'] == expected['CFBundleShortVersionStrin
 assert info['CFBundleVersion'] == expected['CFBundleVersion']
 assert info['CFBundleIdentifier'] == 'com.labrioche.StorageScope'
 assert info['LSMinimumSystemVersion'] == '14.0' and info['SURequireSignedFeed']
+assert all(info.get(key) for key in ['NSAppBundlesUsageDescription', 'NSAppDataUsageDescription', 'NSAppleEventsUsageDescription'])
 architectures = subprocess.check_output(['lipo', '-archs', str(binary)], text=True).split()
 assert set(architectures) == {'arm64'}
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
 environment = dict(os.environ, HTTP_PROXY='http://127.0.0.1:9', HTTPS_PROXY='http://127.0.0.1:9', ALL_PROXY='http://127.0.0.1:9')
 subprocess.run([str(binary), '--verify-installation'], env=environment, check=True, timeout=35)
+# This runner is disposable. Never exercise removal against an existing application.
+fixture = Path('/Applications') / ('StorageScope-QA-' + str(uuid.uuid4()) + '.app')
+assert fixture.parent == Path('/Applications') and not fixture.exists()
+(fixture / 'Contents/MacOS').mkdir(parents=True)
+(fixture / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'com.labrioche.permission-fixture',
+    'CFBundleName': 'Disposable permission fixture', 'CFBundlePackageType': 'APPL', 'CFBundleExecutable': 'Fixture', 'CFBundleVersion': '1'}))
+(fixture / 'Contents/StorageScope-QA-marker').write_text('Disposable CI fixture')
+subprocess.run(['cp', '/usr/bin/true', str(fixture / 'Contents/MacOS/Fixture')], check=True)
+subprocess.run(['codesign', '--force', '--sign', '-', str(fixture)], check=True)
+subprocess.run(['sudo', 'chown', '-R', 'root:wheel', str(fixture)], check=True)
+subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(fixture)), check=True, timeout=45)
 ui = Path(os.environ['RUNNER_TEMP']) / 'storagescope-packaged-ui'
 subprocess.run([str(binary), '--verify-interface', str(ui)], env=environment, check=True, timeout=120)
 subprocess.run([str(binary), '--verify-live-interface', str(ui)], env=environment, check=True, timeout=180)

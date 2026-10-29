@@ -119,6 +119,18 @@ struct EnhancedCleanupView: View {
             }
             .padding(24)
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(model.selectedCleanupItems.count) éléments sélectionnés").font(.headline)
+                    Text(model.selectedCleanupItems.isEmpty ? "Choisissez les éléments à examiner." : ByteCountFormatter.storage.string(fromByteCount: model.selectedCleanupItems.reduce(0) { $0 + $1.allocatedSize }) + " estimés · documents et sauvegardes conservés par défaut")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Examiner la sélection…") { model.requestTrash(items: model.selectedCleanupItems) }
+                    .buttonStyle(.borderedProminent).disabled(model.selectedCleanupItems.isEmpty || model.operationsAreBusy)
+            }.padding(16).background(.bar)
+        }
     }
 }
 

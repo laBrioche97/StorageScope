@@ -140,7 +140,14 @@ final class AppModel: ObservableObject {
     @Published var kindFilter: FileKindFilter = .all
     @Published var selectedIDs: Set<String> = []
     @Published var currentDirectory: URL?
-    @Published var explorerItems: [FileSystemItem] = []
+    @Published var explorerItems: [FileSystemItem] = [] { didSet { explorerItemsRevision &+= 1; explorerFilterMemo = nil } }
+    private var explorerItemsRevision: UInt64 = 0
+    private var explorerPreparedRevision: UInt64 = 0
+    private struct ExplorerFilterKey: Equatable {
+        let revision: UInt64; let query: String; let size: SizeFilter; let category: ItemCategory?
+        let order: ItemSort; let kind: FileKindFilter; let remainder: Set<String>?
+    }
+    private var explorerFilterMemo: (key: ExplorerFilterKey, items: [FileSystemItem])?
     @Published var explorerIssues: [ScanIssue] = []
     @Published var explorerIsLoading = false
     @Published var explorerLoaderVisible = false
@@ -165,6 +172,7 @@ final class AppModel: ObservableObject {
         let previous = currentDirectory
         currentDirectory = directory; explorerItems = view.items; bubbleFrame = view.frame
         explorerSortedSnapshot = view
+        explorerPreparedRevision = explorerItemsRevision
         selectedIDs = view.selection; explorerScrollPosition = view.scroll
         encounteredApplicationURLs.formUnion(view.items.filter { $0.isDirectory && $0.fileExtension == "app" }.map(\.url))
         if recordHistory && (explorerHistoryPosition < 0 || explorerHistory[explorerHistoryPosition] != directory) {
@@ -302,18 +310,22 @@ final class AppModel: ObservableObject {
     }
 
     var explorerVisibleItems: [FileSystemItem] {
+        let key = ExplorerFilterKey(revision: explorerItemsRevision, query: searchText, size: sizeFilter, category: categoryFilter, order: sort, kind: kindFilter, remainder: bubbleRemainderPaths)
+        if let memo = explorerFilterMemo, memo.key == key { return memo.items }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let ordered: [FileSystemItem]
-        if let prepared = explorerSortedSnapshot, prepared.items == explorerItems {
-            switch sort { case .allocated: ordered = prepared.largest; case .smallest: ordered = prepared.smallest; case .name: ordered = prepared.names; default: ordered = explorerItems.sorted(by: comparator) }
+        if let prepared = explorerSortedSnapshot, explorerPreparedRevision == explorerItemsRevision {
+            switch sort { case .allocated: ordered = prepared.largest; case .smallest: ordered = prepared.smallest; case .name: ordered = prepared.names; case .type: ordered = prepared.types; case .date: ordered = prepared.dates; case .path: ordered = prepared.paths }
         } else { ordered = explorerItems.sorted(by: comparator) }
-        return ordered.filter { item in
+        let filtered = ordered.filter { item in
             (bubbleRemainderPaths == nil || bubbleRemainderPaths!.contains(item.url.path)) &&
             (kindFilter == .all || item.isDirectory == (kindFilter == .folders)) &&
             item.allocatedSize >= sizeFilter.rawValue &&
             (categoryFilter == nil || item.category == categoryFilter) &&
             (query.isEmpty || item.name.lowercased().contains(query) || item.url.path.lowercased().contains(query))
         }
+        explorerFilterMemo = (key, filtered)
+        return filtered
     }
 
     var visibleItems: [FileSystemItem] {
@@ -669,7 +681,7 @@ final class AppModel: ObservableObject {
 
     func performUninstall(requestQuitIfRunning: Bool = true, allowFinderAuthorization: Bool = false) {
         LocalDiagnostics.shared.record(action: "désinstallation d’application")
-        guard let plan = uninstallPlan, plan.canProceed, !uninstallIsWorking else { return }
+        guard let plan = uninstallPlan, plan.canProceed, !uninstallIsWorking, !operationsAreBusy else { return }
         // Folder metadata alone is not an installation's size. Carry the current
         // measured estimates into the operation without changing any file identities.
         let operationPlan = UninstallPlan(application: plan.application, candidates: plan.candidates.map { candidate in
@@ -690,7 +702,7 @@ final class AppModel: ObservableObject {
             )
             uninstallResult = result
             uninstallIsWorking = false
-            if [.succeeded, .partial].contains(result.status) {
+            if result.bundleResult?.status == .trashed {
                 refreshTrashSummary(force: true)
                 recoverableTrashBytes += result.recoverableBytesUpperBound
                 let trashedPaths = Set(
@@ -754,7 +766,7 @@ final class AppModel: ObservableObject {
 
     func uninstallResultSummary(_ result: UninstallResult) -> String {
         let moved = ([result.bundleResult].compactMap { $0 } + result.associatedResults).filter { $0.status == .trashed }
-        guard !moved.isEmpty else { return "Aucun élément déplacé par StorageScope." }
+        guard !moved.isEmpty else { return result.status == .notConfirmed ? "Déplacement non confirmé. Vérifiez l’inventaire avant de réessayer." : "Aucun déplacement confirmé par StorageScope." }
         return uninstallSizeSummary(paths: moved.map { $0.originalURL.path })
     }
 
@@ -1032,17 +1044,20 @@ final class AppModel: ObservableObject {
                 explorerLoaderVisible = true
             }
         }
-        do {
-            let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)
-            directoryIndexStore = store
-            let browser = DirectoryBrowserService(volumeID: volume.id, root: volume.url, indexStore: store)
-            browseTask = Task { [weak self] in
+        browseTask = Task { [weak self] in
                 guard let self else { return }
                 @MainActor func isCurrent() -> Bool { !Task.isCancelled && selectedVolumeID == volume.id && browseGeneration == generation }
                 defer { if browseGeneration == generation { explorerIsLoading = false; explorerLoaderVisible = false; explorerPendingDirectory = nil; loaderTask?.cancel() } }
                 if let cached {
                     publishExplorerView(cached, directory: directory, back: back, animate: true, recordHistory: recordHistory)
                 }
+                do {
+                let store: DirectoryIndexStore
+                if let existing = directoryIndexStore, existing.volumeID == volume.id, existing.root == volume.url.standardizedFileURL { store = existing }
+                else { store = try await Task.detached(priority: .userInitiated) { try DirectoryIndexStore(volumeID: volume.id, root: volume.url) }.value }
+                guard isCurrent() else { return }
+                directoryIndexStore = store
+                let browser = DirectoryBrowserService(volumeID: volume.id, root: volume.url, indexStore: store)
                 var pending: [FileSystemItem] = []
                 var issues: [ScanIssue] = []
                 for await event in browser.browse(directory: directory, options: DirectoryBrowseOptions(includeHidden: true, batchSize: 256, allowPackageTraversal: allowPackageTraversal)) {
@@ -1072,10 +1087,9 @@ final class AppModel: ObservableObject {
                     case .cancelled: return
                     }
                 }
-            }
-        } catch {
-            explorerIsLoading = false; explorerPendingDirectory = nil; explorerLoaderVisible = false; loaderTask?.cancel()
-            bubbleMessage = error.localizedDescription
+                } catch {
+                    if isCurrent() { explorerIssues = [ScanIssue(path: directory.path, message: error.localizedDescription, isPermissionError: false)]; bubbleMessage = error.localizedDescription }
+                }
         }
     }
 

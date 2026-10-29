@@ -565,6 +565,8 @@ func testBundleIdentifierAndExplorerApplicationIdentity() async throws {
 struct StorageCoreTests {
     static func main() async {
         let tests: [(String, () async throws -> Void)] = [
+            ("Autorisations applicatives et identité", { try await testApplicationAuthorizationBoundaries() }),
+            ("Budget commun de lectures récursives", { try await testSharedRecursiveReadBudget() }),
             ("Bulles proportionnelles et autorisation de corbeille", { try await testFolderBubbles() }),
             ("Agrégation", { try testAggregation() }),
             ("Agrégation consommatrice", { try testConsumingAggregationMatchesSnapshot() }),

@@ -70,7 +70,13 @@ struct NativeFileTable: NSViewRepresentable {
                 guard let self, generation == revision, let table else { return }
                 applying = true
                 self.enabled = enabled; table.isEnabled = enabled
-                if items != incoming { items = incoming; table.reloadData() }
+                if items != incoming {
+                    let old = items; items = incoming
+                    if old.map(\.id) == incoming.map(\.id) {
+                        let changed = IndexSet(incoming.indices.filter { old[$0] != incoming[$0] })
+                        table.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
+                    } else { table.reloadData() }
+                }
                 let indexes = IndexSet(items.enumerated().compactMap { model.selectedIDs.contains($0.element.id) ? $0.offset : nil })
                 if table.selectedRowIndexes != indexes { table.selectRowIndexes(indexes, byExtendingSelection: false) }
                 let visible = table.rows(in: table.visibleRect)

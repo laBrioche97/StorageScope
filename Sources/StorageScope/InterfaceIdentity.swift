@@ -83,18 +83,40 @@ struct CategoryOverview: View {
     @EnvironmentObject private var model: AppModel
     var body: some View {
         if let report = model.displayedCategoryReport {
-            ScrollView(.horizontal) {
+            HStack(spacing: 20) {
+                ZStack {
+                    Canvas { context, size in
+                        let total = Double(max(1, report.identifiedAllocatedBytes))
+                        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                        var angle = -90.0
+                        for summary in report.summaries where summary.allocatedBytes > 0 {
+                            let end = angle + Double(summary.allocatedBytes) / total * 360
+                            var path = Path(); path.addArc(center: center, radius: min(size.width, size.height) / 2 - 10, startAngle: .degrees(angle), endAngle: .degrees(end), clockwise: false)
+                            context.stroke(path, with: .color(summary.category.tint), style: StrokeStyle(lineWidth: 13, lineCap: .butt))
+                            angle = end
+                        }
+                    }.accessibilityHidden(true)
+                    VStack(spacing: 3) {
+                        Text(ByteCountFormatter.storage.string(fromByteCount: report.identifiedAllocatedBytes)).font(.headline).monospacedDigit()
+                        Text(report.isComplete ? "identifiés" : "analyse partielle").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }.frame(width: 118, height: 118).accessibilityElement(children: .combine)
+                ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(report.summaries.sorted { $0.allocatedBytes > $1.allocatedBytes }) { summary in
                         Button { model.openCategory(summary.category) } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 Label(summary.category.rawValue, systemImage: summary.category.symbol).foregroundStyle(summary.category.tint)
                                 Text(ByteCountFormatter.storage.string(fromByteCount: summary.allocatedBytes)).font(.headline).foregroundStyle(.primary)
-                            }.padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                                Text("\(summary.fileCount.formatted()) fichiers").font(.caption).foregroundStyle(.secondary)
+                            }.frame(width: 155, alignment: .leading).padding(14)
+                                .background(summary.category.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(summary.category.tint.opacity(0.14)))
                         }.buttonStyle(.plain)
                     }
-                }.padding(12)
-            }.frame(maxHeight: 100)
+                }.padding(.vertical, 6)
+                }
+            }.padding(.horizontal, 20).padding(.bottom, 10).frame(maxHeight: 142)
         }
     }
 }

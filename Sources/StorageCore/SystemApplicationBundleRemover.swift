@@ -45,6 +45,12 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
               Bundle(url: request.url)?.bundleIdentifier == request.bundleIdentifier else {
             throw TrashError.protectedItem(request.url.path)
         }
+        let info = Bundle(url: request.url)?.infoDictionary ?? [:]
+        guard (info["SMPrivilegedExecutables"] as? [String: Any] ?? [:]).isEmpty,
+              !FileManager.default.fileExists(atPath: request.url.appendingPathComponent("Contents/Library/SystemExtensions").path),
+              !FileManager.default.fileExists(atPath: request.url.appendingPathComponent("Contents/Library/LaunchDaemons").path) else {
+            throw TrashError.operationFailed(path: request.url.path, message: "Cette application exige sa méthode officielle de désinstallation.")
+        }
         var ancestor = request.url.standardizedFileURL
         while ancestor.path != "/" {
             let values = try ancestor.resourceValues(forKeys: [.isSymbolicLinkKey, .isUbiquitousItemKey])
@@ -73,7 +79,8 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
                     catch { continuation.resume(returning: RecycleResponse(message: error.localizedDescription)); return }
                     NSWorkspace.shared.recycle([request.url]) { locations, error in
                         let failure = error as NSError?
-                        continuation.resume(returning: RecycleResponse(url: locations[request.url],
+                        let destination = locations.first { $0.key.standardizedFileURL.path == request.url.standardizedFileURL.path }?.value
+                        continuation.resume(returning: RecycleResponse(url: destination,
                             domain: failure?.domain, code: failure?.code, message: failure?.localizedDescription))
                     }
                 }

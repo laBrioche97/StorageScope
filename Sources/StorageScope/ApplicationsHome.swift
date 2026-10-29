@@ -84,6 +84,7 @@ struct ApplicationsView: View {
             }
         }
         .task(id: queryKey) {
+            if !model.searchText.isEmpty { try? await Task.sleep(for: .milliseconds(120)); guard !Task.isCancelled else { return } }
             let apps = model.sort == .name ? inventory.applicationsByName : model.sort == .smallest ? inventory.applicationsSmallest : inventory.applicationsLargest
             let sizes = inventory.sizes, query = model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let minimum = model.sizeFilter.rawValue, protection = model.applicationProtectionFilter

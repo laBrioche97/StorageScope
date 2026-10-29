@@ -29,6 +29,7 @@ enum NativeLiveInterfaceValidation {
             }
         }
         try await CategoryLayoutValidation.run(model: model, window: window, destination: destination)
+        try await ExplorerPerformanceValidation.run(model: model, window: window, destination: destination)
         print("PASS live installed WindowGroup, native toolbar, application inventory and keyboard focus")
     }
 }

@@ -25,6 +25,8 @@ public final class StorageScanner: @unchecked Sendable {
     public func scan(root: URL, volumeID requestedVolumeID: String? = nil) -> AsyncStream<ScanEvent> {
         AsyncStream(bufferingPolicy: .bufferingNewest(5)) { continuation in
             let task = Task.detached(priority: .userInitiated) { [topFileLimit, topDirectoryLimit, progressInterval] in
+                await RecursiveReadBudget.shared.acquire()
+                defer { Task { await RecursiveReadBudget.shared.release() } }
                 let standardizedRoot = Self.canonicalURL(for: root)
                 let rootDeviceID = Self.deviceID(for: standardizedRoot)
                 let scanID = UUID()
