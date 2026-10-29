@@ -40,7 +40,7 @@ public actor DirectoryIndexStore {
 
     public init(volumeID: String, root: URL, databaseURL: URL? = nil) throws {
         let normalizedRoot = root.standardizedFileURL
-        let resolvedDatabaseURL = try databaseURL ?? Self.defaultDatabaseURL(for: volumeID)
+        let resolvedDatabaseURL = try databaseURL ?? Self.defaultDatabaseURL(for: volumeID, root: normalizedRoot)
 
         self.volumeID = volumeID
         self.root = normalizedRoot
@@ -92,7 +92,7 @@ public actor DirectoryIndexStore {
     }
 
     /// A deterministic per-volume location below Application Support.
-    public static func defaultDatabaseURL(for volumeID: String) throws -> URL {
+    public static func defaultDatabaseURL(for volumeID: String, root: URL? = nil) throws -> URL {
         guard let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw DirectoryIndexError.unavailable
         }
@@ -100,8 +100,10 @@ public actor DirectoryIndexStore {
             .appendingPathComponent("StorageScope", isDirectory: true)
             .appendingPathComponent("DirectoryIndexes", isDirectory: true)
         let hash = stableHash(volumeID)
-        // Stable location: schema migrations must preserve the previous complete scan.
-        return directory.appendingPathComponent("directories-v1-\(hash).sqlite", isDirectory: false)
+        // The mount namespace belongs to the key too: a renamed external disk must
+        // be able to establish a new baseline without overwriting its old index.
+        let filename = root.map { "tree-" + hash + "-" + stableHash($0.standardizedFileURL.path) } ?? "directories-v1-" + hash
+        return directory.appendingPathComponent(filename + ".sqlite", isDirectory: false)
     }
 
     public func metadata() throws -> DirectoryIndexMetadata {

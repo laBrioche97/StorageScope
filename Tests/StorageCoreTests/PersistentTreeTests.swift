@@ -27,7 +27,7 @@ func testPersistentTreeAndJournal() async throws {
     try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let volume = root.lastPathComponent
-    let database = try DirectoryIndexStore.defaultDatabaseURL(for: volume)
+    let database = try DirectoryIndexStore.defaultDatabaseURL(for: volume, root: root)
     defer { for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: database.path + suffix) } }
     for index in 0..<2305 { try Data([1]).write(to: nested.appendingPathComponent("small-\(index).txt")) }
     let changed = root.appendingPathComponent("changed.dat")

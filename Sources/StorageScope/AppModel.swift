@@ -487,7 +487,8 @@ final class AppModel: ObservableObject {
                     } else if sidebar == .explorer {
                         explorerViewCache.clear(); loadExplorerDirectory(explorerPendingDirectory ?? currentDirectory ?? volume.url)
                     }
-                    resumeIndexSynchronization()
+                    if value.indexVersion == DirectoryIndexStore.schemaVersion { resumeIndexSynchronization() }
+                    else { indexFreshness = .requiresScan; indexStatusMessage = value.issues.last?.message ?? "L’arborescence complète n’a pas pu être enregistrée."; scanNeedsRefresh = true }
                     if pendingCleanupAnalysis { calculateCleanup() }
                 case .cancelled(let value):
                     snapshot = value
@@ -563,6 +564,7 @@ final class AppModel: ObservableObject {
     }
 
     private func applyRefreshedVolumes(_ refreshed: [StorageVolume]) {
+        let previousRoot = selectedVolume?.url
         let previousMounts = Set(volumes.map { $0.id + "|" + $0.url.path })
         if previousMounts != Set(refreshed.map { $0.id + "|" + $0.url.path }) { explorerViewCache.clear() }
         volumes = refreshed
@@ -574,6 +576,16 @@ final class AppModel: ObservableObject {
             currentDirectory = nil; explorerItems = []; snapshot = nil; liveSummary = nil
             choosingExplorerStorage = true
             storageChoiceMessage = "Le stockage actif a été déconnecté. Choisissez un autre stockage."
+        } else if previousRoot != selectedVolume?.url {
+            stopScan(); stopIndexSynchronization(); scanGeneration = UUID()
+            browseTask?.cancel(); browseGeneration = UUID(); directoryIndexStore = nil
+            snapshot = nil; liveSummary = nil; currentDirectory = nil; explorerItems = []; bubbleFrame = nil
+            cleanupTask?.cancel(); validatedCleanupReport = nil; cancelDuplicateAnalysis()
+            selectedIDs.removeAll(); cleanupSelectedIDs.removeAll()
+            indexFreshness = .requiresScan; scanNeedsRefresh = true
+            indexStatusMessage = "Le point de montage a changé. Une analyse complète vérifie cette nouvelle racine."
+            if sidebar == .explorer { openExplorerStorage(id: selectedVolumeID) }
+            Task { [weak self] in await self?.restoreLastScan() }
         }
     }
 
@@ -1030,7 +1042,7 @@ final class AppModel: ObservableObject {
         }.value
         let legacy = restored == nil ? (try? await cache.load(volumeID: volume.id)) : nil
         guard !Task.isCancelled, generation == scanGeneration, selectedVolumeID == volume.id, !isScanning else { return }
-        if snapshot == nil { snapshot = restored ?? legacy }
+        if snapshot == nil { snapshot = restored ?? (legacy?.root.standardizedFileURL.path == volume.url.standardizedFileURL.path ? legacy : nil) }
         resumeIndexSynchronization()
     }
 

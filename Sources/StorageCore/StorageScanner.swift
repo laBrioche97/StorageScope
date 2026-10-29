@@ -43,6 +43,7 @@ public final class StorageScanner: @unchecked Sendable {
                 var cleanupAnalyzer = CleanupAnalyzer()
                 var issues: [ScanIssue] = []
                 var treeStore: DirectoryIndexStore?
+                var indexWriteTask: Task<Void, Error>?
                 var pendingTreeItems: [FileSystemItem] = []
                 pendingTreeItems.reserveCapacity(1024)
                 do {
@@ -92,7 +93,7 @@ public final class StorageScanner: @unchecked Sendable {
                         completedAt: Date(),
                         scanID: scanID,
                         volumeID: volumeID,
-                        indexVersion: Self.currentIndexVersion,
+                        indexVersion: 0,
                         categoryReport: categoryAccumulator.makeReport(permissionErrors: 1, isComplete: false)
                     )
                     continuation.yield(.completed(snapshot))
@@ -134,6 +135,10 @@ public final class StorageScanner: @unchecked Sendable {
                 }
 
                 func finalSnapshot(completedAt: Date?) async -> ScanSnapshot {
+                    if let writing = indexWriteTask {
+                        do { try await writing.value }
+                        catch { treeStore = nil; issues.append(ScanIssue(path: standardizedRoot.path, message: "Échec de sauvegarde de l’arborescence : \(error.localizedDescription)", isPermissionError: false)) }
+                    }
                     let allDirectories = aggregator.takeDirectoryItems()
                     var directoryHeap = TopItemHeap(limit: topDirectoryLimit)
                     for directory in allDirectories { directoryHeap.insert(directory) }
@@ -148,7 +153,7 @@ public final class StorageScanner: @unchecked Sendable {
                         completedAt: completedAt,
                         scanID: scanID,
                         volumeID: volumeID,
-                        indexVersion: DirectoryIndexStore.schemaVersion,
+                        indexVersion: treeStore == nil ? 0 : DirectoryIndexStore.schemaVersion,
                         categoryReport: categoryAccumulator.makeReport(permissionErrors: progress.permissionErrors, isComplete: true)
                     )
                     if let treeStore {
@@ -165,6 +170,7 @@ public final class StorageScanner: @unchecked Sendable {
 
                 while let candidate = enumerator.nextObject() as? URL {
                     if Task.isCancelled {
+                        indexWriteTask?.cancel()
                         mergeErrors()
                         continuation.yield(.cancelled(cancellationSnapshot()))
                         continuation.finish()
@@ -268,12 +274,18 @@ public final class StorageScanner: @unchecked Sendable {
                     }
 
                     if pendingTreeItems.count >= 1024 {
-                        if let store = treeStore {
-                            do { try await store.appendTreeItems(pendingTreeItems, generation: scanID) }
+                        // One bounded writer overlaps enumeration. At most two 1024-row
+                        // batches are alive; a failed write can never promote the scan.
+                        if let writing = indexWriteTask {
+                            do { try await writing.value }
                             catch {
                                 treeStore = nil
                                 issues.append(ScanIssue(path: standardizedRoot.path, message: "Échec de sauvegarde de l’arborescence : \(error.localizedDescription)", isPermissionError: false))
                             }
+                        }
+                        if let store = treeStore {
+                            let batch = pendingTreeItems
+                            indexWriteTask = Task { try await store.appendTreeItems(batch, generation: scanID) }
                         }
                         pendingTreeItems.removeAll(keepingCapacity: true)
                     }
