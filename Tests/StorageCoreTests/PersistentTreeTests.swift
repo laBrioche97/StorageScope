@@ -1,0 +1,93 @@
+import CoreServices
+import Foundation
+import StorageCore
+
+func awaitSynchronizedTree(root: URL, volumeID: String) async throws -> TreeIndexState {
+    try await withThrowingTaskGroup(of: TreeIndexState.self) { group in
+        group.addTask {
+            for await event in PersistentScanSynchronizer.synchronize(root: root, volumeID: volumeID) {
+                switch event {
+                case .updated(let state, settled: true): return state
+                case .status(.requiresScan, let message): throw ValidationError.failed(message)
+                default: break
+                }
+            }
+            throw ValidationError.failed("Le journal s’est fermé avant la fin de la reprise")
+        }
+        group.addTask { try await Task.sleep(for: .seconds(25)); throw ValidationError.failed("Le journal macOS n’a pas rattrapé les changements en 25 secondes") }
+        defer { group.cancelAll() }
+        return try await group.next()!
+    }
+}
+
+func testPersistentTreeAndJournal() async throws {
+    let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".StorageScope-Tree-\(UUID().uuidString)", isDirectory: true)
+    let nested = root.appendingPathComponent("Before/deep", isDirectory: true)
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let volume = root.lastPathComponent
+    let database = try DirectoryIndexStore.defaultDatabaseURL(for: volume)
+    defer { for suffix in ["", "-wal", "-shm"] { try? FileManager.default.removeItem(atPath: database.path + suffix) } }
+    for index in 0..<2305 { try Data([1]).write(to: nested.appendingPathComponent("small-\(index).txt")) }
+    let changed = root.appendingPathComponent("changed.dat")
+    try Data([1]).write(to: changed)
+    var completed: ScanSnapshot?
+    for await event in StorageScanner(topFileLimit: 3, topDirectoryLimit: 2).scan(root: root, volumeID: volume) {
+        if case .completed(let snapshot) = event { completed = snapshot }
+    }
+    try expect(completed?.progress.filesScanned == 2306, "Le scan conserve les fichiers admissibles au-delà des limites de présentation")
+    try expect(completed?.topFiles.count == 3, "La taille du récapitulatif reste indépendante de l’index complet")
+    let reopened = try DirectoryIndexStore(volumeID: volume, root: root)
+    let children = try await reopened.indexedChildren(of: nested)
+    try expect(children?.count == 2305 && children?.allSatisfy { $0.indexedIdentity != nil } == true, "Une nouvelle instance doit retrouver tous les petits fichiers et leur identité")
+    let baseline = try await reopened.treeState()
+    try expect(baseline?.snapshot.progress.filesScanned == 2306 && baseline?.checkpoint != nil, "Le résumé et le repère du journal sont persistants")
+    let temporary = UUID()
+    try await reopened.beginTreeGeneration(temporary)
+    try await reopened.appendTreeItems([FileSystemItem(url: root.appendingPathComponent("uncommitted"), logicalSize: 100, allocatedSize: 100, isDirectory: false)], generation: temporary)
+    let stillComplete = try await reopened.indexedChildren(of: nested)
+    try expect(stillComplete?.count == 2305, "Un scan temporaire ou annulé ne remplace pas la génération active")
+
+    // Changes while no stream is running must be replayed on the next launch.
+    try Data(repeating: 7, count: 9000).write(to: changed)
+    try FileManager.default.removeItem(at: nested.appendingPathComponent("small-0.txt"))
+    let renamed = root.appendingPathComponent("After", isDirectory: true)
+    try FileManager.default.moveItem(at: root.appendingPathComponent("Before"), to: renamed)
+    let added = root.appendingPathComponent("Added/child", isDirectory: true)
+    try FileManager.default.createDirectory(at: added, withIntermediateDirectories: true)
+    try Data([2, 3, 4]).write(to: added.appendingPathComponent("new.bin"))
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("loop"), withDestinationURL: root)
+    let synchronized = try await awaitSynchronizedTree(root: root, volumeID: volume)
+    let final = try await reopened.indexedChildren(of: renamed.appendingPathComponent("deep"))
+    let missing = try await reopened.indexedChildren(of: nested)
+    let top = try await reopened.indexedChildren(of: root)
+    try expect(final?.count == 2304 && missing?.isEmpty == true, "Un dossier renommé doit déplacer toute l’arborescence sans conserver les anciens descendants")
+    try expect(top?.first(where: { $0.name == "changed.dat" })?.logicalSize == 9000, "La taille d’un fichier modifié doit être actualisée")
+    try expect(top?.contains(where: { $0.name == "loop" }) == false, "La reprise du journal ne traverse pas de lien")
+    try expect(synchronized.snapshot.progress.filesScanned == 2306 && synchronized.pending.isEmpty && synchronized.snapshot.issues.isEmpty, "La réconciliation garde des compteurs exacts et termine sans faux état partiel")
+    let report = synchronized.snapshot.categoryReport
+    try expect(report.identifiedLogicalBytes == 2304 + 9000 + 3, "Les totaux et les catégories doivent être recalculés depuis l’index complet")
+    let rootSummary = try await reopened.summary(forPath: root.path)
+    try expect(rootSummary?.logicalSize == report.identifiedLogicalBytes, "Les tailles des parents suivent les changements des descendants")
+
+    guard let indexed = top?.first(where: { $0.name == "changed.dat" }) else { throw ValidationError.failed("Fichier absent") }
+    // Retain the original inode so the replacement cannot accidentally reuse it.
+    try FileManager.default.moveItem(at: changed, to: root.appendingPathComponent("old-inode.dat"))
+    try Data([9]).write(to: changed)
+    let preflight = await TrashService().preflight([indexed])
+    try expect(preflight.first?.isReady == false, "Un fichier remplacé depuis l’index doit être bloqué avant confirmation")
+}
+
+func testJournalPlanningAndIdentity() throws {
+    let source = JournalSource(device: 1, uuid: "journal-a", mountPath: "/", watchPath: "/Users/example", cursor: 50)
+    let checkpoint = JournalCheckpoint(rootFingerprint: "disk:snapshot-a", sources: [source])
+    let changedDisk = JournalCheckpoint(rootFingerprint: "disk:snapshot-b", sources: [source])
+    try expect(!checkpoint.matches(changedDisk), "Un nouveau snapshot système exige une nouvelle base fiable")
+    let root = URL(fileURLWithPath: "/Users/example")
+    let flags = UInt32(kFSEventStreamEventFlagItemIsFile | kFSEventStreamEventFlagItemModified)
+    let batch = JournalBatch(source: 0, changes: [JournalChange(path: "Users/example/docs/a.txt", flags: flags, id: 51), JournalChange(path: "Users/example/docs/b.txt", flags: flags, id: 52)])
+    let replacements = try PersistentScanSynchronizer.replacements(for: batch, checkpoint: checkpoint, root: root)
+    try expect(replacements.count == 1 && replacements[0].directory.path == "/Users/example/docs" && !replacements[0].recursive, "Deux fichiers voisins ne doivent pas relancer une analyse récursive du stockage")
+    let coalesced = PersistentScanSynchronizer.coalesce([TreeReplacement(directory: root, recursive: true), TreeReplacement(directory: root.appendingPathComponent("child"), recursive: false)])
+    try expect(coalesced.count == 1, "Un sous-arbre ne doit pas être relu plusieurs fois")
+}

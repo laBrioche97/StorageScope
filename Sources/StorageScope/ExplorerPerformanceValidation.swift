@@ -68,6 +68,7 @@ import StorageCore
         guard p95(publication) < 50, p95(rendered) < 100 else {
             throw NSError(domain: "StorageScope.Performance", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cached navigation exceeded its publication/feedback budget: \(result)"])
         }
+        if !profiling { try await ExplorerInteractionValidation.run(model: model, window: window, root: root, first: first, destination: destination) }
         try Data([2]).write(to: second.appendingPathComponent("B-new-file.bin"))
         model.loadExplorerDirectory(second)
         let deadline = Date().addingTimeInterval(12)

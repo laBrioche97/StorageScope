@@ -3,6 +3,9 @@ import Darwin
 import Foundation
 
 public struct JournalSource: Codable, Equatable, Sendable {
+    public init(device: UInt64, uuid: String, mountPath: String, watchPath: String, cursor: UInt64) {
+        self.device = device; self.uuid = uuid; self.mountPath = mountPath; self.watchPath = watchPath; self.cursor = cursor
+    }
     public let device: UInt64
     public let uuid: String
     public let mountPath: String
@@ -11,6 +14,7 @@ public struct JournalSource: Codable, Equatable, Sendable {
 }
 
 public struct JournalCheckpoint: Codable, Equatable, Sendable {
+    public init(rootFingerprint: String, sources: [JournalSource]) { self.rootFingerprint = rootFingerprint; self.sources = sources }
     public let rootFingerprint: String
     public var sources: [JournalSource]
 
@@ -51,6 +55,7 @@ public struct JournalChange: Sendable {
 }
 
 public struct JournalBatch: Sendable {
+    public init(source: Int, changes: [JournalChange]) { self.source = source; self.changes = changes }
     public let source: Int
     public let changes: [JournalChange]
 }
