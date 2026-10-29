@@ -38,7 +38,7 @@ struct UninstallView: View {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: plan.application.bundleURL.path))
                     .resizable().scaledToFit().frame(width: 58, height: 58)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(plan.application.displayName).font(.title.bold())
+                    Text(plan.application.displayName).font(.title.bold()).lineLimit(2)
                     Text(plan.application.bundleIdentifier ?? "Identifiant absent").font(.caption.monospaced()).foregroundStyle(.secondary)
                     Text((model.uninstallSizes[plan.application.id] ?? model.installationSize(at: plan.application.bundleURL)).label).monospacedDigit()
                     Text("Sauvegardes conservées par défaut · résidus examinés séparément").font(.caption).foregroundStyle(.secondary)

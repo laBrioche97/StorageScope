@@ -9,6 +9,7 @@ struct ApplicationsView: View {
     @State private var selectedID: String?
     @State private var showDetails = false
     @State private var showGames = false
+    @State private var pendingUninstall: InstalledApplication?
 
     private var selected: ApplicationRowPresentation? { rows.first { $0.id == selectedID } }
     private var queryKey: String { inventory.revision.uuidString + "|" + model.searchText + "|" + model.sort.rawValue + "|\(model.sizeFilter.rawValue)|\(model.applicationProtectionFilter)" }
@@ -71,13 +72,14 @@ struct ApplicationsView: View {
                     }
                 }
             }.padding(24)
-            .sheet(isPresented: $showDetails) {
+            .sheet(isPresented: $showDetails, onDismiss: {
+                if let application = pendingUninstall { pendingUninstall = nil; model.prepareUninstall(application) }
+            }) {
                 if let selected {
                     VStack {
                         HStack { Spacer(); Button("Fermer") { showDetails = false }.keyboardShortcut(.cancelAction) }
                         ApplicationInspector(row: selected, icon: inventory.applicationIcons[selected.id]) {
-                            showDetails = false
-                            Task { @MainActor in await Task.yield(); model.prepareUninstall(selected.application) }
+                            pendingUninstall = selected.application; showDetails = false
                         }
                     }.padding(20).frame(width: 430, height: 490)
                 }

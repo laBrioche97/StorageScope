@@ -11,7 +11,7 @@ import StorageCore
         let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
         guard url.deletingLastPathComponent().path == "/Applications", url.lastPathComponent.hasPrefix("StorageScope-QA-"),
               Bundle(url: url)?.bundleIdentifier == "com.labrioche.permission-fixture",
-              try String(contentsOf: url.appendingPathComponent("Contents/StorageScope-QA-marker"), encoding: .utf8) == "Disposable CI fixture" else {
+              try String(contentsOf: url.appendingPathComponent("Contents/Resources/StorageScope-QA-marker"), encoding: .utf8) == "Disposable CI fixture" else {
             throw CocoaError(.fileReadNoPermission)
         }
         guard let app = await ApplicationDiscoveryService().application(at: url), app.eligibility == .authorizationRequired,

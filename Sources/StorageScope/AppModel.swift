@@ -592,6 +592,7 @@ final class AppModel: ObservableObject {
         let image = await iconCache.load(for: application.bundleURL, version: application.version)
         guard !Task.isCancelled, applications.contains(where: { $0.id == application.id && $0.bundleIdentity == application.bundleIdentity && $0.version == application.version }) else { return }
         applicationIcons[application.bundleURL.path] = image
+        inventory.trimInactiveIcons()
     }
 
     func loadGameIcon(_ game: ManagedGame) async {
@@ -1362,13 +1363,28 @@ extension AppModel {
         if isPreviewMode { return }
         guard explorerPendingDirectory == nil, !choosingExplorerStorage, explorerShowsGraph, sidebar == .explorer,
               let volume = selectedVolume else { return }
-        do {
-            let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)
-            loadBubbleFrame(currentDirectory ?? volume.url, store: store)
-        } catch { LocalDiagnostics.shared.record(action: "préparation de l’explorateur", error: error); bubbleMessage = error.localizedDescription }
+        let directory = currentDirectory ?? volume.url
+        if let store = directoryIndexStore, store.volumeID == volume.id, store.root == volume.url.standardizedFileURL {
+            loadBubbleFrame(directory, store: store); return
+        }
+        bubbleTask?.cancel()
+        let generation = UUID(); bubbleGeneration = generation; bubbleIsLoading = true
+        bubbleTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let store = try await Task.detached(priority: .userInitiated) { try DirectoryIndexStore(volumeID: volume.id, root: volume.url) }.value
+                guard !Task.isCancelled, bubbleGeneration == generation, selectedVolumeID == volume.id,
+                      currentDirectory == directory || currentDirectory == nil else { return }
+                directoryIndexStore = store; loadBubbleFrame(directory, store: store)
+            } catch {
+                if bubbleGeneration == generation { bubbleIsLoading = false; bubbleMessage = "Graphique indisponible. La liste reste accessible." }
+                LocalDiagnostics.shared.record(action: "préparation de l’explorateur", error: error)
+            }
+        }
     }
 
     private func loadBubbleFrame(_ directory: URL, store: DirectoryIndexStore) {
+        guard store.volumeID == selectedVolumeID else { return }
         bubbleTask?.cancel()
         let generation = UUID(); bubbleGeneration = generation
         let volumeID = selectedVolumeID

@@ -57,10 +57,17 @@ jobs:
         timeout-minutes: 4
         run: swift run --disable-sandbox StorageScope --verify-interface "$RUNNER_TEMP/storagescope-ui"
 
+      - name: Compare complete scan coverage and throughput against published 3.5.1
+        if: matrix.runner == 'xcode-27'
+        run: python3 scripts/compare-scan.py
+
       - uses: actions/upload-artifact@v5
         with:
           name: macos-native-interface-${{ matrix.runner }}
-          path: ${{ runner.temp }}/storagescope-ui/*.png
+          path: |
+            ${{ runner.temp }}/storagescope-ui/*.png
+            ${{ runner.temp }}/storagescope-scan-comparison/results.json
+            ${{ runner.temp }}/storagescope-scan-comparison/*-build.log
           if-no-files-found: error
 
   windows-build:

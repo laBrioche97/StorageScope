@@ -43,6 +43,7 @@ struct NativeApplicationsTable: NSViewRepresentable {
         var revision = 0
         var applying = false
         var iconTasks: [String: Task<Void, Never>] = [:]
+        var iconRevision: UUID?
         init(_ parent: NativeApplicationsTable) { self.parent = parent }
         func update(_ next: NativeApplicationsTable) {
             parent = next; revision += 1; let current = revision
@@ -50,6 +51,8 @@ struct NativeApplicationsTable: NSViewRepresentable {
                 guard let self, current == revision, let table else { return }
                 applying = true
                 let old = rows; rows = next.rows
+                let revalidateIcons = iconRevision != next.model.applicationIconRevision
+                iconRevision = next.model.applicationIconRevision
                 if old.map(\.id) != rows.map(\.id) { table.reloadData() }
                 else {
                     let changed = IndexSet(rows.indices.filter { old[$0] != rows[$0] })
@@ -64,6 +67,19 @@ struct NativeApplicationsTable: NSViewRepresentable {
                     }
                 }
                 let index = rows.firstIndex { $0.id == next.selection }
+                let visible = table.rows(in: table.visibleRect)
+                if visible.location != NSNotFound {
+                    let indexes = max(0, visible.location)..<min(rows.count, NSMaxRange(visible))
+                    next.model.inventory.visibleApplicationIDs = Set(indexes.map { rows[$0].id })
+                    if revalidateIcons {
+                        for index in indexes where iconTasks[rows[index].id] == nil {
+                            let app = rows[index].application
+                            iconTasks[app.id] = Task { [weak self] in
+                                await next.model.loadApplicationIcon(app); self?.iconTasks[app.id] = nil
+                            }
+                        }
+                    }
+                }
                 let indexes = index.map { IndexSet(integer: $0) } ?? []
                 if table.selectedRowIndexes != indexes { table.selectRowIndexes(indexes, byExtendingSelection: false) }
                 applying = false

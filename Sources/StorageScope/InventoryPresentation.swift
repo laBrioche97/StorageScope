@@ -4,6 +4,7 @@ import StorageCore
 /// High-frequency inventory changes must not invalidate the scanner or explorer.
 @MainActor
 final class InventoryPresentation: ObservableObject {
+    var visibleApplicationIDs: Set<String> = []
     @Published var applications: [InstalledApplication] = []
     @Published var applicationsByName: [InstalledApplication] = []
     @Published var applicationsLargest: [InstalledApplication] = []
@@ -15,6 +16,13 @@ final class InventoryPresentation: ObservableObject {
     @Published var applicationIcons: [String: NSImage] = [:]
     @Published var gameIcons: [String: NSImage] = [:]
     @Published var revision = UUID()
+    func trimInactiveIcons() {
+        guard applicationIcons.count > 128 else { return }
+        for key in Array(applicationIcons.keys) where !visibleApplicationIDs.contains(key) {
+            applicationIcons[key] = nil
+            if applicationIcons.count <= 128 { break }
+        }
+    }
 }
 
 struct ApplicationRowPresentation: Identifiable, Equatable, Sendable {

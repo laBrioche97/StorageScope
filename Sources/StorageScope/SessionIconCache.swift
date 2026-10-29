@@ -29,6 +29,7 @@ final class SessionIconCache {
     private var loading: [String: Task<Void, Never>] = [:]
     private var validatedKeys: [String: String] = [:]
     private let rasterizer = IconRasterizer()
+    private var nextFallback = ContinuousClock.now
     init() { images.totalCostLimit = 64 * 1024 * 1024 }
     func refreshValidation() { validatedKeys.removeAll() }
 
@@ -49,7 +50,14 @@ final class SessionIconCache {
             let task = Task { @MainActor in
                 await Task.yield()
                 let pixels = await rasterizer.decode(url)
-                let image = pixels.map { NSImage(cgImage: $0.image, size: NSSize(width: 128, height: 128)) } ?? makeThumbnail(url)
+                let image: NSImage
+                if let pixels { image = NSImage(cgImage: pixels.image, size: NSSize(width: 128, height: 128)) }
+                else {
+                    let now = ContinuousClock.now, slot = max(now, nextFallback)
+                    nextFallback = slot.advanced(by: .milliseconds(16))
+                    if now < slot { try? await Task.sleep(for: now.duration(to: slot)) }
+                    image = makeThumbnail(url)
+                }
                 images.setObject(image, forKey: key as NSString, cost: 128 * 128 * 4)
                 touch(key)
             }
