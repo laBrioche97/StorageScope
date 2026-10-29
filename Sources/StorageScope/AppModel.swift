@@ -1103,7 +1103,7 @@ final class AppModel: ObservableObject {
         saveExplorerView()
         browseTask?.cancel(); bubbleTask?.cancel(); bubbleGeneration = UUID()
         let generation = UUID(); browseGeneration = generation
-        let directory = directory.standardizedFileURL
+        let directory = directory.standardized
         let key = explorerCacheKey(directory)
         let cached = explorerViewCache.get(key)
         let back = navigationBack
@@ -1136,7 +1136,7 @@ final class AppModel: ObservableObject {
                 guard isCurrent() else { return }
                 do {
                 let store: DirectoryIndexStore
-                if let existing = directoryIndexStore, existing.volumeID == volume.id, existing.root == volume.url.standardizedFileURL { store = existing }
+                if let existing = directoryIndexStore, existing.volumeID == volume.id, existing.root == volume.url.standardized { store = existing }
                 else { store = try await Task.detached(priority: .userInitiated) { try DirectoryIndexStore(volumeID: volume.id, root: volume.url) }.value }
                 guard isCurrent() else { return }
                 directoryIndexStore = store
@@ -1273,17 +1273,17 @@ final class AppModel: ObservableObject {
         guard let old = snapshot else { return }
         let normalized = SelectionNormalizer.normalize(items)
         let removed = Set(normalized.map(\.id))
-        let removedDirectoryPaths = normalized.filter(\.isDirectory).map { $0.url.standardizedFileURL.path }
+        let removedDirectoryPaths = normalized.filter(\.isDirectory).map { $0.url.standardized.path }
         func wasRemoved(_ item: FileSystemItem) -> Bool {
-            let path = item.url.standardizedFileURL.path
+            let path = item.url.standardized.path
             return removed.contains(item.id) || removedDirectoryPaths.contains(where: { path.hasPrefix($0 + "/") })
         }
         var directories = old.topDirectories
         var contents = old.directoryContents
         for item in normalized {
-            var ancestor = item.url.deletingLastPathComponent().standardizedFileURL
+            var ancestor = item.url.deletingLastPathComponent().standardized
             while ancestor.path.hasPrefix(old.root.path) {
-                if let index = directories.firstIndex(where: { $0.url.standardizedFileURL.path == ancestor.path }) {
+                if let index = directories.firstIndex(where: { $0.url.standardized.path == ancestor.path }) {
                     directories[index].allocatedSize = max(0, directories[index].allocatedSize - item.allocatedSize)
                     directories[index].logicalSize = max(0, directories[index].logicalSize - item.logicalSize)
                 }
@@ -1318,7 +1318,7 @@ final class AppModel: ObservableObject {
             )
         )
         if let currentDirectory {
-            let currentPath = currentDirectory.standardizedFileURL.path
+            let currentPath = currentDirectory.standardized.path
             if removedDirectoryPaths.contains(where: { currentPath == $0 || currentPath.hasPrefix($0 + "/") }) {
                 self.currentDirectory = old.root
             }

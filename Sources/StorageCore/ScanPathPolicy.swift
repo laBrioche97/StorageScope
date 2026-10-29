@@ -9,8 +9,8 @@ public struct ScanPathPolicy: Sendable {
     private let devices: Set<UInt64>
     private let ownedPaths: [String]
     public init(root: URL) {
-        self.root = root.standardizedFileURL
-        self.rootPath = root.standardizedFileURL.path
+        self.root = root.standardized
+        self.rootPath = root.standardized.path
         var devices = Set(Self.identity(root).map { [$0.deviceID] } ?? [])
         if root.path == "/", let data = Self.identity(URL(fileURLWithPath: "/System/Volumes/Data")) {
             devices.insert(data.deviceID)
@@ -39,11 +39,11 @@ public struct ScanPathPolicy: Sendable {
     }
 
     public func validateDirectory(_ input: URL) throws {
-        let url = input.standardizedFileURL
+        let url = input.standardized
         guard !excludes(url), let identity = Self.identity(url), identity.fileType == UInt16(S_IFDIR), acceptsDevice(identity) else {
             throw DirectoryIndexError.outsideRoot(path: url.path, root: root.path)
         }
-        var current = url.standardizedFileURL
+        var current = url.standardized
         while current.path != root.path {
             guard let identity = Self.identity(current), identity.fileType != UInt16(S_IFLNK) else { throw DirectoryIndexError.unavailable }
             let parent = current.deletingLastPathComponent()

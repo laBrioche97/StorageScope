@@ -40,7 +40,7 @@ public struct DirectoryBrowserService: Sendable {
 
     public init(volumeID: String, root: URL, indexStore: DirectoryIndexStore) {
         self.volumeID = volumeID
-        self.root = root.standardizedFileURL
+        self.root = root.standardized
         self.indexStore = indexStore
     }
 
@@ -50,7 +50,7 @@ public struct DirectoryBrowserService: Sendable {
     ) -> AsyncStream<DirectoryBrowseEvent> {
         AsyncStream(bufferingPolicy: .unbounded) { continuation in
             let task = Task.detached(priority: .userInitiated) { [volumeID, root, indexStore] in
-                let requested = directory.standardizedFileURL
+                let requested = directory.standardized
                 continuation.yield(.started(directory: requested))
                 var emittedCount = 0
 
@@ -77,13 +77,15 @@ public struct DirectoryBrowserService: Sendable {
                     return
                 }
 
-                let resolvedRoot = root.resolvingSymlinksInPath().standardizedFileURL
-                let resolvedRequested = requested.resolvingSymlinksInPath().standardizedFileURL
+                let resolvedRoot = root.resolvingSymlinksInPath().standardized
+                let resolvedRequested = requested.resolvingSymlinksInPath().standardized
                 guard Self.isInsideRoot(resolvedRequested.path, rootPath: resolvedRoot.path) else {
                     finishWithIssue("Un lien symbolique mène hors du volume sélectionné.")
                     return
                 }
-                if requested.path != root.path && resolvedRequested.path != requested.path {
+                let relative = String(requested.path.dropFirst(root.path == "/" ? 1 : root.path.count + 1))
+                let expectedResolved = requested.path == root.path ? resolvedRoot : resolvedRoot.appendingPathComponent(relative).standardized
+                if resolvedRequested.path != expectedResolved.path {
                     finishWithIssue("StorageScope n’ouvre pas les dossiers à travers un lien symbolique.")
                     return
                 }
@@ -142,13 +144,14 @@ public struct DirectoryBrowserService: Sendable {
                         return
                     }
 
-                    let candidate = child.standardizedFileURL
+                    let candidate = child.standardized
                     guard Self.isInsideRoot(candidate.path, rootPath: root.path),
                           !Self.isExcludedMountNamespace(candidate.path, rootPath: root.path) else {
                         continue
                     }
                     if policy.excludes(candidate) { continue }
-                    if let identity = ScanPathPolicy.identity(candidate), !policy.acceptsDevice(identity) {
+                    let identity = ScanPathPolicy.identity(candidate)
+                    if let identity, !policy.acceptsDevice(identity) {
                         continuation.yield(.issue(ScanIssue(
                             path: candidate.path,
                             message: "Ce point de montage appartient à un autre volume et a été ignoré.",
@@ -183,7 +186,8 @@ public struct DirectoryBrowserService: Sendable {
                                 isDirectory: isDirectory,
                                 isPackage: isPackage
                             ),
-                            safety: FileTypeClassifier.safety(for: candidate, isDirectory: isDirectory)
+                            safety: FileTypeClassifier.safety(for: candidate, isDirectory: isDirectory),
+                            indexedIdentity: identity
                         ))
                     } catch {
                         continuation.yield(.issue(Self.issue(for: candidate, error: error)))

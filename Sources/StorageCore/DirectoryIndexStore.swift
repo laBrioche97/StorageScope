@@ -39,7 +39,7 @@ public actor DirectoryIndexStore {
     private let connection: DirectorySQLiteConnection
 
     public init(volumeID: String, root: URL, databaseURL: URL? = nil) throws {
-        let normalizedRoot = root.standardizedFileURL
+        let normalizedRoot = root.standardized
         let resolvedDatabaseURL = try databaseURL ?? Self.defaultDatabaseURL(for: volumeID, root: normalizedRoot)
 
         self.volumeID = volumeID
@@ -102,7 +102,7 @@ public actor DirectoryIndexStore {
         let hash = stableHash(volumeID)
         // The mount namespace belongs to the key too: a renamed external disk must
         // be able to establish a new baseline without overwriting its old index.
-        let filename = root.map { "tree-" + hash + "-" + stableHash($0.standardizedFileURL.path) } ?? "directories-v1-" + hash
+        let filename = root.map { "tree-" + hash + "-" + stableHash($0.standardized.path) } ?? "directories-v1-" + hash
         return directory.appendingPathComponent(filename + ".sqlite", isDirectory: false)
     }
 
@@ -171,7 +171,7 @@ public actor DirectoryIndexStore {
     }
 
     public func summary(forPath path: String) throws -> DirectorySummary? {
-        let normalizedPath = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
+        let normalizedPath = URL(fileURLWithPath: path, isDirectory: true).standardized.path
         try validatePath(normalizedPath)
         let database = try requireDatabase()
         let statement = try Self.prepare(
@@ -194,7 +194,7 @@ public actor DirectoryIndexStore {
     /// Fetches directory totals in bounded `IN` queries to stay below SQLite's variable limit.
     public func summaries(forPaths paths: [String]) throws -> [String: DirectorySummary] {
         let normalized = Array(Set(paths.map {
-            URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL.path
+            URL(fileURLWithPath: $0, isDirectory: true).standardized.path
         }))
         for path in normalized { try validatePath(path) }
         guard !normalized.isEmpty else { return [:] }
@@ -233,7 +233,7 @@ public actor DirectoryIndexStore {
     }
 
     public func children(of parentPath: String, limit: Int? = nil) throws -> [DirectorySummary] {
-        let normalizedParent = URL(fileURLWithPath: parentPath, isDirectory: true).standardizedFileURL.path
+        let normalizedParent = URL(fileURLWithPath: parentPath, isDirectory: true).standardized.path
         try validatePath(normalizedParent)
         let database = try requireDatabase()
         let statement = try Self.prepare(
@@ -263,7 +263,7 @@ public actor DirectoryIndexStore {
     }
 
     public func bubbleChildTotals(of parentPath: String) throws -> (count: Int, bytes: Int64) {
-        let path = URL(fileURLWithPath: parentPath).standardizedFileURL.path
+        let path = URL(fileURLWithPath: parentPath).standardized.path
         try validatePath(path)
         let database = try requireDatabase()
         let statement = try Self.prepare("SELECT COUNT(*), COALESCE(SUM(allocated_size), 0) FROM directories WHERE parent_path = ? AND path <> ? AND allocated_size > 0", operation: "total des sous-dossiers", database: database)
@@ -276,7 +276,7 @@ public actor DirectoryIndexStore {
 
     @discardableResult
     public func removeSubtree(at path: String) throws -> Int {
-        let normalizedPath = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
+        let normalizedPath = URL(fileURLWithPath: path, isDirectory: true).standardized.path
         try validatePath(normalizedPath)
         let database = try requireDatabase()
         let statement: OpaquePointer

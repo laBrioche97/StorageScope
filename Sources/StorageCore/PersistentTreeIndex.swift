@@ -193,7 +193,7 @@ extension DirectoryIndexStore {
                 }
             }
             for replacement in replacements {
-                let path = replacement.directory.standardizedFileURL.path
+                let path = replacement.directory.standardized.path
                 try validatePath(path)
                 let predicate = replacement.recursive ? "(path = ? OR substr(path, 1, length(?)) = ?)" : "(parent_path = ? AND path <> ?)"
                 let stmt = try Self.prepare("DELETE FROM tree_items WHERE generation = ? AND \(predicate)", operation: "remplacement des métadonnées", database: db)
@@ -216,7 +216,7 @@ extension DirectoryIndexStore {
             try Self.bindText(generation, at: 1, to: merge, database: db); try Self.bindText(staged.uuidString, at: 2, to: merge, database: db)
             try Self.stepDone(merge, operation: "fusion des changements", database: db)
             try rebuildAffectedDirectories(affected, generation: generation)
-            let unresolved = old.snapshot.issues.filter { issue in !replacements.contains { issue.path == $0.directory.path || issue.path.hasPrefix($0.directory.path + "/") } } + issues
+            let unresolved = old.snapshot.issues.filter { issue in !replacements.contains { issue.path == $0.directory.path || issue.path.hasPrefix($0.directory.path == "/" ? "/" : $0.directory.path + "/") } } + issues
             let snapshot = replacements.isEmpty && issues.isEmpty ? old.snapshot : try makeTreeSnapshot(old: old.snapshot, generation: generation, issues: unresolved)
             let state = TreeIndexState(generation: old.generation, checkpoint: checkpoint, snapshot: snapshot, synchronizedAt: Date(), pending: pending)
             try saveTreeState(state)

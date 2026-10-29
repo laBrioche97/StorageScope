@@ -38,7 +38,7 @@ public struct DirectorySummary: Identifiable, Hashable, Codable, Sendable {
         modificationDate: Date? = nil
     ) {
         self.volumeID = volumeID
-        self.url = url.standardizedFileURL
+        self.url = url.standardized
         self.logicalSize = max(0, logicalSize)
         self.allocatedSize = max(0, allocatedSize)
         self.directFileCount = max(0, directFileCount)
