@@ -39,12 +39,12 @@ assert fixture.parent == Path('/Applications') and not fixture.exists()
 subprocess.run(['cp', '/usr/bin/true', str(fixture / 'Contents/MacOS/Fixture')], check=True)
 subprocess.run(['codesign', '--force', '--sign', '-', str(fixture)], check=True)
 subprocess.run(['sudo', 'chown', '-R', 'root:wheel', str(fixture)], check=True)
-subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(fixture), STORAGESCOPE_QA_EXPECT='permission-boundary'), check=True, timeout=45)
 # Separately require a real successful move for an ordinary user-owned app.
 user_fixture = Path('/Applications') / ('StorageScope-QA-' + str(uuid.uuid4()) + '.app')
 assert user_fixture.parent == Path('/Applications') and not user_fixture.exists()
 subprocess.run(['ditto', str(fixture), str(user_fixture)], check=True)
 subprocess.run(['sudo', 'chown', '-R', str(os.getuid()) + ':' + str(os.getgid()), str(user_fixture)], check=True)
+subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(fixture), STORAGESCOPE_QA_EXPECT='permission-boundary'), check=True, timeout=45)
 subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(user_fixture)), check=True, timeout=45)
 ui = Path(os.environ['RUNNER_TEMP']) / 'storagescope-packaged-ui'
 subprocess.run([str(binary), '--verify-interface', str(ui)], env=environment, check=True, timeout=120)
