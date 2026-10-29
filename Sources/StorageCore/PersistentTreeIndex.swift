@@ -58,19 +58,20 @@ extension DirectoryIndexStore {
         let db = try requireDatabase()
         let statement = try Self.prepare("INSERT OR REPLACE INTO tree_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", operation: "écriture des fichiers", database: db)
         defer { sqlite3_finalize(statement) }
-        let encoder = JSONEncoder()
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.withoutEscapingSlashes]
+        let generationID = generation.uuidString
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
         try Self.execute("BEGIN IMMEDIATE", operation: "lot de fichiers", database: db)
         do {
             for item in items {
                 try Task.checkCancellation()
                 try validatePath(item.url.path)
                 guard !item.isSymbolicLink else { continue }
-                let strings: [(Int32, String)] = [(1, generation.uuidString), (2, item.url.path), (3, item.parentPath), (7, item.category.rawValue), (9, String(decoding: try encoder.encode(item), as: UTF8.self))]
+                let strings: [(Int32, String)] = [(1, generationID), (2, item.url.path), (3, item.parentPath), (7, item.category.rawValue), (9, String(decoding: try encoder.encode(item), as: UTF8.self))]
                 for (position, value) in strings { try Self.bindText(value, at: position, to: statement, database: db) }
                 sqlite3_bind_int(statement, 4, item.isDirectory ? 1 : 0)
                 sqlite3_bind_int64(statement, 5, item.logicalSize)
                 sqlite3_bind_int64(statement, 6, item.allocatedSize)
-                let home = FileManager.default.homeDirectoryForCurrentUser.path
                 let cleanup = item.url.path.hasPrefix(home + "/Downloads/") || item.url.path.hasPrefix(home + "/Library/Logs/DiagnosticReports/") || ["package.json", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb"].contains(item.name)
                 sqlite3_bind_int(statement, 8, cleanup ? 1 : 0)
                 try Self.stepDone(statement, operation: "écriture des fichiers", database: db)
@@ -129,7 +130,10 @@ extension DirectoryIndexStore {
         for (i, value) in ([generation] + arguments).enumerated() { try Self.bindText(value, at: Int32(i + 1), to: stmt, database: db) }
         let decoder = JSONDecoder()
         var result: [FileSystemItem] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
+        while true {
+            let code = sqlite3_step(stmt)
+            if code == SQLITE_DONE { break }
+            guard code == SQLITE_ROW else { throw DirectoryIndexError.sqlite(operation: "lecture de l’arborescence", code: code, message: String(cString: sqlite3_errmsg(db))) }
             try Task.checkCancellation()
             let text = String(cString: sqlite3_column_text(stmt, 0))
             result.append(try decoder.decode(FileSystemItem.self, from: Data(text.utf8)))
@@ -182,7 +186,7 @@ extension DirectoryIndexStore {
             try Self.stepDone(merge, operation: "fusion des changements", database: db)
             try rebuildAffectedDirectories(affected, generation: generation)
             let unresolved = old.snapshot.issues.filter { issue in !replacements.contains { issue.path == $0.directory.path || issue.path.hasPrefix($0.directory.path + "/") } } + issues
-            let snapshot = try makeTreeSnapshot(old: old.snapshot, generation: generation, issues: unresolved)
+            let snapshot = replacements.isEmpty && issues.isEmpty ? old.snapshot : try makeTreeSnapshot(old: old.snapshot, generation: generation, issues: unresolved)
             let state = TreeIndexState(generation: old.generation, checkpoint: checkpoint, snapshot: snapshot, synchronizedAt: Date(), pending: pending)
             try saveTreeState(state)
             try Task.checkCancellation()
@@ -232,13 +236,22 @@ extension DirectoryIndexStore {
         let directories = try Self.prepare("SELECT \(Self.summaryColumns) FROM directories ORDER BY allocated_size DESC, path LIMIT 2000", operation: "actualisation des dossiers principaux", database: db)
         defer { sqlite3_finalize(directories) }
         var tops: [FileSystemItem] = []
-        while sqlite3_step(directories) == SQLITE_ROW { tops.append(Self.decodeSummary(directories, volumeID: volumeID).fileSystemItem) }
+        while true {
+            let code = sqlite3_step(directories)
+            if code == SQLITE_DONE { break }
+            guard code == SQLITE_ROW else { throw DirectoryIndexError.unavailable }
+            tops.append(Self.decodeSummary(directories, volumeID: volumeID).fileSystemItem)
+        }
         var cleanup = CleanupAnalyzer()
         for item in try treeItems(generation: generation, predicate: "is_directory = 0 AND cleanup_candidate = 1") { cleanup.observeFile(item) }
         let allDirs = try treeItems(generation: generation, predicate: "is_directory = 1")
         let totals = try summaries(forPaths: allDirs.map { $0.url.path })
-        let directoryItems = allDirs.compactMap { totals[$0.url.path]?.fileSystemItem }
-        let progress = ScanProgress(filesScanned: categories.reduce(0) { $0 + $1.fileCount }, directoriesScanned: allDirs.count, allocatedBytesDiscovered: report.identifiedAllocatedBytes, logicalBytesDiscovered: report.identifiedLogicalBytes, currentPath: root.path, permissionErrors: report.permissionErrors, skippedItems: old.progress.skippedItems, startedAt: old.progress.startedAt)
+        let directoryItems = allDirs.compactMap { item -> FileSystemItem? in
+            guard let total = totals[item.url.path] else { return nil }
+            var item = item; item.logicalSize = total.logicalSize; item.allocatedSize = total.allocatedSize; item.sizeIsKnown = true
+            return item
+        }
+        let progress = ScanProgress(filesScanned: categories.reduce(0) { $0 + $1.fileCount }, directoriesScanned: allDirs.filter { $0.url.path != root.path }.count, allocatedBytesDiscovered: report.identifiedAllocatedBytes, logicalBytesDiscovered: report.identifiedLogicalBytes, currentPath: root.path, permissionErrors: report.permissionErrors, skippedItems: old.progress.skippedItems, startedAt: old.progress.startedAt)
         return ScanSnapshot(root: root, progress: progress, topFiles: try treeItems(generation: generation, predicate: "is_directory = 0", suffix: "ORDER BY allocated_size DESC, path LIMIT 2000"), topDirectories: tops, directoryContents: [:], issues: Array(issues.prefix(500)), cleanupReport: cleanup.makeReport(directories: directoryItems, permissionErrors: report.permissionErrors, isComplete: true), completedAt: old.completedAt, scanID: old.scanID, volumeID: volumeID, indexVersion: Self.schemaVersion, categoryReport: report)
     }
 }

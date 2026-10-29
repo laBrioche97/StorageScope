@@ -2,12 +2,13 @@ import CoreServices
 import Foundation
 import StorageCore
 
-func awaitSynchronizedTree(root: URL, volumeID: String) async throws -> TreeIndexState {
+func awaitSynchronizedTree(root: URL, volumeID: String, expectedLogicalBytes: Int64? = nil) async throws -> TreeIndexState {
     try await withThrowingTaskGroup(of: TreeIndexState.self) { group in
         group.addTask {
             for await event in PersistentScanSynchronizer.synchronize(root: root, volumeID: volumeID) {
                 switch event {
-                case .updated(let state, settled: true): return state
+                case .updated(let state, settled: true):
+                    if expectedLogicalBytes == nil || state.snapshot.categoryReport.identifiedLogicalBytes == expectedLogicalBytes { return state }
                 case .status(.requiresScan, let message): throw ValidationError.failed(message)
                 default: break
                 }
@@ -57,11 +58,11 @@ func testPersistentTreeAndJournal() async throws {
     try FileManager.default.createDirectory(at: added, withIntermediateDirectories: true)
     try Data([2, 3, 4]).write(to: added.appendingPathComponent("new.bin"))
     try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("loop"), withDestinationURL: root)
-    let synchronized = try await awaitSynchronizedTree(root: root, volumeID: volume)
+    let synchronized = try await awaitSynchronizedTree(root: root, volumeID: volume, expectedLogicalBytes: 2304 + 9000 + 3)
     let final = try await reopened.indexedChildren(of: renamed.appendingPathComponent("deep"))
     let missing = try await reopened.indexedChildren(of: nested)
     let top = try await reopened.indexedChildren(of: root)
-    try expect(final?.count == 2304 && missing?.isEmpty == true, "Un dossier renommé doit déplacer toute l’arborescence sans conserver les anciens descendants")
+    try expect(final?.count == 2304 && missing?.isEmpty == true, "Un dossier renommé doit déplacer toute l’arborescence sans conserver les anciens descendants (nouveau=\(final?.count ?? -1), ancien=\(missing?.count ?? -1), racine=\(top?.map(\.name) ?? []))")
     try expect(top?.first(where: { $0.name == "changed.dat" })?.logicalSize == 9000, "La taille d’un fichier modifié doit être actualisée")
     try expect(top?.contains(where: { $0.name == "loop" }) == false, "La reprise du journal ne traverse pas de lien")
     try expect(synchronized.snapshot.progress.filesScanned == 2306 && synchronized.pending.isEmpty && synchronized.snapshot.issues.isEmpty, "La réconciliation garde des compteurs exacts et termine sans faux état partiel")

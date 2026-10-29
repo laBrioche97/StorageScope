@@ -50,7 +50,7 @@ samples = {'reference': [], 'candidate': []}
 expected = None
 for iteration in range(6):
     for name in (['reference', 'candidate'] if iteration % 2 == 0 else ['candidate', 'reference']):
-        result = json.loads(subprocess.check_output([str(executables[name]), str(fixture)], text=True, timeout=90))
+        result = json.loads(subprocess.check_output([str(executables[name]), str(fixture)], text=True, timeout=90, env=dict(os.environ, STORAGESCOPE_BENCHMARK_VOLUME="isolated-scan-" + name)))
         elapsed = result.pop('seconds')
         if expected is None:
             expected = result
@@ -64,7 +64,7 @@ reference_time, candidate_time = (statistics.median(samples[name]) for name in [
 (fixture / 'linked-loop').symlink_to(fixture, target_is_directory=True)
 linked = {}
 for name in ['reference', 'candidate']:
-    linked[name] = json.loads(subprocess.check_output([str(executables[name]), str(fixture)], text=True, timeout=90))
+    linked[name] = json.loads(subprocess.check_output([str(executables[name]), str(fixture)], text=True, timeout=90, env=dict(os.environ, STORAGESCOPE_BENCHMARK_VOLUME="isolated-scan-" + name)))
     linked[name].pop('seconds')
 assert linked['candidate'] == dict(expected, skipped=expected['skipped'] + 1), 'A link must not change any sibling totals or categories'
 report = {'referenceVersion': '3.5.1', 'candidateVersion': '3.7.0', 'fixtureFiles': 10003,

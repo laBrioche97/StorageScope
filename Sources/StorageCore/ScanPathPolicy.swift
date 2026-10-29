@@ -6,6 +6,7 @@ import Foundation
 public struct ScanPathPolicy: Sendable {
     public let root: URL
     private let devices: Set<UInt64>
+    private let ownedPaths: [String]
     public init(root: URL) {
         self.root = root.standardizedFileURL
         var devices = Set(Self.identity(root).map { [$0.deviceID] } ?? [])
@@ -13,6 +14,8 @@ public struct ScanPathPolicy: Sendable {
             devices.insert(data.deviceID)
         }
         self.devices = devices
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        self.ownedPaths = [home + "/Library/Application Support/StorageScope", home + "/Library/Caches/StorageScope"]
     }
 
     public func excludes(_ url: URL) -> Bool {
@@ -20,8 +23,7 @@ public struct ScanPathPolicy: Sendable {
         guard root.path == "/" || path == root.path || path.hasPrefix(root.path + "/") else { return true }
         if root.path == "/", ["/Volumes", "/System/Volumes", "/dev"].contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return true }
         // Only our own changing metadata is excluded, never another application's files.
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return [home + "/Library/Application Support/StorageScope", home + "/Library/Caches/StorageScope"].contains {
+        return ownedPaths.contains {
             path == $0 || path.hasPrefix($0 + "/")
         }
     }

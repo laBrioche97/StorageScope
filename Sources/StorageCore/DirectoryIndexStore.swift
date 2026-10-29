@@ -51,6 +51,7 @@ public actor DirectoryIndexStore {
             withIntermediateDirectories: true
         )
 
+        if databaseURL == nil { try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: resolvedDatabaseURL.deletingLastPathComponent().path) }
         var handle: OpaquePointer?
         let openResult = sqlite3_open_v2(
             resolvedDatabaseURL.path,
@@ -65,6 +66,7 @@ public actor DirectoryIndexStore {
         }
 
         do {
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: resolvedDatabaseURL.path)
             try Self.configure(handle)
             try Self.prepareSchema(handle)
 

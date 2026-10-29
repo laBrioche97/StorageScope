@@ -64,11 +64,12 @@ struct ExplorerGestureCapture: NSViewRepresentable {
             hit = view.superview
         }
         tracking = true
+        let directory = model.currentDirectory, volumeID = model.selectedVolumeID, revision = model.navigationRevision
         event.trackSwipeEvent(options: [.lockDirection, .clampGestureAmount], dampenAmountThresholdMin: model.canBrowseForward ? -1 : 0, max: model.canBrowseBack ? 1 : 0) { [weak self, weak model] amount, phase, complete, _ in
             guard let self else { return }
             if complete {
                 self.tracking = false
-                guard !phase.contains(.cancelled), abs(amount) >= 0.99, let model, model.sidebar == .explorer else { return }
+                guard !phase.contains(.cancelled), abs(amount) >= 0.99, let model, model.sidebar == .explorer, model.selectedVolumeID == volumeID, model.currentDirectory == directory, model.navigationRevision == revision else { return }
                 let direction = amount > 0 ? -1 : 1
                 if direction < 0 ? model.canBrowseBack : model.canBrowseForward { model.browseHistory(direction) }
             }

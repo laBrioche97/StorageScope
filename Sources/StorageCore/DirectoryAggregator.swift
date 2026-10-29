@@ -146,7 +146,8 @@ public struct DirectoryAggregator: Sendable {
             creationDate: base?.creationDate,
             modificationDate: totals.newestDescendantModification ?? base?.modificationDate,
             category: FileTypeClassifier.category(for: url, isDirectory: true, isPackage: isPackage),
-            safety: FileTypeClassifier.safety(for: url, isDirectory: true)
+            safety: FileTypeClassifier.safety(for: url, isDirectory: true),
+            indexedIdentity: base?.indexedIdentity
         )
     }
 

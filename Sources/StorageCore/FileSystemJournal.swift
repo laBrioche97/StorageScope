@@ -234,6 +234,12 @@ public enum PersistentScanSynchronizer {
             var info = stat()
             if lstat(directory.path, &info) != 0, errno == ENOENT { return [] }
         }
+        if let identity = ScanPathPolicy.identity(directory), identity.fileType == UInt16(S_IFLNK) { return [] }
+        if let identity = ScanPathPolicy.identity(directory), identity.fileType == UInt16(S_IFREG), !policy.excludes(directory) {
+            let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey, .isHiddenKey, .fileSizeKey, .fileAllocatedSizeKey, .creationDateKey, .contentModificationDateKey]
+            try await store.appendTreeItems([try metadata(directory, keys: keys)], generation: staged)
+            return []
+        }
         do { try policy.validateDirectory(directory) } catch { return [ScanIssue(path: directory.path, message: "Le dossier n’est plus accessible ou a été remplacé.", isPermissionError: true)] }
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey, .isPackageKey, .isHiddenKey, .fileSizeKey, .fileAllocatedSizeKey, .creationDateKey, .contentModificationDateKey]
         let failures = JournalReadErrors()

@@ -6,7 +6,7 @@ import StorageCore
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let start = ContinuousClock.now
         var snapshot: ScanSnapshot?
-        for await event in StorageScanner().scan(root: root, volumeID: "isolated-scan-comparison") {
+        for await event in StorageScanner().scan(root: root, volumeID: ProcessInfo.processInfo.environment["STORAGESCOPE_BENCHMARK_VOLUME"] ?? "isolated-scan-comparison") {
             if case .completed(let value) = event { snapshot = value }
         }
         guard let snapshot else { throw CocoaError(.fileReadUnknown) }

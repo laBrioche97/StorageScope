@@ -48,6 +48,7 @@ public final class StorageScanner: @unchecked Sendable {
                 do {
                     let store = try DirectoryIndexStore(volumeID: volumeID, root: standardizedRoot)
                     try await store.beginTreeGeneration(scanID)
+                    try await store.appendTreeItems([FileSystemItem(url: standardizedRoot, logicalSize: 0, allocatedSize: 0, isDirectory: true, indexedIdentity: ScanPathPolicy.identity(standardizedRoot))], generation: scanID)
                     treeStore = store
                 } catch { issues.append(ScanIssue(path: standardizedRoot.path, message: "L’arborescence ne peut pas être enregistrée : \(error.localizedDescription)", isPermissionError: false)) }
                 var lastProgressAt = ContinuousClock.now
