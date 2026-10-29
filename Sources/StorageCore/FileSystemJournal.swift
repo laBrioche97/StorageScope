@@ -79,7 +79,7 @@ public final class FileSystemJournal: @unchecked Sendable {
     public init() {}
     deinit { stop() }
 
-    public func events(checkpoint: JournalCheckpoint) -> AsyncStream<JournalBatch> {
+    public func events(checkpoint: JournalCheckpoint, catchUp: JournalCheckpoint? = nil) -> AsyncStream<JournalBatch> {
         AsyncStream { continuation in
             lock.lock()
             for (index, source) in checkpoint.sources.enumerated() {
@@ -102,6 +102,12 @@ public final class FileSystemJournal: @unchecked Sendable {
                     FSEventStreamInvalidate(stream); FSEventStreamRelease(stream); continuation.finish(); break
                 }
                 streams.append(stream)
+                // A path with no matching historical changes may never emit
+                // HistoryDone. Flush off the UI/callback queue, then enqueue an
+                // explicit barrier for a cursor captured BEFORE starting the stream.
+                FSEventStreamFlushSync(stream)
+                let target = catchUp.flatMap { $0.sources.indices.contains(index) ? $0.sources[index].cursor : nil } ?? source.cursor
+                continuation.yield(JournalBatch(source: index, changes: [JournalChange(path: "", flags: UInt32(kFSEventStreamEventFlagHistoryDone), id: target)]))
             }
             lock.unlock()
             continuation.onTermination = { [weak self] _ in self?.stop() }
@@ -146,7 +152,7 @@ public enum PersistentScanSynchronizer {
                     continuation.yield(.status(.checking, "Vérification des changements depuis la dernière utilisation…"))
                     continuation.yield(.updated(state, settled: false))
                     var caughtUp = Set<Int>()
-                    for await batch in journal.events(checkpoint: checkpoint) {
+                    for await batch in journal.events(checkpoint: checkpoint, catchUp: current) {
                         try Task.checkCancellation()
                         let invalid = UInt32(kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagEventIdsWrapped | kFSEventStreamEventFlagRootChanged | kFSEventStreamEventFlagUnmount)
                         guard !batch.changes.contains(where: { $0.flags & invalid != 0 }) else {

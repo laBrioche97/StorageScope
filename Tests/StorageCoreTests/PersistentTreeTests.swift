@@ -73,6 +73,8 @@ func testPersistentTreeAndJournal() async throws {
     try expect(top?.first(where: { $0.name == "changed.dat" })?.logicalSize == 9000, "La taille d’un fichier modifié doit être actualisée")
     try expect(top?.contains(where: { $0.name == "loop" }) == false, "La reprise du journal ne traverse pas de lien")
     try expect(synchronized.snapshot.progress.filesScanned == 2306 && synchronized.pending.isEmpty && synchronized.snapshot.issues.isEmpty, "La réconciliation garde des compteurs exacts et termine sans faux état partiel")
+    let reopenedWithoutChanges = try await awaitSynchronizedTree(root: root, volumeID: volume)
+    try expect(reopenedWithoutChanges.snapshot.progress.filesScanned == synchronized.snapshot.progress.filesScanned, "Une ouverture sans changement doit terminer la vérification sans attendre un événement")
     let report = synchronized.snapshot.categoryReport
     try expect(report.identifiedLogicalBytes == 2304 + 9000 + 3, "Les totaux et les catégories doivent être recalculés depuis l’index complet")
     let rootSummary = try await reopened.summary(forPath: root.path)
