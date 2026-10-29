@@ -96,6 +96,10 @@ func testPersistentTreeAndJournal() async throws {
 func testJournalPlanningAndIdentity() throws {
     let source = JournalSource(device: 1, uuid: "journal-a", mountPath: "/", watchPath: "/Users/example", cursor: 50)
     let checkpoint = JournalCheckpoint(rootFingerprint: "disk:snapshot-a", sources: [source])
+    let reassigned = JournalSource(device: 99, uuid: source.uuid, mountPath: source.mountPath, watchPath: source.watchPath, cursor: 51)
+    try expect(checkpoint.matches(JournalCheckpoint(rootFingerprint: checkpoint.rootFingerprint, sources: [reassigned])), "Un nouveau dev_t n’invalide pas le journal du même volume")
+    try expect(JournalCheckpoint.stableFingerprint(volumeUUID: "persistent-volume") == "persistent-volume", "L’empreinte des données ne doit pas contenir de numéro de disque temporaire")
+    try expect(JournalCheckpoint.stableFingerprint(volumeUUID: "system", systemBuild: "build-a") != JournalCheckpoint.stableFingerprint(volumeUUID: "system", systemBuild: "build-b"), "Un nouveau système scellé exige une nouvelle analyse")
     let changedDisk = JournalCheckpoint(rootFingerprint: "disk:snapshot-b", sources: [source])
     try expect(!checkpoint.matches(changedDisk), "Un nouveau snapshot système exige une nouvelle base fiable")
     let root = URL(fileURLWithPath: "/Users/example")

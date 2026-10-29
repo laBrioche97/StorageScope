@@ -33,11 +33,15 @@ public struct JournalCheckpoint: Codable, Equatable, Sendable {
             sources.append(JournalSource(device: identity.deviceID, uuid: CFUUIDCreateString(nil, uuid) as String, mountPath: mount, watchPath: watch, cursor: FSEventsGetLastEventIdForDeviceBeforeTime(device, CFAbsoluteTimeGetCurrent())))
         }
         guard !sources.isEmpty else { return nil }
-        var fs = statfs()
-        guard statfs(root.path, &fs) == 0 else { return nil }
-        let from = withUnsafeBytes(of: fs.f_mntfromname) { String(cString: $0.baseAddress!.assumingMemoryBound(to: CChar.self)) }
         let uuid = (try? root.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) ?? root.path
-        return JournalCheckpoint(rootFingerprint: uuid + "|" + from, sources: sources)
+        // BSD disk numbers and dev_t change across boots. Only the sealed system
+        // needs an OS-build token; data/external volumes are tracked by their UUID.
+        let systemBuild = root.path == "/" ? ProcessInfo.processInfo.operatingSystemVersionString : nil
+        return JournalCheckpoint(rootFingerprint: stableFingerprint(volumeUUID: uuid, systemBuild: systemBuild), sources: sources)
+    }
+
+    public static func stableFingerprint(volumeUUID: String, systemBuild: String? = nil) -> String {
+        volumeUUID + (systemBuild.map { "|system:" + $0 } ?? "")
     }
 
     public func matches(_ current: JournalCheckpoint) -> Bool {

@@ -48,7 +48,7 @@ public enum StorageService {
             let path = url.standardizedFileURL.path
             let legacyID = values.volumeIdentifier.map { String(describing: $0) } ?? path
             let dataUUID = path == "/" ? (try? URL(fileURLWithPath: "/System/Volumes/Data").resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) : nil
-            let stableID = dataUUID.map { "startup:" + $0 } ?? values.volumeUUIDString.map { "volume:" + $0 } ?? legacyID
+            let stableID = dataUUID.map { "startup:" + $0 } ?? values.volumeUUIDString.map { "volume:" + $0 + "|" + path } ?? legacyID
             return StorageVolume(
                 id: stableID,
                 url: url,
