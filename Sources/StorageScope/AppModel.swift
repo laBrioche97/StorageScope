@@ -228,6 +228,7 @@ final class AppModel: ObservableObject {
     @Published var uninstallPlan: UninstallPlan?
     @Published var uninstallSelectedIDs: Set<String> = []
     @Published var uninstallIsWorking = false
+    @Published var uninstallActionMessage = ""
     @Published var uninstallResult: UninstallResult?
     @Published private(set) var uninstallSizes: [String: InstallationSize] = [:]
     @Published var showingTrashConfirmation = false
@@ -654,6 +655,7 @@ final class AppModel: ObservableObject {
     }
 
     func prepareUninstall(_ application: InstalledApplication) {
+        uninstallActionMessage = ""
         guard !operationsAreBusy else { alertMessage = "Terminez l’opération en cours avant de préparer une désinstallation."; return }
         showingUninstall = true
         uninstallIsWorking = true
@@ -696,7 +698,12 @@ final class AppModel: ObservableObject {
 
     func performUninstall(requestQuitIfRunning: Bool = true, allowFinderAuthorization: Bool = false) {
         LocalDiagnostics.shared.record(action: "désinstallation d’application")
-        guard let plan = uninstallPlan, plan.canProceed, !uninstallIsWorking, !operationsAreBusy else { return }
+        guard let plan = uninstallPlan, plan.canProceed, !uninstallIsWorking else { return }
+        guard !operationsAreBusy else {
+            uninstallActionMessage = "Terminez ou annulez l’analyse et les autres opérations en cours avant de continuer cette désinstallation."
+            return
+        }
+        uninstallActionMessage = ""
         // Folder metadata alone is not an installation's size. Carry the current
         // measured estimates into the operation without changing any file identities.
         let operationPlan = UninstallPlan(application: plan.application, candidates: plan.candidates.map { candidate in

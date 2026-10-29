@@ -67,7 +67,7 @@ for name in ['reference', 'candidate']:
     linked[name] = json.loads(subprocess.check_output([str(executables[name]), str(fixture)], text=True, timeout=90))
     linked[name].pop('seconds')
 assert linked['candidate'] == dict(expected, skipped=expected['skipped'] + 1), 'A link must not change any sibling totals or categories'
-report = {'referenceVersion': '3.5.1', 'candidateVersion': '3.6.0', 'fixtureFiles': 10003,
+report = {'referenceVersion': '3.5.1', 'candidateVersion': '3.6.1', 'fixtureFiles': 10003,
     'identicalCoverageAndTotals': True, 'result': expected, 'seconds': samples,
     'symbolicLinkRegression': {'referenceFiles': linked['reference']['files'], 'candidateFiles': linked['candidate']['files'],
         'loopNotTraversed': True, 'allSiblingFilesRetained': True},

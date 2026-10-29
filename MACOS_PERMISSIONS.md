@@ -18,3 +18,7 @@ Les applications comportant des services privilégiés ou extensions exigent leu
 Après un résultat non confirmé, aucun fichier associé n’est supprimé et l’action n’est pas relancée automatiquement. Actualisez l’inventaire avant de poursuivre. L’historique reste local, sans envoi automatique.
 
 Cette version de test n’a pas de certificat Developer ID ni de notarisation. Une mise à jour peut provoquer une nouvelle demande d’autorisation.
+
+## Correctif 3.6.1
+
+La continuation utilise la commande `core/delo` du Finder. Les autorisations d’Automatisation sont vérifiées pour cette commande, puis le Finder peut afficher ses demandes système au premier plan. Une activité bloquante est expliquée près du bouton. L’historique local indique le domaine et le code renvoyés ; une absence de réponse ne déclenche jamais une seconde suppression automatique.

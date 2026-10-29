@@ -1,5 +1,7 @@
 import Darwin
+import CoreServices
 import Foundation
+import FoundationXML
 import StorageCore
 
 private actor RefusingBundleRemover: ApplicationBundleRemoving {
@@ -12,6 +14,25 @@ private actor RefusingBundleRemover: ApplicationBundleRemoving {
 }
 
 func testApplicationAuthorizationBoundaries() async throws {
+    // Verify against Finder's actual installed scripting dictionary, not only
+    // our constants. The 3.6.0 'aevt/delo' command fails this regression check.
+    let dictionary = try XMLDocument(contentsOf: URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app/Contents/Resources/Finder.sdef"), options: [])
+    let commands = try dictionary.nodes(forXPath: "//command[@name='delete']").compactMap { $0 as? XMLElement }
+    try expect(commands.contains { $0.attribute(forName: "code")?.stringValue == "coredelo" }, "Finder's installed delete command contract changed")
+    let file = URL(fileURLWithPath: "/Applications/Épreuve ' \\\" $() fichier.app")
+    let event = FinderRecycleProtocol.deleteEvent(for: file)
+    try expect(event.eventClass == 0x636f7265 && event.eventID == 0x64656c6f, "Delete must target the Finder Standard Suite, not system application events")
+    let direct = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))
+    try expect(direct?.numberOfItems == 1 && FinderRecycleProtocol.fileURL(direct) == file, "Exactly one literal file URL must be passed, without path interpolation")
+    try expect(FinderRecycleProtocol.sendOptions.contains(.alwaysInteract) && FinderRecycleProtocol.sendOptions.contains(.canSwitchLayer), "An explicit continuation must allow Finder's system authorization UI")
+    let properties = try dictionary.nodes(forXPath: "//property[@name='URL']").compactMap { $0 as? XMLElement }
+    try expect(properties.contains { $0.attribute(forName: "code")?.stringValue == "pURL" }, "Finder's URL result property changed")
+    let text = NSAppleEventDescriptor(string: file.absoluteString)
+    try expect(FinderRecycleProtocol.fileURL(text) == file, "Finder URL property text must be decoded")
+    let query = FinderRecycleProtocol.urlPropertyEvent(for: NSAppleEventDescriptor(fileURL: file))
+    try expect(query?.eventClass == 0x636f7265 && query?.eventID == 0x67657464,
+        "Object-reference replies must be resolved with Finder's typed read-only get command")
+    try expect(FinderRecycleProtocol.fileURL(NSAppleEventDescriptor(string: "https://example.com/")) == nil, "Only local file destinations are accepted")
     let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".StorageScope-Authorization-\(UUID().uuidString)", isDirectory: true)
     let appURL = directory.appendingPathComponent("Disposable.app", isDirectory: true)
     let contents = appURL.appendingPathComponent("Contents", isDirectory: true)

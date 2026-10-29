@@ -9,6 +9,9 @@ struct UninstallView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if !model.uninstallActionMessage.isEmpty {
+                Label(model.uninstallActionMessage, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.orange).padding(14)
+            }
             HStack {
                 Label("Désinstaller proprement", systemImage: "app.badge.checkmark").font(.title2.bold())
                 Spacer()
@@ -134,7 +137,8 @@ struct UninstallView: View {
                         Button("Automatisation du Finder") { PermissionActions.openAutomation() }
                     }
                     Button("Autoriser et continuer") { model.performUninstall(allowFinderAuthorization: true) }
-                        .buttonStyle(.borderedProminent).disabled(model.uninstallIsWorking)
+                        .buttonStyle(.borderedProminent).disabled(model.uninstallIsWorking || model.operationsAreBusy)
+                    if model.operationsAreBusy && !model.uninstallIsWorking { Text("Une autre opération est en cours. Terminez-la ou annulez-la pour continuer.").font(.caption).foregroundStyle(.secondary) }
                 }
             }
             if !result.associatedResults.isEmpty {

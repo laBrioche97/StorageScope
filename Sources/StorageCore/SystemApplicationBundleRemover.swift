@@ -98,6 +98,12 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
             // already suffice, without asking for another permission.
             response = await Task.detached(priority: .userInitiated) { Self.recycleWithFinder(request) }.value
         }
+        if Self.identity(request.url) == nil, response.url == nil {
+            response.url = Self.findTrashedBundle(request)
+        }
+        let code = response.code.map(String.init) ?? "aucun"
+        try? OperationJournal.append(operation: "désinstallation — " + response.backend, path: request.url.path,
+            status: "réponse système", message: "Domaine=\(response.domain ?? "aucun") ; code=\(code) ; \(response.message ?? "pas de message")")
         let result: ApplicationBundleRemovalOutcome
         if let destination = response.url, Self.identity(destination) == request.identity,
            Self.identity(request.url) == nil {
@@ -108,11 +114,15 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
             result = .init(.cancelled, message: "L’autorisation a été annulée. Aucun fichier associé n’a été touché.")
         } else if response.code == -1743 {
             result = .init(.authorizationDenied, message: "L’autorisation d’Automatisation du Finder a été refusée. Activez StorageScope → Finder dans Confidentialité et sécurité → Automatisation, puis continuez.")
+        } else if response.code == -1712 {
+            result = .init(.notConfirmed, message: "Le Finder n’a pas répondu à temps. Vérifiez son éventuelle fenêtre d’autorisation et actualisez l’inventaire avant toute nouvelle tentative. Aucun fichier associé n’a été touché.")
         } else if Self.isPermissionFailure(response) {
             result = .init(allowFinderAuthorization ? .authorizationDenied : .authorizationRequired,
-                message: "macOS a refusé le déplacement. Autorisez Gestion des apps pour StorageScope ; une authentification administrateur peut aussi être nécessaire. Aucun fichier associé n’a été touché.")
+                message: response.backend == "Finder"
+                    ? "Le Finder a refusé le déplacement malgré la demande d’autorisation. Vérifiez la fenêtre administrateur du Finder ou les restrictions de cette application. Aucun fichier associé n’a été touché. (Code \(code))"
+                    : "macOS a refusé le déplacement direct. Gestion des apps et les droits administrateur sont distincts : « Autoriser et continuer » permet au Finder de présenter la demande système nécessaire. Aucun fichier associé n’a été touché.")
         } else {
-            result = .init(.failed, message: response.message ?? "Le système n’a pas confirmé la mise à la corbeille de l’application.")
+            result = .init(.failed, message: response.message ?? "\(response.backend) n’a déplacé aucun élément et n’a fourni aucune destination vérifiable. L’application est toujours à son emplacement ; aucun fichier associé n’a été touché. Consultez l’historique local pour le détail de cette tentative.")
         }
         try? OperationJournal.append(operation: "désinstallation", path: request.url.path,
             status: result.status == .trashed ? "corbeille" : "non confirmé", message: result.message)
@@ -120,6 +130,7 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
     }
 
     private struct RecycleResponse: Sendable {
+        var backend: String = "macOS"
         var url: URL? = nil
         var domain: String? = nil
         var code: Int? = nil
@@ -135,27 +146,48 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
     private static func recycleWithFinder(_ request: ApplicationBundleRemovalRequest) -> RecycleResponse {
         autoreleasepool {
             let target = NSAppleEventDescriptor(bundleIdentifier: "com.apple.finder")
-            let permission = AEDeterminePermissionToAutomateTarget(target.aeDesc, AEEventClass(kCoreEventClass), AEEventID(kAEDelete), true)
-            guard permission == noErr else { return RecycleResponse(domain: NSOSStatusErrorDomain, code: Int(permission), message: "Le Finder n’a pas été autorisé.") }
+            let permission = AEDeterminePermissionToAutomateTarget(target.aeDesc, FinderRecycleProtocol.eventClass, FinderRecycleProtocol.eventID, true)
+            guard permission == noErr else { return RecycleResponse(backend: "Finder", domain: NSOSStatusErrorDomain, code: Int(permission), message: "Le Finder n’a pas été autorisé.") }
             do {
                 try validate(request) // The authorization dialog may have stayed open.
-                let event = NSAppleEventDescriptor(eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEDelete),
-                    targetDescriptor: target, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
-                event.setParam(NSAppleEventDescriptor(fileURL: request.url), forKeyword: AEKeyword(keyDirectObject))
-                let reply = try event.sendEvent(options: [.waitForReply, .canInteract], timeout: 120)
+                let event = FinderRecycleProtocol.deleteEvent(for: request.url)
+                let reply = try event.sendEvent(options: FinderRecycleProtocol.sendOptions, timeout: 120)
                 if let error = reply.paramDescriptor(forKeyword: AEKeyword(keyErrorNumber)), error.int32Value != 0 {
-                    return RecycleResponse(domain: NSOSStatusErrorDomain, code: Int(error.int32Value),
+                    return RecycleResponse(backend: "Finder", domain: NSOSStatusErrorDomain, code: Int(error.int32Value),
                         message: reply.paramDescriptor(forKeyword: AEKeyword(keyErrorString))?.stringValue)
                 }
                 let object = reply.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))
-                let file = object?.descriptorType == typeAEList ? object?.atIndex(1) : object
-                let address = file?.coerce(toDescriptorType: typeFileURL).flatMap { String(data: $0.data, encoding: .utf8) }.flatMap(URL.init(string:))
-                return RecycleResponse(url: address)
+                var address = FinderRecycleProtocol.fileURL(object)
+                if address == nil, let object = FinderRecycleProtocol.firstObject(object),
+                   object.descriptorType == typeObjectSpecifier,
+                   let query = FinderRecycleProtocol.urlPropertyEvent(for: object),
+                   let answer = try? query.sendEvent(options: [.waitForReply, .neverInteract], timeout: 10) {
+                    address = FinderRecycleProtocol.fileURL(answer.paramDescriptor(forKeyword: AEKeyword(keyDirectObject)))
+                }
+                return RecycleResponse(backend: "Finder", url: address,
+                    message: address == nil ? "Le Finder n’a fourni aucune destination. Type de réponse : \(reply.descriptorType)." : nil)
             } catch {
                 let error = error as NSError
-                return RecycleResponse(domain: error.domain, code: error.code, message: error.localizedDescription)
+                return RecycleResponse(backend: "Finder", domain: error.domain, code: error.code, message: error.localizedDescription)
             }
         }
+    }
+
+    private static func findTrashedBundle(_ request: ApplicationBundleRemovalRequest) -> URL? {
+        // Verify a missing source by inode in the current account's trash only.
+        // Never retry the destructive command merely because Finder returned no URL.
+        var roots = [FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)]
+        if let volumeTrash = try? FileManager.default.url(for: .trashDirectory, in: .userDomainMask,
+                appropriateFor: request.url.deletingLastPathComponent(), create: false) { roots.append(volumeTrash) }
+        for root in Set(roots) {
+            guard let metadata = try? root.resourceValues(forKeys: [.isSymbolicLinkKey]), metadata.isSymbolicLink != true,
+                  let entries = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil,
+                    options: [.skipsSubdirectoryDescendants]) else { continue }
+            for case let candidate as URL in entries {
+                if identity(candidate) == request.identity, Bundle(url: candidate)?.bundleIdentifier == request.bundleIdentifier { return candidate }
+            }
+        }
+        return nil
     }
 
     private static func identity(_ url: URL) -> FileIdentity? {

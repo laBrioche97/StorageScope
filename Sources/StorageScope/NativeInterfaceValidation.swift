@@ -19,6 +19,11 @@ enum NativeInterfaceValidation {
         let sizeModel = AppModel()
         let sizePlan = UninstallPlan(application: fixtureApp, candidates: [fixtureCandidate], isRunning: false)
         sizeModel.uninstallPlan = sizePlan
+        sizeModel.isScanning = true
+        sizeModel.performUninstall(allowFinderAuthorization: true)
+        precondition(!sizeModel.uninstallActionMessage.isEmpty && !sizeModel.uninstallIsWorking,
+            "A busy continuation must explain its block instead of silently doing nothing")
+        sizeModel.isScanning = false
         precondition(sizeModel.uninstallSelectionSummary(sizePlan).contains("indisponible"))
         await sizeModel.measureUninstallPlan()
         precondition(sizeModel.uninstallSizes[sizeFixtureRoot.path]?.state == .measured && (sizeModel.uninstallSizes[sizeFixtureRoot.path]?.bytes ?? 0) > 0, "Confirmation must measure the bundle, not its directory metadata")
