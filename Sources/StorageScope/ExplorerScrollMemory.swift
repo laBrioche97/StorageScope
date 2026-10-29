@@ -4,9 +4,11 @@ import SwiftUI
 /// Observe only the native table's clip view; never retain a cached visual tree.
 struct ExplorerScrollMemory: NSViewRepresentable {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
     func makeNSView(context: Context) -> NSView { NSView(frame: .zero) }
     func updateNSView(_ nsView: NSView, context: Context) {
+        _ = explorerState.currentDirectory
         let coordinator = context.coordinator
         let path = model.currentDirectory?.path ?? model.explorerCategoryContext.map { "category:" + $0.category.rawValue }
         let offset = model.explorerScrollPosition

@@ -105,6 +105,7 @@ final class ScanStatus: ObservableObject {
 
 @MainActor
 final class AppModel: ObservableObject {
+    let explorer = ExplorerPresentation()
     let isPreviewMode = CommandLine.arguments.contains("--verify-interface")
     @Published var trashIsWorking = false
     @Published var gameUninstallIsWorking = false
@@ -141,8 +142,8 @@ final class AppModel: ObservableObject {
     @Published var sort: ItemSort = .allocated
     @Published var kindFilter: FileKindFilter = .all
     @Published var selectedIDs: Set<String> = []
-    @Published var currentDirectory: URL?
-    @Published var explorerItems: [FileSystemItem] = [] { didSet { explorerItemsRevision &+= 1; explorerFilterMemo = nil } }
+    var currentDirectory: URL? { get { explorer.currentDirectory } set { guard explorer.currentDirectory != newValue else { return }; explorer.invalidate(); explorer.currentDirectory = newValue } }
+    var explorerItems: [FileSystemItem] { get { explorer.explorerItems } set { explorer.invalidate(); explorer.explorerItems = newValue; explorerItemsRevision &+= 1; explorerFilterMemo = nil } }
     private var explorerItemsRevision: UInt64 = 0
     private var explorerPreparedRevision: UInt64 = 0
     private struct ExplorerFilterKey: Equatable {
@@ -150,17 +151,17 @@ final class AppModel: ObservableObject {
         let order: ItemSort; let kind: FileKindFilter; let remainder: Set<String>?
     }
     private var explorerFilterMemo: (key: ExplorerFilterKey, items: [FileSystemItem])?
-    @Published var explorerIssues: [ScanIssue] = []
-    @Published var explorerIsLoading = false
-    @Published var explorerLoaderVisible = false
-    @Published var explorerPendingDirectory: URL?
-    @Published var explorerVisited = 0
-    @Published var navigationRevision = UUID()
+    var explorerIssues: [ScanIssue] { get { explorer.explorerIssues } set { explorer.invalidate(); explorer.explorerIssues = newValue } }
+    var explorerIsLoading: Bool { get { explorer.explorerIsLoading } set { guard explorer.explorerIsLoading != newValue else { return }; explorer.invalidate(); explorer.explorerIsLoading = newValue } }
+    var explorerLoaderVisible: Bool { get { explorer.explorerLoaderVisible } set { guard explorer.explorerLoaderVisible != newValue else { return }; explorer.invalidate(); explorer.explorerLoaderVisible = newValue } }
+    var explorerPendingDirectory: URL? { get { explorer.explorerPendingDirectory } set { guard explorer.explorerPendingDirectory != newValue else { return }; explorer.invalidate(); explorer.explorerPendingDirectory = newValue } }
+    var explorerVisited: Int { get { explorer.explorerVisited } set { guard explorer.explorerVisited != newValue else { return }; explorer.invalidate(); explorer.explorerVisited = newValue } }
+    var navigationRevision: UUID { get { explorer.navigationRevision } set { guard explorer.navigationRevision != newValue else { return }; explorer.invalidate(); explorer.navigationRevision = newValue } }
     // Deliver an atomic row snapshot to the existing native table without
     // waiting for unrelated SwiftUI toolbar/graph layout passes.
     let explorerRowsDidChange = PassthroughSubject<[FileSystemItem], Never>()
-    @Published var navigationBack = false
-    @Published var navigationAnchor = UnitPoint.center
+    var navigationBack: Bool { get { explorer.navigationBack } set { guard explorer.navigationBack != newValue else { return }; explorer.invalidate(); explorer.navigationBack = newValue } }
+    var navigationAnchor: UnitPoint { get { explorer.navigationAnchor } set { guard explorer.navigationAnchor != newValue else { return }; explorer.invalidate(); explorer.navigationAnchor = newValue } }
     var explorerScrollPosition: Double = .nan
     private var explorerViewCache = ExplorerSessionCache()
     private var explorerSortedSnapshot: ExplorerViewSnapshot?
@@ -178,7 +179,7 @@ final class AppModel: ObservableObject {
         currentDirectory = directory; explorerItems = view.items; bubbleFrame = view.frame
         explorerSortedSnapshot = view
         explorerPreparedRevision = explorerItemsRevision
-        selectedIDs = view.selection; explorerScrollPosition = view.scroll
+        if selectedIDs != view.selection { selectedIDs = view.selection }; explorerScrollPosition = view.scroll
         encounteredApplicationURLs.formUnion(view.items.filter { $0.isDirectory && $0.fileExtension == "app" }.map(\.url))
         if recordHistory && (explorerHistoryPosition < 0 || explorerHistory[explorerHistoryPosition] != directory) {
             explorerHistory = Array(explorerHistory.prefix(explorerHistoryPosition + 1)); explorerHistory.append(directory); explorerHistoryPosition = explorerHistory.count - 1
@@ -198,7 +199,8 @@ final class AppModel: ObservableObject {
 
     func resetExplorerTemporaryList() {
         if explorerTemporaryList { kindFilter = .all }
-        explorerTemporaryList = false; bubbleRemainderPaths = nil
+        if explorerTemporaryList { explorerTemporaryList = false }
+        if bubbleRemainderPaths != nil { bubbleRemainderPaths = nil }
     }
     @Published var explorerShowsSmallItems = false
     @Published var explorerCategoryContext: ExplorerCategoryContext?
@@ -260,9 +262,9 @@ final class AppModel: ObservableObject {
     private var duplicateTask: Task<Void, Never>?
     let iconCache = SessionIconCache()
     var applicationIcons: [String: NSImage] { get { inventory.applicationIcons } set { inventory.applicationIcons = newValue } }
-    @Published var bubbleFrame: FolderBubbleFrame?
-    @Published var bubbleIsLoading = false
-    @Published var explorerHoveredID: String?
+    var bubbleFrame: FolderBubbleFrame? { get { explorer.bubbleFrame } set { explorer.invalidate(); explorer.bubbleFrame = newValue } }
+    var bubbleIsLoading: Bool { get { explorer.bubbleIsLoading } set { guard explorer.bubbleIsLoading != newValue else { return }; explorer.invalidate(); explorer.bubbleIsLoading = newValue } }
+    var explorerHoveredID: String? { get { explorer.explorerHoveredID } set { guard explorer.explorerHoveredID != newValue else { return }; explorer.invalidate(); explorer.explorerHoveredID = newValue } }
     @Published var cleanupSelectedIDs: Set<String> = []
     @Published var cleanupActionMessage = ""
     private var maximumBubbles = 24
@@ -270,7 +272,7 @@ final class AppModel: ObservableObject {
     private var explorerHistory: [URL] = []
     private var explorerHistoryPosition = -1
     private var navigatingHistory = false
-    @Published var bubbleMessage = "Préparation du graphique…"
+    var bubbleMessage: String { get { explorer.bubbleMessage } set { guard explorer.bubbleMessage != newValue else { return }; explorer.invalidate(); explorer.bubbleMessage = newValue } }
     @Published var bubbleRemainderPaths: Set<String>?
     private var bubbleTask: Task<Void, Never>?
     private var bubbleGeneration = UUID()
@@ -1046,7 +1048,7 @@ final class AppModel: ObservableObject {
         navigationBack = false
         let maximum = maximumBubbles, diameter = bubbleAvailableDiameter
         let layout = explorerLayoutKey
-        explorerCategoryContext = nil
+        if explorerCategoryContext != nil { explorerCategoryContext = nil }
         explorerVisited = 0; explorerIssues = []
         explorerPendingDirectory = directory
         explorerIsLoading = true; bubbleIsLoading = false; explorerLoaderVisible = false

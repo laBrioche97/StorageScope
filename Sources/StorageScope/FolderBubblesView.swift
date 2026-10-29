@@ -4,7 +4,9 @@ import SwiftUI
 
 struct FolderBubblesView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     var body: some View {
+        let _ = explorerState.currentDirectory
         GeometryReader { proxy in
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.bubbleMessage).font(.callout).foregroundStyle(.secondary)
@@ -52,8 +54,10 @@ private enum BubbleGeometry {
 
 private struct FolderBubbleDiagram: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     private var nodes: [FolderBubble] { model.bubbleFrame?.folders ?? [] }
     var body: some View {
+        let _ = explorerState.currentDirectory
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 FolderBubbleDrawing(nodes: nodes)
@@ -76,9 +80,11 @@ private struct FolderBubbleDiagram: View {
 
 private struct FolderBubbleDrawing: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     let nodes: [FolderBubble]
     var body: some View {
+        let _ = explorerState.currentDirectory
         Canvas { context, size in
             for node in nodes {
                 let rect = BubbleGeometry.rect(node, size: size)
@@ -98,10 +104,12 @@ private struct FolderBubbleDrawing: View {
 
 private struct FolderBubbleControl: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     @FocusState private var focused: Bool
     let node: FolderBubble
     let bounds: CGRect
     var body: some View {
+        let _ = explorerState.currentDirectory
         Button { model.openBubble(node) } label: { Circle().fill(Color.clear).contentShape(Circle()) }
             .buttonStyle(.plain).disabled(model.explorerPendingDirectory != nil).focused($focused)
             .frame(width: bounds.width, height: bounds.height).position(x: bounds.midX, y: bounds.midY)

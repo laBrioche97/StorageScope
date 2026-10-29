@@ -78,6 +78,7 @@ struct ContentView: View {
         })
         .task { model.refreshTrashSummary(force: true) }
         .environmentObject(model.inventory)
+        .environmentObject(model.explorer)
         .accentColor(AppTheme.accent)
         .background(AppTheme.canvas(colorScheme))
         .buttonStyle(SoftButtonStyle())

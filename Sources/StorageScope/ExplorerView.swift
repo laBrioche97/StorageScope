@@ -4,6 +4,7 @@ import SwiftUI
 
 struct StorageExplorerView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
 
     private var totalBytes: Int64 {
         max(1, model.explorerVisibleItems.reduce(0) { $0 + $1.allocatedSize })
@@ -23,6 +24,7 @@ struct StorageExplorerView: View {
     }
 
     var body: some View {
+        let _ = explorerState.currentDirectory
         VStack(spacing: 0) {
             explorerHeader
             Divider()
@@ -251,6 +253,7 @@ private struct ExplorerTreemapNode: Identifiable {
 }
 
 private struct ExplorerTreemapCanvas: View {
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     let items: [FileSystemItem]
     let groupedItems: [FileSystemItem]
     let totalBytes: Int64
@@ -262,6 +265,7 @@ private struct ExplorerTreemapCanvas: View {
     }
 
     var body: some View {
+        let _ = explorerState.currentDirectory
         GeometryReader { proxy in
             let nodeValues = layoutValues(for: nodes)
             let tiles = TreemapLayoutEngine.layout(
@@ -332,6 +336,7 @@ private struct ExplorerTreemapCanvas: View {
 
 private struct ExplorerTreemapTile: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     let item: FileSystemItem
     let totalBytes: Int64
     let width: Double
@@ -343,6 +348,7 @@ private struct ExplorerTreemapTile: View {
     private var cornerRadius: Double { min(14, max(3, minimumDimension * 0.09)) }
 
     var body: some View {
+        let _ = explorerState.currentDirectory
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(selected ? Color.accentColor.opacity(0.22) : color.opacity(0.18))
@@ -439,6 +445,7 @@ private struct ExplorerTreemapTile: View {
 
 private struct ExplorerSmallItemsTile: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     let items: [FileSystemItem]
     let width: Double
     let height: Double
@@ -447,6 +454,7 @@ private struct ExplorerSmallItemsTile: View {
     private var minimumDimension: Double { min(width, height) }
 
     var body: some View {
+        let _ = explorerState.currentDirectory
         Button {
             model.selectedIDs.removeAll()
             withAnimation(.snappy) { model.explorerShowsSmallItems = true }
@@ -481,8 +489,10 @@ private struct ExplorerSmallItemsTile: View {
 
 struct ExplorerListTable: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     let items: [FileSystemItem]
     var body: some View {
+        let _ = explorerState.currentDirectory
         NativeFileTable(items: items, mode: .explorer)
             .background(ExplorerScrollMemory())
             .disabled(model.explorerPendingDirectory != nil)

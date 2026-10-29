@@ -10,6 +10,7 @@ import SwiftUI
 struct NativeFileTable: NSViewRepresentable {
     enum Mode: Equatable { case overview, explorer }
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var explorerState: ExplorerPresentation
     let items: [FileSystemItem]
     let mode: Mode
 
@@ -44,6 +45,7 @@ struct NativeFileTable: NSViewRepresentable {
         return scroll
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
+        _ = explorerState.currentDirectory
         context.coordinator.schedule(items: items, enabled: context.environment.isEnabled, hovered: model.explorerHoveredID)
     }
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
@@ -92,7 +94,9 @@ struct NativeFileTable: NSViewRepresentable {
                 self.enabled = enabled; table.isEnabled = enabled
                 if items != incoming {
                     let old = items; items = incoming
-                    if old.count == incoming.count && zip(old, incoming).allSatisfy({ $0.0.id == $0.1.id }) {
+                    // A new folder with the same row count can reuse the native
+                    // cells too; selection is remapped by identity below.
+                    if old.count == incoming.count {
                         let changed = IndexSet(incoming.indices.filter { old[$0] != incoming[$0] })
                         table.reloadData(forRowIndexes: changed, columnIndexes: IndexSet(integersIn: 0..<table.numberOfColumns))
                     } else { table.reloadData() }

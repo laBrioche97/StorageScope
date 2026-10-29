@@ -71,7 +71,7 @@ enum NativeInterfaceValidation {
         for dark in [false, true] {
             NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             for scale in [1.0, 2.0] {
-                let view = ContentView().environmentObject(model).environmentObject(SoftwareUpdates())
+                let view = ContentView().environmentObject(model).environmentObject(model.explorer).environmentObject(SoftwareUpdates())
                     .environment(\.colorScheme, dark ? .dark : .light)
                     .frame(width: width, height: height)
                     .background(Color(nsColor: .windowBackgroundColor))
