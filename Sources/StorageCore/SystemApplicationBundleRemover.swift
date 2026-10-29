@@ -108,7 +108,8 @@ public actor SystemApplicationBundleRemover: ApplicationBundleRemoving {
             // already suffice, without asking for another permission.
             response = await Task.detached(priority: .userInitiated) { Self.recycleWithFinder(request) }.value
         }
-        if Self.identity(request.url) == nil, response.url == nil {
+        if Self.identity(request.url) == nil,
+           response.url.map({ Self.identity($0) == request.identity }) != true {
             response.url = Self.findTrashedBundle(request)
         }
         let code = response.code.map(String.init) ?? "aucun"

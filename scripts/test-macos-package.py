@@ -44,6 +44,11 @@ user_fixture = Path('/Applications') / ('StorageScope-QA-' + str(uuid.uuid4()) +
 assert user_fixture.parent == Path('/Applications') and not user_fixture.exists()
 subprocess.run(['ditto', str(fixture), str(user_fixture)], check=True)
 subprocess.run(['sudo', 'chown', '-R', str(os.getuid()) + ':' + str(os.getgid()), str(user_fixture)], check=True)
+finder_fixture = Path('/Applications') / ('StorageScope-QA-' + str(uuid.uuid4()) + '.app')
+assert finder_fixture.parent == Path('/Applications') and not finder_fixture.exists()
+subprocess.run(['ditto', str(user_fixture), str(finder_fixture)], check=True)
+subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment,
+    STORAGESCOPE_QA_ROOT_APP=str(finder_fixture), STORAGESCOPE_QA_FINDER_ONLY='1'), check=True, timeout=40)
 subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(fixture), STORAGESCOPE_QA_EXPECT='permission-boundary'), check=True, timeout=45)
 subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(user_fixture)), check=True, timeout=45)
 ui = Path(os.environ['RUNNER_TEMP']) / 'storagescope-packaged-ui'
