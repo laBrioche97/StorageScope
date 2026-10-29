@@ -28,12 +28,13 @@ struct ContentView: View {
                     if section == .explorer, previous != .explorer, !model.isPreviewMode { model.enterExplorer() }
                     if compactWindow { sidebarVisible = false }
                 } label: {
-                    Label(section.rawValue, systemImage: section.icon)
+                    Label(section.rawValue, systemImage: section.icon).font(.system(size: 13, weight: model.sidebar == section ? .semibold : .medium))
                         .lineLimit(1).frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                         .padding(.horizontal, 10).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .background(model.sidebar == section ? Color.accentColor.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                .animation(MotionTokens.enabled ? .easeOut(duration: MotionTokens.section) : nil, value: model.sidebar == section)
                 .accessibilityAddTraits(model.sidebar == section ? .isSelected : [])
             }
             Spacer(minLength: 0)

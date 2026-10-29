@@ -6,6 +6,7 @@ final class DiagnosticLifecycle: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         guard !CommandLine.arguments.contains("--verify-interface"), !CommandLine.arguments.contains("--verify-installation"),
               !CommandLine.arguments.contains("--verify-live-interface"),
+              !CommandLine.arguments.contains("--verify-application-removal"),
               ProcessInfo.processInfo.environment["STORAGESCOPE_ISOLATED_VALIDATION"] != "1" else { return }
         let interrupted = LocalDiagnostics.shared.begin(version: AppIdentity.version)
         NSSetUncaughtExceptionHandler { exception in

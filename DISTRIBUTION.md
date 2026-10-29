@@ -1,4 +1,4 @@
-# Distribution de StorageScope 3.5
+# Distribution de StorageScope 3.6
 
 ## Construire et vérifier
 
@@ -17,11 +17,11 @@ zsh scripts/build-app.sh
 
 `-Development` construit un paquet de test sans manifeste signé. Depuis la version 3.2, `-KeySigned` construit une distribution Windows avec manifeste RSA-PSS signé et vérification d’intégrité, même en l’absence de certificat Authenticode. La clé publique doit être préalablement commitée et correspondre au secret de publication. Ne jamais annoncer ces paquets comme exempts de SmartScreen ou Gatekeeper.
 
-Pour la distribution de test Windows et Mac, le workflow **Publish validated desktop installers and authenticated updates** (`release-windows-key.yml`) exige un tag et l’identifiant d’une CI réussie pour le même commit. Cette CI construit un paquet macOS universel puis installe et teste ce paquet sur macOS 14 Apple Silicon, macOS 15 Intel et macOS 26 Apple Silicon. Le paquet validé est réutilisé à l’identique lors de la publication. La release brouillon n’est rendue publique qu’avec les deux installateurs, leurs empreintes et les métadonnées de mise à jour.
+Pour la distribution de test Windows et Mac, le workflow **Publish validated desktop installers and authenticated updates** (`release-windows-key.yml`) exige un tag et l’identifiant d’une CI réussie pour le même commit. Cette CI construit un paquet macOS arm64 puis installe et teste ce paquet sur macOS 14, 26 et 27 Apple Silicon. Le paquet validé est réutilisé à l’identique lors de la publication. La release brouillon n’est rendue publique qu’avec les deux installateurs, leurs empreintes et les métadonnées de mise à jour.
 
-Le mode Mac `development` de `scripts/build-macos-release.sh` est explicite : application signée ad hoc, paquet `StorageScope-macOS-universal-DEVELOPMENT.pkg` sans Developer ID ni notarisation. Le mode `production` reste distinct et échoue si les certificats ou la notarisation manquent. Aucun contournement de Gatekeeper ni suppression de quarantaine du téléchargement n’est requis.
+Le mode Mac `development` de `scripts/build-macos-release.sh` est explicite : application signée ad hoc, paquet `StorageScope-macOS-arm64-DEVELOPMENT.pkg` sans Developer ID ni notarisation. Le mode `production` reste distinct et échoue si les certificats ou la notarisation manquent. Aucun contournement de Gatekeeper ni suppression de quarantaine du téléchargement n’est requis.
 
-L’archive universelle et le flux Sparkle sont signés Ed25519 dans les deux modes. `SURequireSignedFeed` et `SUVerifyUpdateBeforeExtraction` sont activés. La clé publique est versionnée dans `Packaging/sparkle-public-key.txt`, le secret privé reste dans GitHub Actions. Une signature ad hoc peut nécessiter une réautorisation TCC après mise à jour ; elle n’identifie pas l’éditeur auprès d’Apple.
+L’archive Apple Silicon et le flux Sparkle sont signés Ed25519 dans les deux modes. `SURequireSignedFeed` et `SUVerifyUpdateBeforeExtraction` sont activés. La clé publique est versionnée dans `Packaging/sparkle-public-key.txt`, le secret privé reste dans GitHub Actions. Une signature ad hoc peut nécessiter une réautorisation TCC après mise à jour ; elle n’identifie pas l’éditeur auprès d’Apple.
 
 Les hôtes Intel virtualisés ont un pilote Metal sans architecture cible. `METAL_ERROR_MODE=5` est limité à ces jobs de test pour journaliser les avertissements et permettre la compilation des shaders de secours ; cette variable n’est jamais intégrée à l’application. Les captures et les démarrages du paquet restent obligatoires. Ces tests ne certifient pas 60 images/s sur un Mac physique ni tous les parcours VoiceOver.
 
@@ -59,8 +59,8 @@ La signature Authenticode ne garantit pas l’absence immédiate de SmartScreen 
 Fichiers publiés :
 
 - `StorageScope-Windows-Setup.exe` et `.sha256` : x64 + ARM64 dans un installateur autonome ;
-- `StorageScope-macOS-universal.pkg` et `.sha256` : installation macOS ;
-- `StorageScope-universal.zip` et `.sha256` : archive macOS utilisée par Sparkle ;
+- `StorageScope-macOS-arm64.pkg` et `.sha256` : installation macOS ;
+- `StorageScope-arm64.zip` et `.sha256` : archive macOS utilisée par Sparkle ;
 - `windows-update.json` et `.sig` : manifeste signé RSA-PSS/SHA-256, avec version, taille, empreinte et lien immuable ;
 - `appcast.xml` : flux Sparkle avec signature EdDSA de l’archive finale notariée.
 

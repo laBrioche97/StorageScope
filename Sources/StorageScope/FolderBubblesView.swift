@@ -82,8 +82,8 @@ private struct FolderBubbleDrawing: View {
             for node in nodes {
                 let rect = BubbleGeometry.rect(node, size: size)
                 let path = Path(ellipseIn: rect.insetBy(dx: 1, dy: 1))
-                let color: Color = node.isAggregate ? .gray : node.isDirectory ? .purple : .blue
-                context.fill(path, with: .color(color.opacity(0.85)))
+                let color: Color = node.isAggregate ? .gray : node.isDirectory ? AppTheme.accent : .indigo
+                context.fill(path, with: .linearGradient(Gradient(colors: [color, color.opacity(0.85)]), startPoint: CGPoint(x: rect.minX, y: rect.minY), endPoint: CGPoint(x: rect.maxX, y: rect.maxY)))
                 let matched = model.explorerHoveredID == node.path || model.selectedIDs.contains(node.path) || !model.searchText.isEmpty && node.name.localizedCaseInsensitiveContains(model.searchText)
                 context.stroke(path, with: .color(Color.primary.opacity(differentiateWithoutColor || matched ? 1 : 0.4)), lineWidth: matched ? 3 : 1)
                 if rect.width >= 70 {

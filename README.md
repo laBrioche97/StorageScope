@@ -2,7 +2,7 @@
 
 StorageScope est une application native pour **macOS et Windows**, locale et sans télémétrie, qui répond à une question simple : **qu’est-ce qui occupe réellement le stockage de cet ordinateur ?**
 
-La version 3.5 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
+La version 3.6 propose une application SwiftUI sur macOS et une application WPF autonome sur Windows. Elle analyse les fichiers accessibles, classe tout l’espace identifié, agrège les dossiers, permet une exploration exhaustive et ne modifie que les éléments explicitement confirmés.
 
 ## Installer StorageScope 3
 
@@ -15,9 +15,11 @@ Le premier passage depuis une version 3.0/3.1 nécessite cet installateur. La ve
 
 ## Sur Mac : réactivité et diagnostics
 
+La désinstallation distingue permissions macOS et protection système. Le parcours et les réglages nécessaires sont expliqués dans [les autorisations Mac](MACOS_PERMISSIONS.md).
+
 Les tailles sont mesurées en arrière-plan indépendamment de l’analyse globale, avec deux installations simultanées au maximum. Les liens ne sont pas suivis et les emplacements cloud sont exclus. Les tailles inconnues, partielles et réellement nulles restent distinctes ; les blocs alloués APFS ne constituent pas une promesse de gain après suppression.
 
-Les logos des cartes visibles utilisent un cache de session limité à 64 Mio supplémentaires, partagé lors des actualisations. Les tris sont préparés hors du thread d’interface. Le retour au premier plan conserve les dossiers en cache si les stockages n’ont pas changé.
+Les logos des lignes visibles utilisent un cache de session limité à 64 Mio supplémentaires, partagé lors des actualisations. Les tris sont préparés hors du thread d’interface. Le retour au premier plan conserve les dossiers en cache si les stockages n’ont pas changé.
 
 Le menu **Plus** permet d’ouvrir et d’exporter `~/Library/Application Support/StorageScope/Diagnostics/StorageScope-crashes.log` : rotation à 2 Mio, cinq sauvegardes, version et étapes, exceptions Objective-C lorsque disponibles. Les arrêts natifs sont signalés par un marqueur de session au lancement suivant ; leur code de sortie peut rester inconnu. Les rapports natifs complets de macOS restent consultables dans Console. Aucun rapport ni fichier personnel n’est envoyé automatiquement.
 
@@ -67,7 +69,7 @@ chmod +x scripts/build-app.sh
 
 Le résultat est créé dans `dist/StorageScope.app`. Vous pouvez ensuite utiliser `scripts/install-app.sh` ou glisser manuellement l’application dans `/Applications`.
 
-Par défaut, le script compile uniquement pour l’architecture du Mac courant. Pour reproduire le bundle universel des releases GitHub :
+Par défaut, le script compile uniquement pour l’architecture du Mac courant. Pour reproduire le bundle Apple Silicon des releases GitHub :
 
 ```sh
 STORAGESCOPE_ARCHITECTURES=arm64 ./scripts/build-app.sh

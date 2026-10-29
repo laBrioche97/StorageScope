@@ -18,7 +18,7 @@ struct NativeApplicationsTable: NSViewRepresentable {
         table.intercellSpacing = NSSize(width: 8, height: 3); table.backgroundColor = .clear
         table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         table.allowsEmptySelection = true; table.allowsMultipleSelection = false
-        for (id, title, width) in [("name", "Application", 290.0), ("size", "Espace sur disque", 170.0), ("source", "Source", 105.0), ("permission", "Désinstallation", 160.0)] {
+        for (id, title, width) in [("name", "Application", 250.0), ("size", "Espace sur disque", 145.0), ("permission", "Désinstallation", 145.0)] {
             let column = NSTableColumn(identifier: .init(id)); column.title = title; column.width = width
             column.minWidth = id == "name" ? 190 : width; column.isEditable = false
             table.addTableColumn(column)
@@ -94,7 +94,7 @@ struct NativeApplicationsTable: NSViewRepresentable {
             cell.textField?.stringValue = text; cell.toolTip = id == "name" ? item.application.bundleURL.path : item.application.eligibility.explanation ?? text
             cell.setAccessibilityLabel(text)
             if id == "name" {
-                (cell.viewWithTag(10) as? NSTextField)?.stringValue = item.application.version.map { "Version " + $0 } ?? "Application Mac"
+                (cell.viewWithTag(10) as? NSTextField)?.stringValue = item.application.version.map { "v" + $0 + " · " + item.source } ?? item.source
                 cell.imageView?.image = parent.icons[item.id] ?? NSImage(systemSymbolName: "app.fill", accessibilityDescription: "Application")
                 if parent.icons[item.id] == nil && iconTasks[item.id] == nil {
                     iconTasks[item.id] = Task { [weak self] in

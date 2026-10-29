@@ -18,7 +18,7 @@ struct ApplicationsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Un peu d’espace. Beaucoup de possibilités.").font(.system(size: geometry.size.width < 800 ? 23 : 29, weight: .bold, design: .rounded))
+                        Text("Applications et jeux").font(.system(size: geometry.size.width < 800 ? 23 : 29, weight: .bold, design: .rounded))
                         Text("\(rows.count) applications · \(model.managedGames.count) jeux reconnus").foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
@@ -53,7 +53,7 @@ struct ApplicationsView: View {
                             }
                         }
                     }
-                    if geometry.size.width >= 1040, let selected {
+                    if geometry.size.width >= 860, let selected {
                         Divider().padding(.vertical, 16)
                         ApplicationInspector(row: selected, icon: inventory.applicationIcons[selected.id]) { model.prepareUninstall(selected.application) }
                             .frame(width: 282).softTransition(selected.id)
@@ -66,7 +66,7 @@ struct ApplicationsView: View {
                     Label("Documents et sauvegardes conservés par défaut", systemImage: "checkmark.shield").font(.caption).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                     if let selected {
-                        if geometry.size.width < 1040 { Button("Détails", systemImage: "info.circle") { showDetails = true } }
+                        if geometry.size.width < 860 { Button("Détails", systemImage: "info.circle") { showDetails = true } }
                         Button("Vérifier la désinstallation…") { model.prepareUninstall(selected.application) }
                             .buttonStyle(.borderedProminent).disabled(model.operationsAreBusy)
                     }
@@ -120,7 +120,7 @@ private struct ApplicationInspector: View {
                     Label(row.permission, systemImage: row.application.isProtected ? "lock.shield" : "checkmark.circle").font(.callout).foregroundStyle(.secondary)
                 }
                 Divider()
-                Text("Vous choisissez ce qui part.").font(.headline)
+                Text("Avant de désinstaller").font(.headline)
                 Text("L’application et ses caches reconnus sont examinés avant toute action. Vos documents, projets et sauvegardes restent conservés par défaut.").font(.callout).foregroundStyle(.secondary)
                 if let explanation = row.application.eligibility.explanation { Text(explanation).font(.callout).foregroundStyle(.secondary) }
                 Text(row.application.bundleURL.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
