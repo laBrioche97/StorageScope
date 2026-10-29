@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import StorageCore
 import SwiftUI
 
@@ -39,6 +40,7 @@ struct NativeFileTable: NSViewRepresentable {
         table.hoverChanged = { [weak coordinator = context.coordinator] row in coordinator?.hover(row: row) }
         table.setAccessibilityLabel(mode == .explorer ? "Fichiers de l’explorateur" : "Fichiers de la vue d’ensemble")
         scroll.documentView = table; context.coordinator.table = table
+        context.coordinator.observeExplorer()
         return scroll
     }
     func updateNSView(_ scroll: NSScrollView, context: Context) {
@@ -46,6 +48,7 @@ struct NativeFileTable: NSViewRepresentable {
     }
     static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
         coordinator.generation += 1
+        coordinator.rowSubscription = nil
         coordinator.table?.delegate = nil; coordinator.table?.dataSource = nil
         coordinator.table?.menuProvider = nil; coordinator.table?.hoverChanged = nil
     }
@@ -59,16 +62,31 @@ struct NativeFileTable: NSViewRepresentable {
         var generation = 0
         private var applying = false
         private var enabled = true
+        var rowSubscription: AnyCancellable?
+        private var pending: (items: [FileSystemItem], enabled: Bool, hovered: String?)?
+        private var updateQueued = false
         init(model: AppModel, mode: Mode) { self.model = model; self.mode = mode }
+
+        func observeExplorer() {
+            guard mode == .explorer else { return }
+            rowSubscription = model.explorerRowsDidChange.sink { [weak self] items in
+                guard let self else { return }
+                schedule(items: items, enabled: model.explorerPendingDirectory == nil, hovered: model.explorerHoveredID)
+            }
+        }
 
         func schedule(items incoming: [FileSystemItem], enabled: Bool, hovered: String?) {
             ExplorerPerformanceValidation.note("native-update")
-            generation += 1
+            pending = (incoming, enabled, hovered)
+            guard !updateQueued else { return }
+            updateQueued = true
             let revision = generation
             // A representable's update can itself run inside AppKit layout. Defer
             // reloads and selection changes until that layout has finished.
             DispatchQueue.main.async { [weak self] in
-                guard let self, generation == revision, let table else { return }
+                guard let self, generation == revision, let table, let next = pending else { return }
+                updateQueued = false; pending = nil
+                let incoming = next.items, enabled = next.enabled, hovered = next.hovered
                 ExplorerPerformanceValidation.note("native-apply")
                 applying = true
                 self.enabled = enabled; table.isEnabled = enabled

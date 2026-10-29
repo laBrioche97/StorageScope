@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import QuickLookUI
 import StorageCore
@@ -155,6 +156,9 @@ final class AppModel: ObservableObject {
     @Published var explorerPendingDirectory: URL?
     @Published var explorerVisited = 0
     @Published var navigationRevision = UUID()
+    // Deliver an atomic row snapshot to the existing native table without
+    // waiting for unrelated SwiftUI toolbar/graph layout passes.
+    let explorerRowsDidChange = PassthroughSubject<[FileSystemItem], Never>()
     @Published var navigationBack = false
     @Published var navigationAnchor = UnitPoint.center
     var explorerScrollPosition: Double = .nan
@@ -183,6 +187,7 @@ final class AppModel: ObservableObject {
         bubbleMessage = view.frame?.totalBytes.map { ByteCountFormatter.storage.string(fromByteCount: $0) + (view.frame?.isPartial == true ? " · analyse partielle" : " · tailles mesurées") } ?? "Tailles inconnues · analysez le disque pour compléter les bulles."
         navigationBack = back
         if animate && previous != directory { navigationRevision = UUID() }
+        explorerRowsDidChange.send(explorerVisibleItems)
     }
 
     @Published var explorerDisplayMode: ExplorerDisplayMode = .bubbles {
