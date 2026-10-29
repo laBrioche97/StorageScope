@@ -72,6 +72,7 @@ assert linked['candidate'] == dict(expected, skipped=expected['skipped'] + 1), '
 # persistent-tree baseline will become the reference for subsequent 10% checks.
 replay_samples = []
 for iteration in range(3):
+    print("Startup replay", iteration + 1, flush=True)
     replay = json.loads(subprocess.check_output([str(executables['candidate']), str(fixture), '--replay'], text=True, timeout=90,
         env=dict(os.environ, STORAGESCOPE_BENCHMARK_VOLUME='isolated-scan-candidate')))
     replay_samples.append(replay.pop('seconds'))

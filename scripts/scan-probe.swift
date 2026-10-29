@@ -8,13 +8,21 @@ import StorageCore
         #if STORAGESCOPE_TREE_PROBE
         if CommandLine.arguments.contains("--replay") {
             let volumeID = ProcessInfo.processInfo.environment["STORAGESCOPE_BENCHMARK_VOLUME"] ?? "isolated-scan-comparison"
+            trace("replay-start")
             let expectedLogical = ProcessInfo.processInfo.environment["STORAGESCOPE_PROBE_EXPECTED_LOGICAL"].flatMap(Int64.init)
             for await event in PersistentScanSynchronizer.synchronize(root: root, volumeID: volumeID) {
                 switch event {
                 case let .updated(state, settled: true):
-                    if expectedLogical == nil || state.snapshot.categoryReport.identifiedLogicalBytes == expectedLogical { try emit(state.snapshot, duration: start.duration(to: .now)); return }
+                    trace("replay-settled")
+                    if expectedLogical == nil || state.snapshot.categoryReport.identifiedLogicalBytes == expectedLogical {
+                        try emit(state.snapshot, duration: start.duration(to: .now))
+                        // The application keeps watching; this one-shot benchmark
+                        // process deliberately ends after its committed measurement.
+                        exit(EXIT_SUCCESS)
+                    }
                 case let .status(.requiresScan, reason): throw NSError(domain: "ScanProbe.Journal", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
-                default: break
+                case let .status(status, _): trace("replay-status:" + status.rawValue)
+                case .updated(_, settled: false): trace("replay-restored")
                 }
             }
             throw CocoaError(.fileReadUnknown)
@@ -27,6 +35,7 @@ import StorageCore
         guard let snapshot else { throw CocoaError(.fileReadUnknown) }
         try emit(snapshot, duration: start.duration(to: .now))
     }
+    static func trace(_ value: String) { try? FileHandle.standardError.write(contentsOf: Data((value + "\n").utf8)) }
     static func emit(_ snapshot: ScanSnapshot, duration: Duration) throws {
         let result: [String: Any] = [
             "seconds": Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18,
@@ -38,6 +47,7 @@ import StorageCore
                 ($0.category.rawValue, ["files": Int64($0.fileCount), "logical": $0.logicalBytes, "allocated": $0.allocatedBytes])
             })
         ]
-        print(String(data: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]), encoding: .utf8)!)
+        var data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]); data.append(10)
+        try FileHandle.standardOutput.write(contentsOf: data)
     }
 }
