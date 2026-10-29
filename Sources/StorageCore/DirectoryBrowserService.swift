@@ -194,7 +194,7 @@ public struct DirectoryBrowserService: Sendable {
                                 isPackage: isPackage
                             ),
                             safety: FileTypeClassifier.safety(for: candidate, isDirectory: isDirectory),
-                            indexedIdentity: identity
+                            indexedIdentity: identity, indexedVolumeUUID: policy.volumeUUID(for: identity)
                         ))
                     } catch {
                         continuation.yield(.issue(Self.issue(for: candidate, error: error)))

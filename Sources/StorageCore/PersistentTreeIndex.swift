@@ -26,11 +26,12 @@ private struct TreeFileMetadata: Codable {
     let created: Date?
     let modified: Date?
     let identity: FileIdentity?
+    let volumeUUID: String?
     let safety: SafetyLevel
     let known: Bool?
     init(_ item: FileSystemItem) {
         package = item.isPackage; hidden = item.isHidden; created = item.creationDate
-        modified = item.modificationDate; identity = item.indexedIdentity; safety = item.safety; known = item.sizeIsKnown
+        modified = item.modificationDate; identity = item.indexedIdentity; volumeUUID = item.indexedVolumeUUID; safety = item.safety; known = item.sizeIsKnown
     }
 }
 
@@ -166,7 +167,7 @@ extension DirectoryIndexStore {
             guard let category = ItemCategory(rawValue: String(cString: sqlite3_column_text(stmt, 3))) else { throw DirectoryIndexError.unavailable }
             let text = String(cString: sqlite3_column_text(stmt, 5))
             let metadata = try decoder.decode(TreeFileMetadata.self, from: Data(text.utf8))
-            result.append(FileSystemItem(url: URL(fileURLWithPath: path), logicalSize: sqlite3_column_int64(stmt, 1), allocatedSize: sqlite3_column_int64(stmt, 2), isDirectory: sqlite3_column_int(stmt, 4) != 0, isPackage: metadata.package, isHidden: metadata.hidden, creationDate: metadata.created, modificationDate: metadata.modified, category: category, safety: metadata.safety, sizeIsKnown: metadata.known, indexedIdentity: metadata.identity))
+            result.append(FileSystemItem(url: URL(fileURLWithPath: path), logicalSize: sqlite3_column_int64(stmt, 1), allocatedSize: sqlite3_column_int64(stmt, 2), isDirectory: sqlite3_column_int(stmt, 4) != 0, isPackage: metadata.package, isHidden: metadata.hidden, creationDate: metadata.created, modificationDate: metadata.modified, category: category, safety: metadata.safety, sizeIsKnown: metadata.known, indexedIdentity: metadata.identity, indexedVolumeUUID: metadata.volumeUUID))
         }
         return result
     }

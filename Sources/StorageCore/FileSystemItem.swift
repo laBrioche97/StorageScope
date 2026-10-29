@@ -48,6 +48,7 @@ public struct FileSystemItem: Identifiable, Hashable, Codable, Sendable {
     public let safety: SafetyLevel
     /// Identity observed while indexing; never replaces the live deletion preflight.
     public let indexedIdentity: FileIdentity?
+    public let indexedVolumeUUID: String?
 
     public init(
         url: URL,
@@ -63,8 +64,10 @@ public struct FileSystemItem: Identifiable, Hashable, Codable, Sendable {
         category: ItemCategory = .other,
         safety: SafetyLevel = .review,
         sizeIsKnown: Bool? = nil,
-        indexedIdentity: FileIdentity? = nil
+        indexedIdentity: FileIdentity? = nil,
+        indexedVolumeUUID: String? = nil
     ) {
+        self.indexedVolumeUUID = indexedVolumeUUID
         self.indexedIdentity = indexedIdentity
         self.sizeIsKnown = sizeIsKnown
         self.id = url.path

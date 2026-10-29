@@ -237,7 +237,7 @@ public enum PersistentScanSynchronizer {
         if let identity = ScanPathPolicy.identity(directory), identity.fileType == UInt16(S_IFLNK) { return [] }
         if let identity = ScanPathPolicy.identity(directory), identity.fileType == UInt16(S_IFREG), !policy.excludes(directory) {
             let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey, .isHiddenKey, .fileSizeKey, .fileAllocatedSizeKey, .creationDateKey, .contentModificationDateKey]
-            try await store.appendTreeItems([try metadata(directory, keys: keys)], generation: staged)
+            try await store.appendTreeItems([try metadata(directory, keys: keys, policy: policy)], generation: staged)
             return []
         }
         do { try policy.validateDirectory(directory) } catch { return [ScanIssue(path: directory.path, message: "Le dossier n’est plus accessible ou a été remplacé.", isPermissionError: true)] }
@@ -245,12 +245,12 @@ public enum PersistentScanSynchronizer {
         let failures = JournalReadErrors()
         guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: Array(keys), options: replacement.recursive ? [] : [.skipsSubdirectoryDescendants], errorHandler: { url, error in failures.append(ScanIssue(path: url.path, message: error.localizedDescription, isPermissionError: true)); return true }) else { return [ScanIssue(path: directory.path, message: "Lecture refusée.", isPermissionError: true)] }
         var pending: [FileSystemItem] = []
-        pending.append(try metadata(directory, keys: keys))
+        pending.append(try metadata(directory, keys: keys, policy: policy))
         while let url = enumerator.nextObject() as? URL {
             try Task.checkCancellation()
             if policy.excludes(url) { enumerator.skipDescendants(); continue }
             do {
-                let item = try metadata(url, keys: keys)
+                let item = try metadata(url, keys: keys, policy: policy)
                 guard let identity = item.indexedIdentity, identity.fileType == UInt16(S_IFREG) || identity.fileType == UInt16(S_IFDIR) || identity.fileType == UInt16(S_IFLNK) else { continue }
                 if item.isSymbolicLink { continue }
                 if !policy.acceptsDevice(identity) { if item.isDirectory { enumerator.skipDescendants() }; continue }
@@ -266,10 +266,11 @@ public enum PersistentScanSynchronizer {
         return failures.values
     }
 
-    static func metadata(_ url: URL, keys: Set<URLResourceKey>) throws -> FileSystemItem {
+    static func metadata(_ url: URL, keys: Set<URLResourceKey>, policy: ScanPathPolicy) throws -> FileSystemItem {
         let value = try url.resourceValues(forKeys: keys)
         let dir = value.isDirectory == true
-        return FileSystemItem(url: url, logicalSize: dir ? 0 : Int64(value.fileSize ?? 0), allocatedSize: dir ? 0 : Int64(value.fileAllocatedSize ?? value.fileSize ?? 0), isDirectory: dir, isSymbolicLink: value.isSymbolicLink == true, isPackage: value.isPackage == true, isHidden: value.isHidden == true, creationDate: value.creationDate, modificationDate: value.contentModificationDate, category: FileTypeClassifier.category(for: url, isDirectory: dir, isPackage: value.isPackage == true), safety: FileTypeClassifier.safety(for: url, isDirectory: dir), indexedIdentity: ScanPathPolicy.identity(url))
+        let identity = ScanPathPolicy.identity(url)
+        return FileSystemItem(url: url, logicalSize: dir ? 0 : Int64(value.fileSize ?? 0), allocatedSize: dir ? 0 : Int64(value.fileAllocatedSize ?? value.fileSize ?? 0), isDirectory: dir, isSymbolicLink: value.isSymbolicLink == true, isPackage: value.isPackage == true, isHidden: value.isHidden == true, creationDate: value.creationDate, modificationDate: value.contentModificationDate, category: FileTypeClassifier.category(for: url, isDirectory: dir, isPackage: value.isPackage == true), safety: FileTypeClassifier.safety(for: url, isDirectory: dir), indexedIdentity: identity, indexedVolumeUUID: policy.volumeUUID(for: identity))
     }
 }
 

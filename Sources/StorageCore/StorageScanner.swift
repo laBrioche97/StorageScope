@@ -233,7 +233,7 @@ public final class StorageScanner: @unchecked Sendable {
                             modificationDate: values.contentModificationDate,
                             category: category,
                             safety: FileTypeClassifier.safety(for: candidate, isDirectory: isDirectory),
-                            indexedIdentity: identity
+                            indexedIdentity: identity, indexedVolumeUUID: policy.volumeUUID(for: identity)
                         )
 
                         if isDirectory || values.isRegularFile == true { pendingTreeItems.append(item) }

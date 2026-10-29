@@ -203,7 +203,14 @@ public actor TrashService {
             do {
                 try validateTrashable(item, authorization: authorization)
                 let liveIdentity = try identity(at: item.url)
-                if let indexed = item.indexedIdentity, indexed != liveIdentity { throw TrashError.identityChanged(item.url.path) }
+                if let indexed = item.indexedIdentity {
+                    let liveValues = try URL(fileURLWithPath: item.url.path).resourceValues(forKeys: [.volumeUUIDStringKey, .creationDateKey])
+                    if let uuid = item.indexedVolumeUUID {
+                        let liveUUID = liveValues.volumeUUIDString
+                        guard uuid == liveUUID, indexed.inode == liveIdentity.inode, indexed.fileType == liveIdentity.fileType else { throw TrashError.identityChanged(item.url.path) }
+                    } else if indexed != liveIdentity { throw TrashError.identityChanged(item.url.path) }
+                    if let created = item.creationDate, liveValues.creationDate != created { throw TrashError.identityChanged(item.url.path) }
+                }
                 return TrashPreflightResult(
                     item: item, identity: liveIdentity,
                     authorization: authorization, errorDescription: nil

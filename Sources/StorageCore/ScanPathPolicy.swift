@@ -8,6 +8,7 @@ public struct ScanPathPolicy: Sendable {
     private let rootPath: String
     private let devices: Set<UInt64>
     private let ownedPaths: [String]
+    private let volumeUUIDs: [UInt64: String]
     public init(root: URL) {
         self.root = root.standardized
         self.rootPath = root.standardized.path
@@ -16,6 +17,11 @@ public struct ScanPathPolicy: Sendable {
             devices.insert(data.deviceID)
         }
         self.devices = devices
+        var uuids: [UInt64: String] = [:]
+        for url in [root, URL(fileURLWithPath: "/System/Volumes/Data")] {
+            if let identity = Self.identity(url), devices.contains(identity.deviceID), let uuid = try? url.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString { uuids[identity.deviceID] = uuid }
+        }
+        self.volumeUUIDs = uuids
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         self.ownedPaths = [home + "/Library/Application Support/StorageScope", home + "/Library/Caches/StorageScope"]
     }
@@ -31,6 +37,7 @@ public struct ScanPathPolicy: Sendable {
         }
     }
 
+    public func volumeUUID(for identity: FileIdentity?) -> String? { identity.flatMap { volumeUUIDs[$0.deviceID] } }
     public func acceptsDevice(_ identity: FileIdentity) -> Bool { devices.contains(identity.deviceID) }
     /// Foundation's resolvingSymlinksInPath can shorten /private again. Use the
     /// kernel's physical path only for containment checks and root resolution.

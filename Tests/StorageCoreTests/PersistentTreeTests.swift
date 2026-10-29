@@ -79,6 +79,13 @@ func testPersistentTreeAndJournal() async throws {
     try expect(rootSummary?.logicalSize == report.identifiedLogicalBytes, "Les tailles des parents suivent les changements des descendants")
 
     guard let indexed = top?.first(where: { $0.name == "changed.dat" }) else { throw ValidationError.failed("Fichier absent") }
+    guard let identity = ScanPathPolicy.identity(changed), let uuid = try changed.resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString else { throw ValidationError.failed("Le volume APFS du test doit avoir un UUID persistant") }
+    let rebooted = FileSystemItem(url: changed, logicalSize: 9000, allocatedSize: 9000, isDirectory: false, indexedIdentity: FileIdentity(deviceID: identity.deviceID ^ 1, inode: identity.inode, fileType: identity.fileType), indexedVolumeUUID: uuid)
+    let rebootCheck = await TrashService().preflight([rebooted])
+    try expect(rebootCheck.first?.isReady == true, "Un nouvel identifiant de montage après redémarrage ne change pas l’identité du fichier sur le même UUID")
+    let wrongVolume = FileSystemItem(url: changed, logicalSize: 9000, allocatedSize: 9000, isDirectory: false, indexedIdentity: identity, indexedVolumeUUID: "another-volume")
+    let wrongVolumeCheck = await TrashService().preflight([wrongVolume])
+    try expect(wrongVolumeCheck.first?.isReady == false, "Un numéro de périphérique réutilisé ne prouve pas que le volume est le même")
     // Retain the original inode so the replacement cannot accidentally reuse it.
     try FileManager.default.moveItem(at: changed, to: root.appendingPathComponent("old-inode.dat"))
     try Data([9]).write(to: changed)

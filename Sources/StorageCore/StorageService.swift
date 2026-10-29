@@ -9,6 +9,7 @@ public struct StorageVolume: Identifiable, Hashable, Sendable {
     public let isLocal: Bool
     public let isInternal: Bool
     public let statisticsAvailable: Bool
+    public let legacyCacheID: String?
 
     public var used: Int64 { max(0, capacity - available) }
 
@@ -20,7 +21,8 @@ public struct StorageVolume: Identifiable, Hashable, Sendable {
         available: Int64,
         isLocal: Bool,
         isInternal: Bool,
-        statisticsAvailable: Bool = true
+        statisticsAvailable: Bool = true,
+        legacyCacheID: String? = nil
     ) {
         self.id = id
         self.url = url
@@ -30,6 +32,7 @@ public struct StorageVolume: Identifiable, Hashable, Sendable {
         self.isLocal = isLocal
         self.isInternal = isInternal
         self.statisticsAvailable = statisticsAvailable
+        self.legacyCacheID = legacyCacheID
     }
 }
 
@@ -37,13 +40,15 @@ public enum StorageService {
     public static func mountedVolumes() -> [StorageVolume] {
         let keys: [URLResourceKey] = [
             .volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
-            .volumeIsLocalKey, .volumeIsInternalKey, .volumeIsBrowsableKey, .volumeIdentifierKey
+            .volumeIsLocalKey, .volumeIsInternalKey, .volumeIsBrowsableKey, .volumeIdentifierKey, .volumeUUIDStringKey
         ]
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? [URL(fileURLWithPath: "/")]
         return urls.compactMap { url in
             guard let values = try? url.resourceValues(forKeys: Set(keys)), values.volumeIsBrowsable != false else { return nil }
             let path = url.standardizedFileURL.path
-            let stableID = values.volumeIdentifier.map { String(describing: $0) } ?? path
+            let legacyID = values.volumeIdentifier.map { String(describing: $0) } ?? path
+            let dataUUID = path == "/" ? (try? URL(fileURLWithPath: "/System/Volumes/Data").resourceValues(forKeys: [.volumeUUIDStringKey]).volumeUUIDString) : nil
+            let stableID = dataUUID.map { "startup:" + $0 } ?? values.volumeUUIDString.map { "volume:" + $0 } ?? legacyID
             return StorageVolume(
                 id: stableID,
                 url: url,
@@ -52,7 +57,8 @@ public enum StorageService {
                 available: values.volumeAvailableCapacityForImportantUsage ?? 0,
                 isLocal: values.volumeIsLocal ?? true,
                 isInternal: values.volumeIsInternal ?? (url.path == "/"),
-                statisticsAvailable: values.volumeTotalCapacity != nil && values.volumeAvailableCapacityForImportantUsage != nil
+                statisticsAvailable: values.volumeTotalCapacity != nil && values.volumeAvailableCapacityForImportantUsage != nil,
+                legacyCacheID: legacyID == stableID ? nil : legacyID
             )
         }.sorted { lhs, rhs in
             if lhs.url.path == "/" { return true }

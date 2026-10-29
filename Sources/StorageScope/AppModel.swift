@@ -1046,7 +1046,11 @@ final class AppModel: ObservableObject {
             if let store = try? DirectoryIndexStore(volumeID: volume.id, root: volume.url), let state = try? await store.treeState() { return state.snapshot }
             return nil
         }.value
-        let legacy = restored == nil ? (try? await cache.load(volumeID: volume.id)) : nil
+        var legacy = restored == nil ? (try? await cache.load(volumeID: volume.id)) : nil
+        if legacy == nil, restored == nil, let oldID = volume.legacyCacheID { legacy = try? await cache.load(volumeID: oldID) }
+        if let old = legacy, old.volumeID != volume.id {
+            legacy = ScanSnapshot(root: old.root, progress: old.progress, topFiles: old.topFiles, topDirectories: old.topDirectories, directoryContents: old.directoryContents, issues: old.issues, cleanupReport: old.cleanupReport, completedAt: old.completedAt, scanID: old.scanID, volumeID: volume.id, indexVersion: old.indexVersion, categoryReport: old.categoryReport)
+        }
         guard !Task.isCancelled, generation == scanGeneration, selectedVolumeID == volume.id, !isScanning else { return }
         if snapshot == nil { snapshot = restored ?? (legacy?.root.standardizedFileURL.path == volume.url.standardizedFileURL.path ? legacy : nil) }
         resumeIndexSynchronization()
