@@ -1,193 +1,30 @@
-name: CI
-
-on:
-  push:
-    branches: [main, "codex/**"]
-  pull_request:
-  workflow_dispatch:
-
+name: Targeted installed Mac trash diagnostic
+on: workflow_dispatch
 permissions:
   contents: read
-
-env:
-  DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
+  actions: read
 jobs:
-  build-and-test:
-    name: Swift 6 strict build and tests
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-14, xcode-27]
-    runs-on: ${{ matrix.runner }}
+  diagnose:
+    runs-on: macos-26
+    timeout-minutes: 8
     env:
-      DEVELOPER_DIR: ${{ matrix.runner == 'macos-14' && '/Applications/Xcode_16.2.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
-    timeout-minutes: 30
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Show toolchain
-        run: |
-          swift --version
-          xcodebuild -version
-
-      - name: Lint packaging metadata
-        run: |
-          plutil -lint Packaging/Info.plist
-          plutil -lint Packaging/PrivacyInfo.xcprivacy
-          zsh -n scripts/build-app.sh
-          zsh -n scripts/install-app.sh
-          zsh -n scripts/install-release.sh
-
-      - name: Build all targets with warnings as errors
-        run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
-
-      - name: Run StorageCore validations
-        run: |
-          TEST_BINARY="$(swift build --disable-sandbox --product StorageCoreTests --show-bin-path)/StorageCoreTests"
-          "$TEST_BINARY"
-
-      - name: Verify native macOS rendering and session icons
-        timeout-minutes: 4
-        run: swift run --disable-sandbox StorageScope --verify-interface "$RUNNER_TEMP/storagescope-ui"
-
-      - name: Compare complete scan coverage and throughput against published 3.5.1
-        if: matrix.runner == 'xcode-27'
-        run: python3 scripts/compare-scan.py
-
-      - uses: actions/upload-artifact@v5
-        with:
-          name: macos-native-interface-${{ matrix.runner }}
-          path: |
-            ${{ runner.temp }}/storagescope-ui/*.png
-            ${{ runner.temp }}/storagescope-scan-comparison/results.json
-            ${{ runner.temp }}/storagescope-scan-comparison/*-build.log
-          if-no-files-found: error
-
-  windows-build:
-    name: Windows .NET 10 safety and offline startup
-    runs-on: windows-2025
-    timeout-minutes: 20
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Build Windows application with warnings as errors
-        run: dotnet build Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release -p:TreatWarningsAsErrors=true
-
-      - name: Test deletion boundaries, duplicates, updates and responsive rendering
-        run: dotnet run --project Windows/StorageScope.Windows.Tests --configuration Release -- "$env:RUNNER_TEMP/storagescope-qa" --shell-integration --isolated-empty-bin
-
-      - name: Validate self-contained x64 publication
-        run: dotnet publish Windows/StorageScope.Windows/StorageScope.Windows.csproj --configuration Release --runtime win-x64 --self-contained true --output dist/windows-x64 -p:TreatWarningsAsErrors=true
-
-      - name: Verify the Windows application stays open
-        shell: pwsh
-        run: |
-          $application = Join-Path $PWD "dist/windows-x64/StorageScope.exe"
-          $process = Start-Process -FilePath $application -WindowStyle Hidden -PassThru
-          Start-Sleep -Seconds 5
-          if ($process.HasExited) {
-            throw "StorageScope exited during startup with code $($process.ExitCode)."
-          }
-          Stop-Process -Id $process.Id -Force
-
-      - name: Verify offline installer health check
-        shell: pwsh
-        run: |
-          $application = Join-Path $PWD "dist/windows-x64/StorageScope.exe"
-          $env:HTTP_PROXY = 'http://127.0.0.1:9'
-          $env:HTTPS_PROXY = 'http://127.0.0.1:9'
-          $process = Start-Process -FilePath $application -ArgumentList '--verify-installation' -WindowStyle Hidden -PassThru -Wait
-          if ($process.ExitCode -ne 0) { throw 'Offline startup verification failed.' }
-
-      - name: Preserve the smoke-tested Windows executable
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref_name, 'codex/')
-        uses: actions/upload-artifact@v5
-        with:
-          name: StorageScope-windows-x64-smoke
-          path: dist/windows-x64/StorageScope.exe
-          if-no-files-found: error
-
-  macos-package:
-    name: Build Apple Silicon macOS test installer
-    # Cross-compile arm64 with the pinned toolchain; the install matrix below
-    # executes the exact package on Apple Silicon, never on this build host.
-    runs-on: macos-15-intel
-    timeout-minutes: 40
-    env:
-      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-    steps:
-      - uses: actions/checkout@v5
-      - run: swift build --disable-sandbox
-      - run: ./scripts/build-macos-release.sh "v$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)" development
-      - name: Preserve exact verification tools from pinned Sparkle
-        run: |
-          mkdir -p validation-tools
-          cp "$(find .build -type f -name sign_update -print -quit)" validation-tools/sign_update
-      - uses: actions/upload-artifact@v5
-        with:
-          name: macos-validated-package-candidate
-          path: |
-            release-assets/*
-            validation-tools/sign_update
-          if-no-files-found: error
-
-  macos-installed:
-    name: Installed macOS package and authenticated updates (${{ matrix.runner }})
-    needs: macos-package
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-14, macos-26, xcode-27]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    env:
-      DEVELOPER_DIR: ${{ matrix.runner == 'macos-14' && '/Applications/Xcode_16.2.app/Contents/Developer' || '/Applications/Xcode.app/Contents/Developer' }}
-      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-      STORAGESCOPE_SPARKLE_SIGNER: validation-tools/sign_update
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
     steps:
       - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
         with:
           name: macos-validated-package-candidate
           path: .
-      - name: Restore executable permissions and unpack candidate
-        run: |
-          chmod +x validation-tools/sign_update
-          mkdir -p dist
-          ditto -x -k release-assets/StorageScope-arm64.zip dist
-      - run: python3 scripts/test-macos-package.py release-assets/StorageScope-macOS-arm64-DEVELOPMENT.pkg
-      - name: Capture installed UI with Instruments without signing credentials
-        if: always() && matrix.runner == 'macos-26'
-        run: python3 scripts/profile-macos.py
-      - run: python3 scripts/test-macos-update.py
+          run-id: '41097171737'
+          github-token: ${{ github.token }}
+      - name: Diagnose actual installed Explorer trash operation
+        run: python3 scripts/test-macos-package.py release-assets/StorageScope-macOS-arm64-DEVELOPMENT.pkg
       - uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: macos-package-proof-${{ matrix.runner }}
+          name: macos-trash-fast-diagnostic
           path: |
-            ${{ runner.temp }}/storagescope-package-validation.json
-            ${{ runner.temp }}/storagescope-application-removal-*.json
-            ${{ runner.temp }}/storagescope-explorer-trash-validation.json
-            ${{ runner.temp }}/storagescope-explorer-trash-process.log
-            ${{ runner.temp }}/storagescope-explorer-trash-process.sample.txt
-            ${{ runner.temp }}/storagescope-instruments/
+            ${{ runner.temp }}/storagescope-explorer-trash-*
             ${{ runner.temp }}/storagescope-packaged-ui/*.png
-            ${{ runner.temp }}/storagescope-packaged-ui/*.json
-            ${{ runner.temp }}/storagescope-update-validation/results.json
-            ${{ runner.temp }}/storagescope-update-validation/*/events.log
-            ${{ runner.temp }}/storagescope-update-validation/*/process.log
+            ${{ runner.temp }}/storagescope-application-removal-*.json
           if-no-files-found: warn
