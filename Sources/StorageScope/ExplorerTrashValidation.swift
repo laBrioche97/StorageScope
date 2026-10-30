@@ -9,6 +9,7 @@ import SwiftUI
         guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true",
               let output = ProcessInfo.processInfo.environment["RUNNER_TEMP"] else { throw CocoaError(.userCancelled) }
         let manager = FileManager.default
+        trace("create-fixture")
         let fixture = manager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/StorageScope-QA-" + UUID().uuidString, isDirectory: true)
         let target = fixture.appendingPathComponent("TabNine", isDirectory: true)
         let locked = target.appendingPathComponent("locked", isDirectory: true)
@@ -22,10 +23,13 @@ import SwiftUI
         let item = FileSystemItem(url: target, logicalSize: 4096, allocatedSize: 4096,
             isDirectory: true, category: .applicationData, safety: .system)
         let service = TrashService()
+        trace("ordinary-preflight")
         let ordinary = await service.preflight([item])
         guard ordinary.first?.isReady == false else { throw failure("Application data became automatically removable") }
+        trace("manual-preflight")
         let prepared = await service.preflight([item], authorization: .manualApplicationData)
         guard let expected = prepared.first?.identity, prepared.first?.isReady == true else { throw failure("Manual TabNine review was blocked") }
+        trace("request-real-confirmation")
         model.requestTrash(items: [item])
         let deadline = Date().addingTimeInterval(10)
         while !model.showingTrashConfirmation && Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
@@ -34,15 +38,18 @@ import SwiftUI
             throw failure("The real Explorer action did not explain application data before deletion: \(model.alertMessage ?? "")")
         }
         // A child that cannot be read must not make the whole trash entry disappear.
+        trace("confirmation-ready")
         try manager.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
         model.confirmTrash()
         while model.trashIsWorking && Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
         guard !model.trashIsWorking, !manager.fileExists(atPath: target.path) else {
             throw failure("Confirmed system recycle failed: \(model.alertMessage ?? "")")
         }
+        trace("source-recycled-inventory")
         let inventory = await service.inventoryTrash()
         guard let entry = inventory.items.first(where: { $0.identity == expected }) else { throw failure("Unreadable trash entry disappeared") }
         trashed = entry.url
+        trace("partial-entry-retained")
         guard !entry.sizeIsComplete, inventory.isPartial else { throw failure("Unreadable subtree was reported as completely measured") }
         model.trashInventory = inventory
         try await capture(model, name: "macos-trash-partial", output: output, dark: false)
@@ -52,10 +59,12 @@ import SwiftUI
         try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: entry.url.appendingPathComponent("locked").path)
         // Only this identity-checked fixture is ever authorized for permanent removal.
         let reviewed = TrashInventory(items: [entry], issues: inventory.issues)
+        trace("empty-only-fixture")
         let result = await service.emptyTrash(reviewed, authorization: .confirm(reviewed))
         guard result.itemResults.count == 1, result.itemResults[0].status == .deleted,
               result.inventoryWasPartial, !manager.fileExists(atPath: entry.url.path) else { throw failure("Fixture-only empty trash failed") }
 
+        trace("replacement-preflight")
         try manager.createDirectory(at: target, withIntermediateDirectories: true)
         try Data("old".utf8).write(to: target.appendingPathComponent("old.bin"))
         let stale = await service.preflight([item], authorization: .manualApplicationData)
@@ -73,6 +82,9 @@ import SwiftUI
         try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys])
             .write(to: URL(fileURLWithPath: output).appendingPathComponent("storagescope-explorer-trash-validation.json"))
         print("PASS real manual application-data confirmation, recycle, partial inventory, fixture-only empty and replacement protection")
+    }
+    private static func trace(_ phase: String) {
+        FileHandle.standardError.write(Data(("ExplorerTrash phase: " + phase + "\n").utf8))
     }
     private static func failure(_ message: String) -> NSError {
         NSError(domain: "StorageScope.ExplorerTrashValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
