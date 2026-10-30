@@ -93,8 +93,14 @@ jobs:
           from pathlib import Path
           run=json.loads((Path(os.environ['RUNNER_TEMP'])/'validation-run.json').read_text())
           assert run['head_sha'] == subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          assert run['conclusion'] == 'success' and run['path'] == '.github/workflows/ci.yml'
+          assert run['conclusion'] in (None, 'success') and run['path'] == '.github/workflows/ci.yml'
           PY
+      - uses: actions/download-artifact@v5
+        with:
+          name: desktop-validation-evidence
+          path: validation-evidence
+          run-id: ${{ inputs.validation_run_id }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v5
         with:
           name: macos-validated-package-candidate
@@ -103,6 +109,8 @@ jobs:
           github-token: ${{ github.token }}
       - name: Verify the exact tested Mac release assets
         run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)
+          python3 scripts/ci-validation-evidence.py verify --root validation-evidence --package release-assets/StorageScope-macOS-arm64-DEVELOPMENT.pkg --head "$(git rev-parse HEAD)" --run-id "$VALIDATION_RUN" --version "$VERSION"
           chmod +x validation-tools/sign_update
           (cd release-assets && shasum -a 256 -c ./*.sha256)
           printf '%s\n' "$SPARKLE_PRIVATE_KEY" | validation-tools/sign_update --ed-key-file - --verify release-assets/appcast.xml

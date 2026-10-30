@@ -191,3 +191,27 @@ jobs:
             ${{ runner.temp }}/storagescope-update-validation/*/events.log
             ${{ runner.temp }}/storagescope-update-validation/*/process.log
           if-no-files-found: warn
+
+  validation-evidence:
+    name: Consolidate successful desktop validation
+    needs: [build-and-test, windows-build, macos-package, macos-installed]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: macos-*
+          path: validation-evidence
+      - name: Verify every required result against the installed candidate
+        env:
+          CI_VALIDATION_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 scripts/test-ci-validation-evidence.py
+          VERSION=$(python3 -c 'import plistlib; print(plistlib.load(open("Packaging/Info.plist", "rb"))["CFBundleShortVersionString"])')
+          python3 scripts/ci-validation-evidence.py create --root validation-evidence --head "$GITHUB_SHA" --run-id "$GITHUB_RUN_ID" --version "$VERSION"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: desktop-validation-evidence
+          path: validation-evidence/ci-validation.json
+          if-no-files-found: error
