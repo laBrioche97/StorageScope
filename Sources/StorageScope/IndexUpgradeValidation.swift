@@ -59,7 +59,9 @@ import StorageCore
         // A folder created after the baseline has no measured summary. Opening it
         // must not turn a preserved disk index into a new full scan.
         let fresh = fixture.root.appendingPathComponent("just-created", isDirectory: true)
-        try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: true)
+        let unmeasured = fresh.appendingPathComponent("unmeasured-child", isDirectory: true)
+        try FileManager.default.createDirectory(at: unmeasured, withIntermediateDirectories: true)
+        try Data([2]).write(to: unmeasured.appendingPathComponent("new.bin"))
         model.loadExplorerDirectory(fresh)
         try await Task.sleep(for: .milliseconds(500))
         guard !model.isScanning, model.snapshot?.scanID == fixture.scanID else { throw CocoaError(.fileReadCorruptFile) }

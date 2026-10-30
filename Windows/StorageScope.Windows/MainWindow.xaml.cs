@@ -667,7 +667,7 @@ public partial class MainWindow : Window
         UpdateAvailabilityText.Text = text;
         System.Windows.Automation.AutomationProperties.SetName(UpdateStatusButton, text);
         UpdateStatusButton.IsEnabled = !_checkingUpdate && !_installingUpdate && !(_availableUpdate is not null && (_busy || _scanning));
-        InstallUpdateButton.IsEnabled = !_busy && !_scanning && !_installingUpdate;
+        InstallUpdateButton.IsEnabled = !_busy && !_scanning && !_installingUpdate && !_checkingUpdate;
     }
 
     private async void UpdateStatus_Click(object sender, RoutedEventArgs e)
