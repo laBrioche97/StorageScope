@@ -28,7 +28,7 @@ import StorageCore
         for await event in StorageScanner().scan(root: root, volumeID: volume.id) {
             if case .completed(let result) = event {
                 complete = result.progress.filesScanned == 2000 && result.indexVersion == DirectoryIndexStore.schemaVersion
-                scanDescription = "fichiers=\(result.progress.filesScanned), versionIndex=\(result.indexVersion.map(String.init) ?? "aucune"), erreurs=\(result.issues.prefix(3).map(\.message).joined(separator: "; "))"
+                scanDescription = "fichiers=\(result.progress.filesScanned), versionIndex=\(result.indexVersion), erreurs=\(result.issues.prefix(3).map(\.message).joined(separator: "; "))"
             }
         }
         guard complete else { throw validationFailure("Analyse du jeu de référence : " + scanDescription) }
