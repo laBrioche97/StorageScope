@@ -883,8 +883,8 @@ final class AppModel: ObservableObject {
         refreshTrashSummary(force: true)
     }
 
-    func emptyTrashPermanently() {
-        guard !operationsAreBusy, let inventory = trashInventory, !inventory.items.isEmpty, !inventory.wasCancelled else { return }
+    func emptyTrashPermanently(_ inventory: TrashInventory) {
+        guard !operationsAreBusy, !inventory.items.isEmpty, !inventory.wasCancelled else { return }
         trashAuthorization = TrashEmptyAuthorization.confirm(inventory)
         guard let authorization = trashAuthorization else { return }
         trashAuthorization = nil

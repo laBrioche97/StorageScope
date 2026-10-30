@@ -6,6 +6,7 @@ struct EmptyTrashView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var confirming = false
+    @State private var reviewedInventory: TrashInventory?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,10 +31,13 @@ struct EmptyTrashView: View {
         }
         .interactiveDismissDisabled(model.emptyTrashStep == .running)
         .alert("Vider définitivement la Corbeille ?", isPresented: $confirming) {
-            Button("Annuler", role: .cancel) {}
-            Button("Vider définitivement", role: .destructive) { model.emptyTrashPermanently() }
+            Button("Annuler", role: .cancel) { reviewedInventory = nil }
+            Button("Vider définitivement", role: .destructive) {
+                if let reviewedInventory { model.emptyTrashPermanently(reviewedInventory) }
+                reviewedInventory = nil
+            }
         } message: {
-            Text("\(model.trashInventory?.items.count ?? 0) élément(s) inventorié(s) · \(inventorySize). Corbeilles de votre compte sur les volumes locaux montés. \(model.trashInventory?.isPartial == true ? "Seuls les éléments accessibles et inventoriés seront traités. " : "")Cette suppression est définitive.")
+            Text("\(reviewedInventory?.items.count ?? 0) élément(s) inventorié(s) · \(sizeDescription(reviewedInventory)). Corbeilles de votre compte sur les volumes locaux montés. \(reviewedInventory?.isPartial == true ? "Seuls les éléments accessibles et inventoriés seront traités. " : "")Cette suppression est définitive.")
         }
     }
 
@@ -88,7 +92,7 @@ struct EmptyTrashView: View {
                             NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true))
                         }
                         Spacer()
-                        Button(inventory.isPartial ? "Vider les éléments inventoriés…" : "Vider la corbeille…", role: .destructive) { confirming = true }
+                        Button(inventory.isPartial ? "Vider les éléments inventoriés…" : "Vider la corbeille…", role: .destructive) { reviewedInventory = inventory; confirming = true }
                             .disabled(inventory.items.isEmpty || inventory.wasCancelled || model.operationsAreBusy || model.trashSummaryIsLoading)
                     }
                 }
@@ -145,7 +149,10 @@ struct EmptyTrashView: View {
     }
 
     private var inventorySize: String {
-        guard let inventory = model.trashInventory, inventory.hasMeasuredSize else { return "Taille indisponible" }
+        sizeDescription(model.trashInventory)
+    }
+    private func sizeDescription(_ inventory: TrashInventory?) -> String {
+        guard let inventory, inventory.hasMeasuredSize else { return "Taille indisponible" }
         return (inventory.isPartial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: inventory.totalAllocatedBytesUpperBound)
     }
 }
