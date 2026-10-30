@@ -22,6 +22,7 @@ public struct FileIdentity: Hashable, Codable, Sendable {
 
 public enum TrashError: LocalizedError, Sendable {
     case protectedItem(String)
+    case accessDenied(String)
     case missingItem(String)
     case identityChanged(String)
     case operationFailed(path: String, message: String)
@@ -29,6 +30,7 @@ public enum TrashError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .protectedItem(let path): "Élément système protégé : \(path)"
+        case .accessDenied(let path): "macOS refuse l’accès à \(path). Vérifiez les droits de ce dossier dans le Finder et les autorisations de StorageScope dans Confidentialité et sécurité."
         case .missingItem(let path): "L’élément n’existe plus : \(path)"
         case .identityChanged(let path): "L’élément a changé depuis sa sélection : \(path)"
         case .operationFailed(let path, let message): "Impossible de déplacer \(path) : \(message)"
@@ -38,6 +40,7 @@ public enum TrashError: LocalizedError, Sendable {
 
 public enum TrashAuthorization: Hashable, Codable, Sendable {
     case userSelection
+    case manualApplicationData
     case verifiedApplicationAssociation(bundleIdentifier: String)
 }
 
@@ -94,14 +97,29 @@ public struct TrashOperationResult: Identifiable, Sendable {
 }
 
 public struct TrashInventoryIssue: Identifiable, Hashable, Sendable {
+    public enum Kind: String, Hashable, Sendable { case accessDenied, unsafeRoot, unavailable }
     public let id: UUID
     public let path: String
     public let message: String
+    public let kind: Kind
 
-    public init(id: UUID = UUID(), path: String, message: String) {
+    public init(id: UUID = UUID(), path: String, message: String, kind: Kind = .unavailable) {
         self.id = id
         self.path = path
         self.message = message
+        self.kind = kind
+    }
+
+    public static func from(_ error: Error, path: String) -> Self {
+        let cocoa = error as NSError
+        let denied: Bool
+        if let trash = error as? TrashError, case .accessDenied = trash { denied = true }
+        else { denied = (cocoa.domain == NSPOSIXErrorDomain && [Int(EACCES), Int(EPERM)].contains(cocoa.code))
+            || (cocoa.domain == NSCocoaErrorDomain && [CocoaError.fileReadNoPermission.rawValue, CocoaError.fileWriteNoPermission.rawValue].contains(cocoa.code)) }
+        if let trash = error as? TrashError, case .protectedItem = trash {
+            return Self(path: path, message: "La racine de corbeille ne correspond pas à un dossier sûr appartenant à votre compte.", kind: .unsafeRoot)
+        }
+        return Self(path: path, message: error.localizedDescription, kind: denied ? .accessDenied : .unavailable)
     }
 }
 
@@ -112,13 +130,15 @@ public struct TrashInventoryItem: Identifiable, Hashable, Sendable {
     public let identity: FileIdentity
     public let allocatedBytesUpperBound: Int64
     public let isDirectory: Bool
+    public let sizeIsComplete: Bool
 
-    public init(url: URL, trashRoot: URL, identity: FileIdentity, allocatedBytesUpperBound: Int64, isDirectory: Bool) {
+    public init(url: URL, trashRoot: URL, identity: FileIdentity, allocatedBytesUpperBound: Int64, isDirectory: Bool, sizeIsComplete: Bool = true) {
         self.url = url
         self.trashRoot = trashRoot
         self.identity = identity
         self.allocatedBytesUpperBound = allocatedBytesUpperBound
         self.isDirectory = isDirectory
+        self.sizeIsComplete = sizeIsComplete
     }
 }
 
@@ -130,6 +150,9 @@ public struct TrashInventory: Sendable {
     public let wasCancelled: Bool
 
     public var totalAllocatedBytesUpperBound: Int64 { items.reduce(0) { $0 + $1.allocatedBytesUpperBound } }
+    public var requiresAccess: Bool { issues.contains { $0.kind == .accessDenied } }
+    public var isPartial: Bool { !issues.isEmpty || wasCancelled || items.contains { !$0.sizeIsComplete } }
+    public var hasMeasuredSize: Bool { !isPartial || items.contains { $0.sizeIsComplete || $0.allocatedBytesUpperBound > 0 } }
 
     public init(items: [TrashInventoryItem], issues: [TrashInventoryIssue], generatedAt: Date = Date(), wasCancelled: Bool = false) {
         self.items = items
@@ -173,6 +196,7 @@ public struct EmptyTrashResult: Sendable {
     public let confirmationAccepted: Bool
     public let availableBytesBefore: Int64?
     public let availableBytesAfter: Int64?
+    public let inventoryWasPartial: Bool
 
     public var deletedBytesUpperBound: Int64 {
         itemResults.reduce(0) { $0 + ($1.status == .deleted ? $1.allocatedBytesUpperBound : 0) }
@@ -183,11 +207,12 @@ public struct EmptyTrashResult: Sendable {
     }
     public var wasCancelled: Bool { itemResults.contains { $0.status == .cancelled } }
 
-    public init(itemResults: [EmptyTrashItemResult], confirmationAccepted: Bool, availableBytesBefore: Int64?, availableBytesAfter: Int64?) {
+    public init(itemResults: [EmptyTrashItemResult], confirmationAccepted: Bool, availableBytesBefore: Int64?, availableBytesAfter: Int64?, inventoryWasPartial: Bool = false) {
         self.itemResults = itemResults
         self.confirmationAccepted = confirmationAccepted
         self.availableBytesBefore = availableBytesBefore
         self.availableBytesAfter = availableBytesAfter
+        self.inventoryWasPartial = inventoryWasPartial
     }
 }
 
@@ -329,12 +354,13 @@ public actor TrashService {
         var items: [TrashInventoryItem] = []
         var issues: [TrashInventoryIssue] = []
         var wasCancelled = false
+        var seenRoots: Set<FileIdentity> = []
 
         for root in approvedTrashRoots(volumes: volumes) {
             if Task.isCancelled { wasCancelled = true; break }
             do {
-                _ = try identity(at: root)
-                guard trashRootIsSafe(root) else { throw TrashError.protectedItem(root.path) }
+                try validateTrashRoot(root)
+                guard seenRoots.insert(try identity(at: root)).inserted else { continue }
                 let children = try FileManager.default.contentsOfDirectory(
                     at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey], options: []
                 )
@@ -342,26 +368,30 @@ public actor TrashService {
                     if Task.isCancelled { wasCancelled = true; break }
                     do {
                         let childIdentity = try identity(at: child)
-                        let values = try child.resourceValues(forKeys: [.isDirectoryKey])
+                        let measurement = measureTrashItem(child)
+                        issues += measurement.issues
                         items.append(TrashInventoryItem(
                             url: child, trashRoot: root, identity: childIdentity,
-                            allocatedBytesUpperBound: try allocatedBytesUpperBound(of: child),
-                            isDirectory: values.isDirectory == true
+                            allocatedBytesUpperBound: measurement.bytes,
+                            isDirectory: childIdentity.fileType == UInt16(S_IFDIR),
+                            sizeIsComplete: measurement.issues.isEmpty && !Task.isCancelled
                         ))
                     } catch {
-                        issues.append(TrashInventoryIssue(path: child.path, message: error.localizedDescription))
+                        issues.append(.from(error, path: child.path))
                     }
                 }
             } catch TrashError.missingItem(_) {
                 continue
             } catch {
-                issues.append(TrashInventoryIssue(path: root.path, message: error.localizedDescription))
+                issues.append(.from(error, path: root.path))
             }
         }
 
         return TrashInventory(
-            items: items.sorted { $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending },
-            issues: issues, wasCancelled: wasCancelled
+            items: items.sorted { $0.allocatedBytesUpperBound == $1.allocatedBytesUpperBound
+                ? $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending
+                : $0.allocatedBytesUpperBound > $1.allocatedBytesUpperBound },
+            issues: issues, wasCancelled: wasCancelled || Task.isCancelled
         )
     }
 
@@ -423,7 +453,7 @@ public actor TrashService {
             itemResults: results, confirmationAccepted: true, availableBytesBefore: before,
             availableBytesAfter: importantAvailableBytes(
                 for: StorageService.mountedVolumes(), restrictedTo: measuredVolumeIDs
-            )
+            ), inventoryWasPartial: inventory.isPartial
         )
     }
 
@@ -442,6 +472,10 @@ public actor TrashService {
                   !DeletionSafetyPolicy.isProtectedForUserSelection(item.url, isDirectory: item.isDirectory) else {
                 throw TrashError.protectedItem(path)
             }
+        case .manualApplicationData:
+            guard !item.isSymbolicLink, DeletionSafetyPolicy.requiresApplicationDataReview(item.url) else {
+                throw TrashError.protectedItem(path)
+            }
         case .verifiedApplicationAssociation(let bundleIdentifier):
             guard DeletionSafetyPolicy.allowsVerifiedApplicationAssociation(
                 item.url, bundleIdentifier: bundleIdentifier, isDirectory: item.isDirectory
@@ -449,7 +483,9 @@ public actor TrashService {
         }
         guard !isProtectedSystemPath(path) else { throw TrashError.protectedItem(path) }
         guard FileManager.default.fileExists(atPath: path) || isSymbolicLink(at: item.url) else { throw TrashError.missingItem(path) }
-        guard try ownerUID(at: item.url) != 0 else { throw TrashError.protectedItem(path) }
+        guard try ownerUID(at: item.url) != 0 else {
+            throw TrashError.operationFailed(path: path, message: "Cet élément appartient à un administrateur. Examinez-le dans le Finder, qui peut demander l’authentification du système.")
+        }
     }
 
     private func isProtectedSystemPath(_ path: String) -> Bool {
@@ -470,6 +506,7 @@ public actor TrashService {
         }
         guard result == 0 else {
             if errno == ENOENT { throw TrashError.missingItem(url.path) }
+            if errno == EACCES || errno == EPERM { throw TrashError.accessDenied(url.path) }
             throw TrashError.operationFailed(path: url.path, message: String(cString: strerror(errno)))
         }
         return FileIdentity(deviceID: FileIdentity.deviceID(fromRawValue: information.st_dev), inode: UInt64(information.st_ino),
@@ -501,32 +538,49 @@ public actor TrashService {
     }
 
     private func trashRootIsSafe(_ root: URL) -> Bool {
-        guard let values = try? root.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey]),
-              values.isDirectory == true, values.isSymbolicLink != true,
-              (try? ownerUID(at: root)) == getuid() else { return false }
-        return root.deletingLastPathComponent().lastPathComponent != ".Trashes" || !isSymbolicLink(at: root.deletingLastPathComponent())
+        (try? validateTrashRoot(root)) != nil
     }
 
-    private func allocatedBytesUpperBound(of root: URL) throws -> Int64 {
+    private func validateTrashRoot(_ root: URL) throws {
+        guard try identity(at: root).fileType == UInt16(S_IFDIR), try ownerUID(at: root) == getuid(),
+              root.deletingLastPathComponent().lastPathComponent != ".Trashes" || !isSymbolicLink(at: root.deletingLastPathComponent()) else {
+            throw TrashError.protectedItem(root.path)
+        }
+    }
+
+    private func measureTrashItem(_ root: URL) -> (bytes: Int64, issues: [TrashInventoryIssue]) {
+        do { return try measureAccessibleTrashItem(root) }
+        catch { return (0, [.from(error, path: root.path)]) }
+    }
+
+    private func measureAccessibleTrashItem(_ root: URL) throws -> (bytes: Int64, issues: [TrashInventoryIssue]) {
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .fileAllocatedSizeKey]
         let rootValues = try root.resourceValues(forKeys: keys)
-        if rootValues.isSymbolicLink == true { return Int64(rootValues.fileAllocatedSize ?? 0) }
-        if rootValues.isDirectory != true { return Int64(rootValues.fileAllocatedSize ?? 0) }
+        if rootValues.isSymbolicLink == true || rootValues.isDirectory != true { return (try measuredAllocation(rootValues, at: root), []) }
 
-        var total = Int64(rootValues.fileAllocatedSize ?? 0)
-        var enumerationError: Error?
+        var total = try measuredAllocation(rootValues, at: root)
+        var issues: [TrashInventoryIssue] = []
         guard let enumerator = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: Array(keys), options: [], errorHandler: { _, error in enumerationError = error; return false }
-        ) else { return total }
+            at: root, includingPropertiesForKeys: Array(keys), options: [], errorHandler: { url, error in issues.append(.from(error, path: url.path)); return true }
+        ) else { return (total, [TrashInventoryIssue(path: root.path, message: "Le contenu de ce dossier n’a pas pu être mesuré.")]) }
         for case let url as URL in enumerator {
-            if Task.isCancelled { throw CancellationError() }
-            let values = try url.resourceValues(forKeys: keys)
+            if Task.isCancelled { issues.append(TrashInventoryIssue(path: root.path, message: "Calcul annulé.")); break }
             // Foundation's enumerator does not follow links. Never call the
             // directory-only skip operation on a link returned between siblings.
-            total += Int64(values.fileAllocatedSize ?? 0)
+            do { let values = try url.resourceValues(forKeys: keys); total += try measuredAllocation(values, at: url) }
+            catch { issues.append(.from(error, path: url.path)) }
         }
-        if let enumerationError { throw enumerationError }
-        return total
+        return (total, issues)
+    }
+
+    private func measuredAllocation(_ values: URLResourceValues, at url: URL) throws -> Int64 {
+        if values.isSymbolicLink != true, let bytes = values.fileAllocatedSize { return Int64(bytes) }
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else {
+            if errno == EACCES || errno == EPERM { throw TrashError.accessDenied(url.path) }
+            throw TrashError.operationFailed(path: url.path, message: String(cString: strerror(errno)))
+        }
+        return Int64(info.st_blocks) * 512
     }
 
     private func importantAvailableBytes(for volumes: [StorageVolume], restrictedTo ids: Set<String>) -> Int64? {

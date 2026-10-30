@@ -84,6 +84,7 @@ public enum DeletionSafetyPolicy {
         let rawPath = url.path
         let path = rawPath.contains("/../") || rawPath.hasSuffix("/..") ? url.standardizedFileURL.path : rawPath
         let homePath = homeURL.path
+        if requiresApplicationDataReview(url, homeURL: homeURL) { return .review }
         if isProtectedPath(path, isDirectory: isDirectory, homePath: homePath) { return .system }
         if path.contains("/Downloads/") || ["dmg", "pkg", "zip"].contains(url.pathExtension.lowercased()) {
             return .safeToReview
@@ -93,6 +94,31 @@ public enum DeletionSafetyPolicy {
             return .personal
         }
         return isDirectory ? .review : .personal
+    }
+
+    /// Manual Explorer action only. This does not make application data eligible
+    /// for ordinary cleanup or broaden the verified-uninstaller authorization.
+    public static func requiresApplicationDataReview(_ url: URL, homeURL: URL = currentHomeURL) -> Bool {
+        let path = url.standardized.path
+        let root = homeURL.standardized.appendingPathComponent("Library/Application Support").path
+        guard path.hasPrefix(root + "/"), !isCloudPath(path), !isManagedGamePath(path),
+              !containsSensitivePackage(path) else { return false }
+        let components = path.dropFirst(root.count + 1).split(separator: "/")
+        guard let first = components.first?.lowercased(), !first.isEmpty,
+              !first.hasPrefix("com.apple."), first != "com.apple", first != "apple",
+              !["clouddocs", "syncservices", "addressbook", "knowledge", "fileprovider", "storagescope"].contains(first),
+              !components.contains(where: { $0.lowercased().hasSuffix(".app") }) else { return false }
+        return true
+    }
+
+    public static func selectionBlockingReason(_ url: URL, isDirectory: Bool) -> String? {
+        let path = url.standardized.path
+        if requiresApplicationDataReview(url) { return nil }
+        guard isProtectedForUserSelection(url, isDirectory: isDirectory) else { return nil }
+        if isCloudPath(path) { return "Cet emplacement est synchronisé avec le cloud. Une suppression pourrait se répercuter sur vos autres appareils. Utilisez le service concerné." }
+        if isManagedGamePath(path) { return "Ce dossier est géré par un launcher. Utilisez Applications et jeux pour désinstaller le jeu." }
+        if path.contains("/Library/") && !isSystemTree(path) { return "Cette bibliothèque contient des données sensibles ou partagées. StorageScope conserve sa protection. Ouvrez son emplacement dans le Finder pour l’examiner." }
+        return "Cet emplacement système, personnel principal ou sensible reste protégé par StorageScope. Ouvrez son emplacement dans le Finder pour l’examiner."
     }
 
     /// Narrow exception for candidates proven to belong to one third-party bundle.

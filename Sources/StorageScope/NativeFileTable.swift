@@ -204,7 +204,7 @@ struct NativeFileTable: NSViewRepresentable {
             add("Ouvrir", .open); add("Ouvrir le dossier", .folder); add("Afficher dans le Finder", .reveal)
             menu.addItem(.separator()); add("Copier le chemin", .copyPath); add("Copier le nom", .copyName)
             if item.fileExtension != "app" {
-                menu.addItem(.separator()); add("Mettre à la corbeille", .trash, allowed: item.isTrashable && !model.operationsAreBusy)
+                menu.addItem(.separator()); add("Mettre à la corbeille", .trash, allowed: item.canRequestTrash && !model.operationsAreBusy)
             }
             return menu
         }

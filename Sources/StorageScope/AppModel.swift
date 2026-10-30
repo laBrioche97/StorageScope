@@ -363,6 +363,16 @@ final class AppModel: ObservableObject {
 
     var selectedBytes: Int64 { selectedItems.reduce(0) { $0 + $1.allocatedSize } }
     var trashConfirmationItems: [FileSystemItem] { requestedTrashPreflights.map(\.item) }
+    var trashConfirmationMessage: String {
+        let size = ByteCountFormatter.storage.string(fromByteCount: trashConfirmationBytes)
+        var text = "\(trashConfirmationItems.count) élément(s) · environ \(size) seront déplacés dans la Corbeille. L’espace sera libéré après son vidage."
+        let data = requestedTrashPreflights.filter { $0.authorization == .manualApplicationData }
+        if !data.isEmpty {
+            text += "\n\nDonnées d’applications sélectionnées :\n" + data.prefix(3).map { $0.item.url.path }.joined(separator: "\n")
+            text += "\n\nFermez les applications concernées avant de continuer. Ces données peuvent contenir des réglages, des modèles et des données locales. Certains éléments devront être retéléchargés. Cette action ne désinstalle pas l’application."
+        }
+        return text
+    }
     var trashConfirmationBytes: Int64 { trashConfirmationItems.reduce(0) { $0 + $1.allocatedSize } }
 
     private var presentationItems: [FileSystemItem] {
@@ -866,21 +876,15 @@ final class AppModel: ObservableObject {
         guard !trashInventoryIsLoading, emptyTrashStep != .running else { return }
         showingEmptyTrash = true
         emptyTrashStep = .inventory
-        trashInventory = nil
+        trashInventory = trashSummary
         emptyTrashResult = nil
         emptyTrashConfirmation = ""
-        trashInventoryIsLoading = true
-        Task { [weak self] in
-            guard let self else { return }
-            let inventory = await trashService.inventoryTrash(volumes: volumes)
-            trashInventory = inventory
-            trashSummary = inventory
-            trashInventoryIsLoading = false
-        }
+        trashInventoryIsLoading = trashInventory == nil
+        refreshTrashSummary(force: true)
     }
 
     func emptyTrashPermanently() {
-        guard !operationsAreBusy, let inventory = trashInventory else { return }
+        guard !operationsAreBusy, let inventory = trashInventory, !inventory.items.isEmpty, !inventory.wasCancelled else { return }
         trashAuthorization = TrashEmptyAuthorization.confirm(inventory)
         guard let authorization = trashAuthorization else { return }
         trashAuthorization = nil
@@ -1196,6 +1200,7 @@ final class AppModel: ObservableObject {
 
     func requestTrash(items: [FileSystemItem]) {
         guard explorerPendingDirectory == nil || sidebar != .explorer else { return }
+        guard !operationsAreBusy else { return }
         let generation = UUID()
         trashRequestGeneration = generation
         requestedTrashPreflights = []
@@ -1210,12 +1215,17 @@ final class AppModel: ObservableObject {
             alertMessage = "Une sélection contenant une application ne peut pas utiliser la suppression générique. Désinstallez chaque application séparément."
             return
         }
-        if normalized.contains(where: { !$0.isTrashable }) {
-            alertMessage = "La sélection contient un élément système protégé."
+        if let blocked = normalized.first(where: { !$0.canRequestTrash }) {
+            alertMessage = blocked.url.path + "\n\n" + (DeletionSafetyPolicy.selectionBlockingReason(blocked.url, isDirectory: blocked.isDirectory)
+                ?? "Cet élément doit être rechargé et vérifié avant sa mise à la corbeille.")
         } else {
             Task { [weak self] in
                 guard let self else { return }
-                let preflights = await trashService.preflight(normalized)
+                var preflights: [TrashPreflightResult] = []
+                for item in normalized {
+                    let authorization: TrashAuthorization = DeletionSafetyPolicy.requiresApplicationDataReview(item.url) ? .manualApplicationData : .userSelection
+                    preflights += await trashService.preflight([item], authorization: authorization)
+                }
                 guard generation == trashRequestGeneration else { return }
                 let failures = preflights.filter { !$0.isReady }
                 guard failures.isEmpty else {
@@ -1232,7 +1242,7 @@ final class AppModel: ObservableObject {
     func confirmTrash() {
         let preflights = requestedTrashPreflights
         let items = preflights.map(\.item)
-        guard !preflights.isEmpty, !trashIsWorking else { return }
+        guard !preflights.isEmpty, !operationsAreBusy else { return }
         trashIsWorking = true
         showingTrashConfirmation = false
         requestedTrashPreflights = []
@@ -1584,9 +1594,9 @@ extension AppModel {
 
     var trashSummaryLabel: String {
         guard let summary = trashSummary else { return trashSummaryIsLoading ? "Corbeille · Calcul en cours" : "Corbeille · Indisponible" }
-        if summary.items.isEmpty && !summary.issues.isEmpty { return "Corbeille · Indisponible" }
-        let partial = !summary.issues.isEmpty || summary.wasCancelled
-        return "Corbeille · " + (partial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
+        if summary.items.isEmpty && summary.requiresAccess { return "Corbeille · Accès requis" }
+        if !summary.hasMeasuredSize { return "Corbeille · Taille indisponible" }
+        return "Corbeille · " + (summary.isPartial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
     }
 
     func refreshTrashSummary(force: Bool = false) {
@@ -1597,6 +1607,10 @@ extension AppModel {
         trashRefreshTask = Task { [weak self] in
             guard let self else { return }
             trashSummary = await trashService.inventoryTrash(volumes: volumes)
+            if showingEmptyTrash, emptyTrashStep == .inventory || emptyTrashStep == .confirmation {
+                trashInventory = trashSummary
+                trashInventoryIsLoading = false
+            }
             trashCheckedAt = Date()
             trashSummaryIsLoading = false
             trashRefreshTask = nil

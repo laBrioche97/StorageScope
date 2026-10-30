@@ -51,6 +51,7 @@ subprocess.run([str(binary), '--verify-application-removal'], env=dict(environme
     STORAGESCOPE_QA_ROOT_APP=str(finder_fixture), STORAGESCOPE_QA_FINDER_ONLY='1'), check=True, timeout=40)
 subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(fixture), STORAGESCOPE_QA_EXPECT='permission-boundary'), check=True, timeout=45)
 subprocess.run([str(binary), '--verify-application-removal'], env=dict(environment, STORAGESCOPE_QA_ROOT_APP=str(user_fixture)), check=True, timeout=45)
+subprocess.run([str(binary), '--verify-explorer-trash'], env=environment, check=True, timeout=60)
 ui = Path(os.environ['RUNNER_TEMP']) / 'storagescope-packaged-ui'
 subprocess.run([str(binary), '--verify-interface', str(ui)], env=environment, check=True, timeout=120)
 subprocess.run([str(binary), '--verify-live-interface', str(ui)], env=environment, check=True, timeout=180)

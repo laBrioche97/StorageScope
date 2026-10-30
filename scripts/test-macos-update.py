@@ -32,6 +32,7 @@ previous_build = str(int(build) - 1)
 # rather than only changing the candidate's version metadata.
 previous_app = root / 'published-previous' / 'StorageScope.app'
 previous_release = {
+    '3.7.1': ('3.7.0', 'StorageScope-arm64.zip', '8554d83ba42f7f046388dff332396beda53727fb789ceaeec0bf3dc1f69304e0'),
     '3.7.0': ('3.6.1', 'StorageScope-arm64.zip', '80a9a9d7db76b317c33ddb508a145ccc966eb8cf4dbb38665761231c6859a7cf'),
     '3.6.1': ('3.6.0', 'StorageScope-arm64.zip', '3b69da0bbe90698f54c98d5e4f92f2d2b9c0643bf55c39370278fce160aff693'),
     '3.5.1': ('3.5.0', 'StorageScope-universal.zip', 'ce16eb706251d48906b545704648f50a92c644a98f6c1fcfcd674179be16f5c5'),

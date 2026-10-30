@@ -181,6 +181,7 @@ jobs:
           path: |
             ${{ runner.temp }}/storagescope-package-validation.json
             ${{ runner.temp }}/storagescope-application-removal-*.json
+            ${{ runner.temp }}/storagescope-explorer-trash-validation.json
             ${{ runner.temp }}/storagescope-instruments/
             ${{ runner.temp }}/storagescope-packaged-ui/*.png
             ${{ runner.temp }}/storagescope-packaged-ui/*.json

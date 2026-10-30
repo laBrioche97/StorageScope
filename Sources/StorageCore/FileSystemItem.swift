@@ -93,6 +93,11 @@ public struct FileSystemItem: Identifiable, Hashable, Codable, Sendable {
                 url, isDirectory: isDirectory, homeURL: DeletionSafetyPolicy.currentHomeURL
             )
     }
+    /// Manual review can authorize specific third-party application data; it is
+    /// deliberately separate from isTrashable, used by automatic cleanup.
+    public var canRequestTrash: Bool {
+        !isSymbolicLink && (isTrashable || DeletionSafetyPolicy.requiresApplicationDataReview(url))
+    }
 }
 
 public struct ScanIssue: Identifiable, Hashable, Codable, Sendable {

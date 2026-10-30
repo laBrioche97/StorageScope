@@ -216,7 +216,7 @@ struct StorageExplorerView: View {
                 Spacer()
                 Button("Finder") { if let first = model.selectedItems.first { model.reveal(first) } }
                 Button("Mettre à la Corbeille", role: .destructive) { model.requestTrashSelection() }
-                    .disabled(model.selectedItems.contains { !$0.isTrashable })
+                    .disabled(model.selectedItems.contains { !$0.canRequestTrash })
             }
             .padding(10).background(.bar)
         }
@@ -413,7 +413,7 @@ private struct ExplorerTreemapTile: View {
                     model.selectedIDs = [item.id]
                     model.requestTrashSelection()
                 }
-                .disabled(!item.isTrashable)
+                .disabled(!item.canRequestTrash)
             }
         }
     }

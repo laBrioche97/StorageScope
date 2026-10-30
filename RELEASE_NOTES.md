@@ -1,10 +1,8 @@
-# StorageScope 3.7.0
+# StorageScope 3.7.1
 
-- Mac : conservation locale de l’arborescence complète des fichiers et dossiers accessibles après une analyse, y compris les petits fichiers absents des récapitulatifs. Une génération temporaire préserve l’analyse précédente en cas d’interruption.
-- Restauration au lancement et actualisation en arrière-plan depuis le journal macOS. Les changements connus sont intégrés sans analyser systématiquement tout le stockage. Un historique incomplet exige une nouvelle analyse explicite.
-- État du stockage visible : vérification, actualisation, À jour, analyse partielle, analyse nécessaire ou stockage déconnecté. Les dates de l’analyse complète et de l’actualisation sont disponibles dans l’infobulle.
-- Explorateur : zones cliquables circulaires natives, historique commun aux commandes, gestes macOS, raccourcis ⌘[ / ⌘] et boutons latéraux de souris. Conservation du mode Liste/Bulles et des caches de navigation.
-- Les chemins, tailles, catégories, dates et identités sont conservés uniquement dans Application Support, sans copier le contenu des fichiers ni télémétrie. Les liens et les espaces techniques propres à l’index restent exclus. L’identité est revérifiée avant une mise à la corbeille.
-- Une première analyse complète est nécessaire pour initialiser ce nouvel index. Les anciens résumés restent consultables. Les autres stockages gardent un index distinct et aucune surveillance ne continue lorsque l’application est fermée.
+- Mac : les données tierces choisies explicitement dans Application Support, comme TabNine, disposent d’un parcours de mise à la corbeille avec avertissement sur les réglages et données locales. Elles restent exclues du nettoyage automatique. Les emplacements système, bibliothèques sensibles, dossiers cloud, jeux gérés et liens conservent leurs protections.
+- Corbeille : les entrées restent visibles lorsque leur taille ne peut pas être entièrement mesurée. Les accès refusés sont distingués d’une corbeille vide, avec un accès aux réglages de confidentialité et une actualisation au retour.
+- Affichage du contenu de la corbeille, tailles partielles explicites et correction du bouton de vidage : une seule confirmation, limitée aux éléments inventoriés et vérifiés. Un inventaire partiel ne donne jamais un faux bilan « Corbeille vidée ».
+- Vérification des identités avant chaque opération, historique local et protections de l’index persistant conservés.
 
 Apple Silicon, macOS 14 minimum. Le paquet Mac reste une version de test sans Developer ID ni notarisation ; Windows reste sans Authenticode. Les mises à jour sont authentifiées et vérifiées. Aucun paquet Intel n’est publié.

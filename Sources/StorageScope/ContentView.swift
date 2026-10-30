@@ -90,7 +90,7 @@ struct ContentView: View {
             if section == .applications { model.loadApplications() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.refreshVolumes(); model.refreshTrashSummary() }
+            if phase == .active { model.refreshVolumes(); model.refreshTrashSummary(force: model.showingEmptyTrash || model.trashSummary?.requiresAccess == true) }
         }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in
             model.refreshVolumes()
@@ -105,7 +105,7 @@ struct ContentView: View {
             Button("Annuler", role: .cancel) {}
             Button("Mettre à la corbeille", role: .destructive) { model.confirmTrash() }
         } message: {
-            Text("\(model.trashConfirmationItems.count) élément(s) · environ \(ByteCountFormatter.storage.string(fromByteCount: model.trashConfirmationBytes)) seront récupérables une fois la Corbeille vidée.")
+            Text(model.trashConfirmationMessage)
         }
         .alert("StorageScope", isPresented: Binding(get: { model.alertMessage != nil }, set: { if !$0 { model.alertMessage = nil } })) {
             Button("OK") { model.alertMessage = nil }
@@ -327,7 +327,7 @@ private struct StorageResultsView: View {
                 Text("\(model.selectedItems.count) élément(s) sélectionné(s) · \(ByteCountFormatter.storage.string(fromByteCount: model.selectedBytes))")
                 Spacer()
                 Button("Mettre à la corbeille", role: .destructive) { model.requestTrashSelection() }
-                    .disabled(model.selectedItems.contains { !$0.isTrashable })
+                    .disabled(model.selectedItems.contains { !$0.canRequestTrash })
             }
             .padding(10).background(.bar)
         }
@@ -526,7 +526,7 @@ private struct ItemDetailView: View {
                 Divider()
                 Button("Afficher dans le Finder") { model.reveal(item) }.buttonStyle(.borderedProminent)
                 Button("Copier le chemin") { model.copyPath(item) }
-                Button("Mettre à la corbeille", role: .destructive) { model.requestTrashSelection() }.disabled(!item.isTrashable)
+                Button("Mettre à la corbeille", role: .destructive) { model.requestTrashSelection() }.disabled(!item.canRequestTrash)
             }.padding(16)
         }
     }

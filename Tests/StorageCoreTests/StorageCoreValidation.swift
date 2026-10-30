@@ -602,6 +602,8 @@ struct StorageCoreTests {
             ("Treemap proportionnel", { try testTreemapLayout() }),
             ("Treemap tailles nulles et regroupement", { try testTreemapZeroAndGrouping() }),
             ("Frontières suppression critiques", { try await testCriticalDeletionBoundaries() }),
+            ("Données d’applications : examen manuel et protections", { try await testManualApplicationDataPolicy() }),
+            ("Corbeille : accès, tailles inconnues et entrées conservées", { try testTrashInventoryStates() }),
             ("Identité avant confirmation", { try await testPreparedTrashRejectsSubstitution() }),
             ("Bundle ID et app Explorer", { try await testBundleIdentifierAndExplorerApplicationIdentity() }),
             ("Débit du scanner", { try await testScannerThroughput() })
