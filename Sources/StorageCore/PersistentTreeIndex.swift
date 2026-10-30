@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import SQLite3
 
 public struct TreeIndexState: Codable, Sendable {
@@ -111,6 +112,37 @@ extension DirectoryIndexStore {
         }
     }
 
+    /// Keep only fully read replacements when another dirty subtree is denied.
+    /// Direct-child metadata shared with a valid parent remains admissible; a
+    /// partially read child's descendants never replace its previous full tree.
+    public func retainStagedTreeItems(_ generation: UUID, for replacements: [TreeReplacement]) throws {
+        let db = try requireDatabase()
+        try Self.execute("BEGIN IMMEDIATE", operation: "isolation des sous-arbres lisibles", database: db)
+        do {
+            try validateWriter(generation)
+            try Self.execute("CREATE TEMP TABLE IF NOT EXISTS staged_valid_paths(path TEXT PRIMARY KEY); DELETE FROM staged_valid_paths", operation: "préparation des chemins validés", database: db)
+            for replacement in replacements {
+                try Task.checkCancellation()
+                let path = replacement.directory.path
+                try validatePath(path)
+                let prefix = path == "/" ? "/" : path + "/"
+                let predicate = replacement.recursive ? "(path = ? OR substr(path, 1, length(?)) = ?)" : "(path = ? OR parent_path = ?)"
+                let statement = try Self.prepare("INSERT OR IGNORE INTO staged_valid_paths SELECT path FROM tree_items WHERE generation = ? AND \(predicate)", operation: "conservation des chemins validés", database: db)
+                defer { sqlite3_finalize(statement) }
+                let arguments = replacement.recursive ? [generation.uuidString, path, prefix, prefix] : [generation.uuidString, path, path]
+                for (index, value) in arguments.enumerated() { try Self.bindText(value, at: Int32(index + 1), to: statement, database: db) }
+                try Self.stepDone(statement, operation: "conservation des chemins validés", database: db)
+            }
+            let statement = try Self.prepare("DELETE FROM tree_items WHERE generation = ? AND path NOT IN (SELECT path FROM staged_valid_paths)", operation: "retrait des lectures partielles", database: db)
+            defer { sqlite3_finalize(statement) }
+            try Self.bindText(generation.uuidString, at: 1, to: statement, database: db)
+            try Self.stepDone(statement, operation: "retrait des lectures partielles", database: db)
+            sqlite3_reset(statement)
+            try Self.execute("DROP TABLE staged_valid_paths", operation: "fin des chemins validés", database: db)
+            try Self.execute("COMMIT", operation: "validation des sous-arbres lisibles", database: db)
+        } catch { try? Self.execute("ROLLBACK", operation: "annulation des chemins validés", database: db); throw error }
+    }
+
     public func completeTreeGeneration(_ generation: UUID, directories: [DirectorySummary], snapshot: ScanSnapshot, checkpoint: JournalCheckpoint?) throws {
         let db = try requireDatabase()
         try Task.checkCancellation()
@@ -217,7 +249,16 @@ extension DirectoryIndexStore {
             try Self.bindText(generation, at: 1, to: merge, database: db); try Self.bindText(staged.uuidString, at: 2, to: merge, database: db)
             try Self.stepDone(merge, operation: "fusion des changements", database: db)
             try rebuildAffectedDirectories(affected, generation: generation)
-            let unresolved = old.snapshot.issues.filter { issue in !replacements.contains { issue.path == $0.directory.path || issue.path.hasPrefix($0.directory.path == "/" ? "/" : $0.directory.path + "/") } } + issues
+            let unresolvedCandidates = old.snapshot.issues.filter { issue in
+                !replacements.contains { replacement in
+                    if issue.path == replacement.directory.path { return true }
+                    if replacement.recursive { return issue.path.hasPrefix(replacement.directory.path == "/" ? "/" : replacement.directory.path + "/") }
+                    let url = URL(fileURLWithPath: issue.path)
+                    return url.deletingLastPathComponent().path == replacement.directory.path && ScanPathPolicy.identity(url)?.fileType != UInt16(S_IFDIR)
+                }
+            } + issues
+            var seenIssues = Set<[String]>()
+            let unresolved = unresolvedCandidates.filter { seenIssues.insert([$0.path, $0.message, String($0.isPermissionError)]).inserted }
             let snapshot = replacements.isEmpty && issues.isEmpty ? old.snapshot : try makeTreeSnapshot(old: old.snapshot, generation: generation, issues: unresolved)
             let state = TreeIndexState(generation: old.generation, checkpoint: checkpoint, snapshot: snapshot, synchronizedAt: Date(), pending: pending)
             try saveTreeState(state)

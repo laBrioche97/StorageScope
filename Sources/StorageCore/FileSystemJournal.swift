@@ -235,19 +235,35 @@ public enum PersistentScanSynchronizer {
                         do {
                             for replacement in paths {
                                 try Task.checkCancellation()
-                                let result = try await readReplacement(replacement, root: root, store: store, staged: staged)
-                                issues += result
-                                if result.isEmpty { valid.append(replacement) }
+                                do {
+                                    let result = try await readReplacement(replacement, root: root, store: store, staged: staged)
+                                    issues += result
+                                    if result.isEmpty { valid.append(replacement) }
+                                } catch is CancellationError { throw CancellationError() }
+                                catch let error as DirectoryIndexError { throw error }
+                                catch {
+                                    let failure = error as NSError
+                                    let denied = failure.domain == NSPOSIXErrorDomain && [Int(EACCES), Int(EPERM)].contains(failure.code)
+                                        || failure.domain == NSCocoaErrorDomain && failure.code == CocoaError.fileReadNoPermission.rawValue
+                                    issues.append(ScanIssue(path: replacement.directory.path, message: error.localizedDescription, isPermissionError: denied))
+                                }
                             }
                         } catch {
                             if !paths.isEmpty { await RecursiveReadBudget.shared.release() }
                             throw error
                         }
                         if !paths.isEmpty { await RecursiveReadBudget.shared.release() }
-                        let failed = issues.isEmpty ? [] : paths
-                        if !issues.isEmpty { try await store.discardTreeGeneration(staged); valid = [] }
+                        let validPaths = Set(valid.map { $0.directory.path })
+                        let failed = paths.filter { !validPaths.contains($0.directory.path) }
+                        if !issues.isEmpty {
+                            if valid.isEmpty { try await store.discardTreeGeneration(staged) }
+                            else { try await store.retainStagedTreeItems(staged, for: valid) }
+                        }
                         let remaining = coalesce(state.pending + failed).filter { pending in
-                            !valid.contains { $0.directory.path == pending.directory.path || $0.recursive && pending.directory.path.hasPrefix($0.directory.path + "/") }
+                            !valid.contains { completed in
+                                if completed.recursive { return completed.directory.path == pending.directory.path || pending.directory.path.hasPrefix(completed.directory.path == "/" ? "/" : completed.directory.path + "/") }
+                                return !pending.recursive && completed.directory.path == pending.directory.path
+                            }
                         }
                         state = try await store.applyTreeChanges(staged: staged, replacements: valid, checkpoint: checkpoint, issues: issues, pending: remaining)
                         continuation.yield(.updated(state, settled: caughtUp.count == checkpoint.sources.count))

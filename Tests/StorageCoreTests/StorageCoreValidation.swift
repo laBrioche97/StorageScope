@@ -589,6 +589,7 @@ struct StorageCoreTests {
         }
         let tests: [(String, () async throws -> Void)] = [
             ("Arborescence persistante et reprise réelle FSEvents", { try await testPersistentTreeAndJournal() }),
+            ("Reprise partielle sans bloquer les dossiers lisibles", { try await testPartialJournalReconciliation() }),
             ("Identité et regroupement du journal", { try testJournalPlanningAndIdentity() }),
             ("Autorisations applicatives et identité", { try await testApplicationAuthorizationBoundaries() }),
             ("Budget commun de lectures récursives", { try await testSharedRecursiveReadBudget() }),

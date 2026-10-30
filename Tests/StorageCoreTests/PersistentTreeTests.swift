@@ -122,3 +122,32 @@ func testJournalPlanningAndIdentity() throws {
     let coalesced = PersistentScanSynchronizer.coalesce([TreeReplacement(directory: root, recursive: true), TreeReplacement(directory: root.appendingPathComponent("child"), recursive: false)])
     try expect(coalesced.count == 1, "Un sous-arbre ne doit pas être relu plusieurs fois")
 }
+
+func testPartialJournalReconciliation() async throws {
+    let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".StorageScope-Partial-" + UUID().uuidString, isDirectory: true)
+    let readable = root.appendingPathComponent("Readable", isDirectory: true)
+    let denied = root.appendingPathComponent("Denied", isDirectory: true)
+    try FileManager.default.createDirectory(at: readable, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: denied, withIntermediateDirectories: true)
+    defer {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: denied.path)
+        try? FileManager.default.removeItem(at: root)
+    }
+    let changed = readable.appendingPathComponent("changed.bin")
+    try Data([1]).write(to: changed)
+    try Data([2]).write(to: denied.appendingPathComponent("preserved.bin"))
+    let volumeID = root.lastPathComponent
+    for await event in StorageScanner().scan(root: root, volumeID: volumeID) { if case .completed = event { break } }
+    let original = try await awaitSynchronizedTree(root: root, volumeID: volumeID, expectedLogicalBytes: 2)
+    try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: denied.path)
+    if FileManager.default.isReadableFile(atPath: denied.path) { return } // root hosts bypass POSIX denial
+    try Data(repeating: 3, count: 9000).write(to: changed)
+    let partial = try await awaitSynchronizedTree(root: root, volumeID: volumeID, expectedLogicalBytes: 9001)
+    let store = try DirectoryIndexStore(volumeID: volumeID, root: root)
+    let kept = try await store.indexedChildren(of: denied)
+    try expect(kept?.first?.logicalSize == 1 && partial.pending.contains { $0.directory.path == denied.path }, "Un dossier inaccessible conserve son ancienne arborescence et une reprise en attente")
+    try expect(partial.snapshot.scanID == original.snapshot.scanID && !partial.snapshot.issues.isEmpty, "Les autres changements sont intégrés avec un état partiel, sans analyse complète")
+    try Data(repeating: 4, count: 20_000).write(to: changed)
+    let next = try await awaitSynchronizedTree(root: root, volumeID: volumeID, expectedLogicalBytes: 20_001)
+    try expect(!next.pending.isEmpty && next.snapshot.progress.filesScanned == 2, "Un refus persistant ne bloque pas l’actualisation suivante des dossiers lisibles")
+}

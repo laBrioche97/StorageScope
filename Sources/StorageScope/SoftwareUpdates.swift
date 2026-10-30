@@ -81,6 +81,7 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     func activate() {
         guard availableVersion != nil else { check(); return }
         guard !isBusy, !checking, !installing, let updater, updater.canCheckForUpdates else { return }
+        dismissedVersion = nil
         installRequested = true; checking = true; status = "Revalidation de la mise à jour…"
         updater.checkForUpdates()
     }

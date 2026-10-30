@@ -51,7 +51,7 @@ struct ContentView: View {
                 BriocheLogo().frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
                 Text(AppIdentity.title).font(.system(.title3, design: .rounded, weight: .bold)).lineLimit(1)
                 Button { updates.activate() } label: {
-                    if let version = updates.availableVersion {
+                    if let version = updates.availableVersion, !updates.installing {
                         Label("Mise à jour \(version)", systemImage: updates.symbol).fontWeight(.semibold)
                     } else { Image(systemName: updates.symbol) }
                 }
