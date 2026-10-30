@@ -31,7 +31,7 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     func dismissOffer() { dismissedVersion = availableVersion }
     var offerDetail: String {
         if isBusy { return "Disponible après l’analyse ou l’opération en cours. Votre analyse enregistrée sera conservée." }
-        return status + " Votre analyse enregistrée sera conservée."
+        return status + " · Votre analyse enregistrée sera conservée."
     }
     var symbol: String {
         if checking || installing { return "arrow.triangle.2.circlepath" }

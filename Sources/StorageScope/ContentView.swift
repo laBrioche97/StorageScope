@@ -70,7 +70,7 @@ struct ContentView: View {
             if updates.showsOffer, let version = updates.availableVersion {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("StorageScope \(version) est disponible", systemImage: "arrow.down.circle.fill")
-                        .font(.headline).foregroundStyle(AppTheme.accent)
+                        .font(.headline)
                     Text(updates.offerDetail).font(.callout).fixedSize(horizontal: false, vertical: true)
                     HStack {
                         Button("Mettre à jour et redémarrer") { updates.activate() }

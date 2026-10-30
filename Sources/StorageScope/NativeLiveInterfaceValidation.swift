@@ -40,7 +40,8 @@ enum NativeLiveInterfaceValidation {
         updates.presentOffer(version: "9.9.9")
         guard updates.showsOffer else { throw CocoaError(.fileReadUnknown) }
         for dark in [false, true] {
-            window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            window.appearance = NSApp.appearance
             window.setContentSize(NSSize(width: 740, height: 560))
             try await Task.sleep(for: .milliseconds(200))
             guard let view = window.contentView?.superview,
