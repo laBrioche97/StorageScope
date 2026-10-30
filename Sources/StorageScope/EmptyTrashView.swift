@@ -74,7 +74,7 @@ struct EmptyTrashView: View {
                                 Label(item.url.lastPathComponent, systemImage: item.isDirectory ? "folder" : "doc").lineLimit(1)
                                 Spacer()
                                 Text(item.sizeIsComplete ? ByteCountFormatter.storage.string(fromByteCount: item.allocatedBytesUpperBound) : "Taille partielle ou indisponible").foregroundStyle(.secondary)
-                                Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: { Image(systemName: "folder.badge.magnifyingglass") }
+                                Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: { Image(systemName: "magnifyingglass") }
                                     .help("Afficher dans le Finder").accessibilityLabel("Afficher \(item.url.lastPathComponent) dans le Finder")
                             }.frame(height: 34).help(item.url.path)
                         }.frame(height: min(240, max(90, CGFloat(inventory.items.count) * 42)))

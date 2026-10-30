@@ -98,6 +98,7 @@ import SwiftUI
         let hosting = NSHostingView(rootView: view)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 620), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         defer { window.close() }
         window.contentView = hosting
         window.makeKeyAndOrderFront(nil)
