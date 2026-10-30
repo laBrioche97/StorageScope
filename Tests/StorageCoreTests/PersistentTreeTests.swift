@@ -5,9 +5,14 @@ import StorageCore
 func awaitSynchronizedTree(root: URL, volumeID: String, expectedLogicalBytes: Int64? = nil) async throws -> TreeIndexState {
     try await withThrowingTaskGroup(of: TreeIndexState.self) { group in
         group.addTask {
-            for await event in PersistentScanSynchronizer.synchronize(root: root, volumeID: volumeID) {
+            for await event in PersistentScanSynchronizer.synchronize(root: root, volumeID: volumeID, observeChanges: { batch in
+                if ProcessInfo.processInfo.environment["STORAGESCOPE_INDEX_UPGRADE_FIXTURE"] != nil {
+                    print("REPLAY source=\(batch.source), count=\(batch.changes.count), first=\(batch.changes.prefix(8).map { "\($0.id):\($0.flags):\($0.path)" })")
+                }
+            }) {
                 switch event {
                 case .updated(let state, settled: true):
+                    if ProcessInfo.processInfo.environment["STORAGESCOPE_INDEX_UPGRADE_FIXTURE"] != nil { print("REPLAY files=\(state.snapshot.progress.filesScanned), bytes=\(state.snapshot.categoryReport.identifiedLogicalBytes), pending=\(state.pending.count), issues=\(state.snapshot.issues.prefix(3).map(\.message))") }
                     if expectedLogicalBytes == nil || state.snapshot.categoryReport.identifiedLogicalBytes == expectedLogicalBytes { return state }
                 case .status(.requiresScan, let message): throw ValidationError.failed(message)
                 default: break

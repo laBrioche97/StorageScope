@@ -583,6 +583,10 @@ func testBundleIdentifierAndExplorerApplicationIdentity() async throws {
 @main
 struct StorageCoreTests {
     static func main() async {
+        if CommandLine.arguments.contains("--prepare-persistent-restart") || CommandLine.arguments.contains("--verify-persistent-restart") {
+            do { try await validatePersistentRestart(prepare: CommandLine.arguments.contains("--prepare-persistent-restart")); exit(0) }
+            catch { print("FAIL persistent restart: \(error)"); exit(1) }
+        }
         let tests: [(String, () async throws -> Void)] = [
             ("Arborescence persistante et reprise réelle FSEvents", { try await testPersistentTreeAndJournal() }),
             ("Identité et regroupement du journal", { try testJournalPlanningAndIdentity() }),

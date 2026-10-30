@@ -50,20 +50,21 @@ jobs:
         run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
 
       - name: Verify persisted index across separate processes
+        timeout-minutes: 2
         env:
           STORAGESCOPE_INDEX_UPGRADE_FIXTURE: ${{ runner.temp }}/index-restart/fixture.json
         run: |
           mkdir -p "$RUNNER_TEMP/index-restart"
-          BINARY="$(swift build --show-bin-path)/StorageScope"
-          "$BINARY" --prepare-index-upgrade
+          BINARY="$(swift build --show-bin-path)/StorageCoreTests"
+          "$BINARY" --prepare-persistent-restart
           python3 - <<'PY'
           import json, os, urllib.parse
           from pathlib import Path
           fixture = json.loads(Path(os.environ['STORAGESCOPE_INDEX_UPGRADE_FIXTURE']).read_text())
           root = Path(urllib.parse.unquote(urllib.parse.urlparse(fixture['root']).path))
-          (root / 'added-between-versions.bin').write_bytes(b'Change between processes')
+          (root / 'added-between-versions.bin').write_bytes(b'X')
           PY
-          "$BINARY" --verify-index-upgrade
+          "$BINARY" --verify-persistent-restart
 
       - name: Run StorageCore validations
         run: |
