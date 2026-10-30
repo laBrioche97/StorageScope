@@ -1,4 +1,5 @@
 import CoreServices
+import CryptoKit
 import Darwin
 import Foundation
 
@@ -14,9 +15,14 @@ public struct JournalSource: Codable, Equatable, Sendable {
 }
 
 public struct JournalCheckpoint: Codable, Equatable, Sendable {
-    public init(rootFingerprint: String, sources: [JournalSource]) { self.rootFingerprint = rootFingerprint; self.sources = sources }
+    public init(rootFingerprint: String, sources: [JournalSource], processedEvents: [String]? = nil) {
+        self.rootFingerprint = rootFingerprint; self.sources = sources; self.processedEvents = processedEvents
+    }
     public let rootFingerprint: String
     public var sources: [JournalSource]
+    // Optional for indexes created before 3.7.2. Persisted with the cursor so a
+    // FullHistory overlap never replays already reconciled directory creations.
+    public var processedEvents: [String]?
 
     public static func capture(root: URL) -> JournalCheckpoint? {
         var urls = [root]
@@ -65,6 +71,34 @@ public struct JournalBatch: Sendable {
     public init(source: Int, changes: [JournalChange]) { self.source = source; self.changes = changes }
     public let source: Int
     public let changes: [JournalChange]
+}
+
+/// A bounded ring of reconciled event identities, independent of dev_t and
+/// application version. Event IDs alone are insufficient: one ID can name more
+/// than one path. No file contents are read or stored here.
+private struct ProcessedJournalEvents {
+    private let limit = 65_536
+    private var keys: [String] = []
+    private var membership: Set<String> = []
+    private var next = 0
+    init(_ saved: [String]?) {
+        for key in saved?.suffix(limit) ?? [] { _ = insert(key) }
+    }
+    mutating func insert(_ key: String) -> Bool {
+        guard membership.insert(key).inserted else { return false }
+        if keys.count < limit { keys.append(key) }
+        else { membership.remove(keys[next]); keys[next] = key; next = (next + 1) % limit }
+        return true
+    }
+    var saved: [String] { next == 0 ? keys : Array(keys[next...]) + Array(keys[..<next]) }
+    mutating func unseen(in batch: JournalBatch, source: JournalSource) -> JournalBatch {
+        let changes = batch.changes.filter { change in
+            if change.flags & UInt32(kFSEventStreamEventFlagHistoryDone) != 0 { return true }
+            let data = Data("\(source.uuid)|\(change.id)|\(change.flags)|\(change.path)".utf8)
+            return insert(Data(SHA256.hash(data: data)).base64EncodedString())
+        }
+        return JournalBatch(source: batch.source, changes: changes)
+    }
 }
 
 private final class JournalCallback: @unchecked Sendable {
@@ -160,6 +194,7 @@ public enum PersistentScanSynchronizer {
                     var caughtUp = Set<Int>()
                     var replayCompleted = false
                     var queuedPaths: [TreeReplacement] = []
+                    var processedEvents = ProcessedJournalEvents(checkpoint.processedEvents)
                     for await batch in journal.events(checkpoint: checkpoint, catchUp: current) {
                         try Task.checkCancellation()
                         observeChanges?(batch)
@@ -169,7 +204,8 @@ public enum PersistentScanSynchronizer {
                         }
                         let historyDone = batch.changes.contains { $0.flags & UInt32(kFSEventStreamEventFlagHistoryDone) != 0 }
                         if historyDone { caughtUp.insert(batch.source) }
-                        var paths = try replacements(for: batch, checkpoint: checkpoint, root: root)
+                        let unseen = processedEvents.unseen(in: batch, source: checkpoint.sources[batch.source])
+                        var paths = try replacements(for: unseen, checkpoint: checkpoint, root: root)
                         if historyDone {
                             // Permission failures are retried without discarding their old tree.
                             paths += state.pending
@@ -191,6 +227,7 @@ public enum PersistentScanSynchronizer {
                         paths = queuedPaths; queuedPaths = []
                         if !paths.isEmpty { continuation.yield(.status(.updating, "Actualisation de \(paths.count) dossier(s)…")) }
                         if paths.isEmpty && !historyDone { continue }
+                        checkpoint.processedEvents = processedEvents.saved
                         let staged = UUID()
                         try await store.beginTreeGeneration(staged)
                         var valid: [TreeReplacement] = [], issues: [ScanIssue] = []

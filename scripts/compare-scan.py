@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import plistlib
 from pathlib import Path
 import statistics
 import subprocess
@@ -90,7 +91,7 @@ changed_expected['skipped'] += 1
 changed_expected['logicalBytes'] += 5
 changed_expected['categories']['Images']['logical'] += 5
 assert changed_replay == changed_expected, 'A single-file replay must update exact totals without omitting the rest of the tree'
-report = {'referenceVersion': '3.5.1', 'candidateVersion': '3.7.0', 'fixtureFiles': 10003,
+report = {'referenceVersion': '3.5.1', 'candidateVersion': plistlib.loads((repository / 'Packaging/Info.plist').read_bytes())['CFBundleShortVersionString'], 'fixtureFiles': 10003,
     'identicalCoverageAndTotals': True, 'result': expected, 'seconds': samples,
     'symbolicLinkRegression': {'referenceFiles': linked['reference']['files'], 'candidateFiles': linked['candidate']['files'],
         'loopNotTraversed': True, 'allSiblingFilesRetained': True},
