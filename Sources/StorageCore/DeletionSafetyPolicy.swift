@@ -84,7 +84,7 @@ public enum DeletionSafetyPolicy {
         let rawPath = url.path
         let path = rawPath.contains("/../") || rawPath.hasSuffix("/..") ? url.standardizedFileURL.path : rawPath
         let homePath = homeURL.path
-        if requiresApplicationDataReview(url, homeURL: homeURL) { return .review }
+        if path.contains("/Library/Application Support/"), requiresApplicationDataReview(url, homeURL: homeURL) { return .review }
         if isProtectedPath(path, isDirectory: isDirectory, homePath: homePath) { return .system }
         if path.contains("/Downloads/") || ["dmg", "pkg", "zip"].contains(url.pathExtension.lowercased()) {
             return .safeToReview

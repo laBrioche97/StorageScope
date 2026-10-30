@@ -1596,7 +1596,7 @@ extension AppModel {
         guard let summary = trashSummary else { return trashSummaryIsLoading ? "Corbeille · Calcul en cours" : "Corbeille · Indisponible" }
         if summary.items.isEmpty && summary.requiresAccess { return "Corbeille · Accès requis" }
         if !summary.hasMeasuredSize { return "Corbeille · Taille indisponible" }
-        return "Corbeille · " + (summary.isPartial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
+        return "Corbeille · " + (summary.isPartial ? "≥ " : "") + ByteCountFormatter.storage.string(fromByteCount: summary.totalAllocatedBytesUpperBound)
     }
 
     func refreshTrashSummary(force: Bool = false) {

@@ -51,6 +51,8 @@ struct EmptyTrashView: View {
                 }
             } else if let inventory = model.trashInventory {
                 VStack(alignment: .leading, spacing: 16) {
+                    ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
                     Text(inventory.requiresAccess && inventory.items.isEmpty ? "Accès à la corbeille requis" : "Contenu de la corbeille").font(.title.bold())
                     HStack(spacing: 18) {
                         metric("Éléments", value: inventory.items.count.formatted())
@@ -75,7 +77,7 @@ struct EmptyTrashView: View {
                                 Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: { Image(systemName: "folder.badge.magnifyingglass") }
                                     .help("Afficher dans le Finder").accessibilityLabel("Afficher \(item.url.lastPathComponent) dans le Finder")
                             }.frame(height: 34).help(item.url.path)
-                        }.frame(minHeight: 100)
+                        }.frame(height: min(240, max(90, CGFloat(inventory.items.count) * 42)))
                     } else if inventory.issues.isEmpty && !inventory.wasCancelled {
                         Label("La corbeille est vide", systemImage: "checkmark.circle").foregroundStyle(.secondary)
                     }
@@ -86,7 +88,8 @@ struct EmptyTrashView: View {
                             }
                         }
                     }
-                    Spacer()
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     HStack {
                         Button("Ouvrir la Corbeille") {
                             NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true))
@@ -153,6 +156,6 @@ struct EmptyTrashView: View {
     }
     private func sizeDescription(_ inventory: TrashInventory?) -> String {
         guard let inventory, inventory.hasMeasuredSize else { return "Taille indisponible" }
-        return (inventory.isPartial ? "≈ " : "") + ByteCountFormatter.storage.string(fromByteCount: inventory.totalAllocatedBytesUpperBound)
+        return (inventory.isPartial ? "Au moins " : "") + ByteCountFormatter.storage.string(fromByteCount: inventory.totalAllocatedBytesUpperBound)
     }
 }

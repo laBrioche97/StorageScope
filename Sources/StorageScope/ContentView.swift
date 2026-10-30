@@ -521,7 +521,7 @@ private struct ItemDetailView: View {
                 LabeledContent("Sur disque", value: ByteCountFormatter.storage.string(fromByteCount: item.allocatedSize))
                 LabeledContent("Taille logique", value: ByteCountFormatter.storage.string(fromByteCount: item.logicalSize))
                 LabeledContent("Type", value: item.category.rawValue)
-                LabeledContent("Risque", value: item.safety.rawValue)
+                LabeledContent("Risque", value: DeletionSafetyPolicy.requiresApplicationDataReview(item.url) ? "Données d’application — à examiner" : item.safety.rawValue)
                 Text(item.url.path).font(.caption.monospaced()).textSelection(.enabled).foregroundStyle(.secondary)
                 Divider()
                 Button("Afficher dans le Finder") { model.reveal(item) }.buttonStyle(.borderedProminent)

@@ -1,5 +1,7 @@
 import Foundation
+import AppKit
 import StorageCore
+import SwiftUI
 
 /// Real destructive checks are restricted to uniquely named disposable CI data.
 @MainActor enum ExplorerTrashValidation {
@@ -42,6 +44,11 @@ import StorageCore
         guard let entry = inventory.items.first(where: { $0.identity == expected }) else { throw failure("Unreadable trash entry disappeared") }
         trashed = entry.url
         guard !entry.sizeIsComplete, inventory.isPartial else { throw failure("Unreadable subtree was reported as completely measured") }
+        model.trashInventory = inventory
+        try await capture(model, name: "macos-trash-partial", output: output, dark: false)
+        model.trashInventory = TrashInventory(items: [], issues: [.from(CocoaError(.fileReadNoPermission), path: entry.trashRoot.path)])
+        try await capture(model, name: "macos-trash-access-required", output: output, dark: true)
+        model.trashInventory = inventory
         try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: entry.url.appendingPathComponent("locked").path)
         // Only this identity-checked fixture is ever authorized for permanent removal.
         let reviewed = TrashInventory(items: [entry], issues: inventory.issues)
@@ -69,5 +76,25 @@ import StorageCore
     }
     private static func failure(_ message: String) -> NSError {
         NSError(domain: "StorageScope.ExplorerTrashValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    private static func capture(_ model: AppModel, name: String, output: String, dark: Bool) async throws {
+        let destination = URL(fileURLWithPath: output).appendingPathComponent("storagescope-packaged-ui")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let view = EmptyTrashView().environmentObject(model).environment(\.colorScheme, dark ? .dark : .light)
+            .frame(width: 760, height: 620).background(Color(nsColor: .windowBackgroundColor))
+        let hosting = NSHostingView(rootView: view)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 620), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = hosting
+        window.makeKeyAndOrderFront(nil)
+        hosting.frame = NSRect(x: 0, y: 0, width: 760, height: 620)
+        hosting.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(150))
+        guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { throw CocoaError(.fileWriteUnknown) }
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+        try data.write(to: destination.appendingPathComponent(name + ".png"))
     }
 }
