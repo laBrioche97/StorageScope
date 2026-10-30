@@ -42,18 +42,23 @@ import StorageCore
               before.snapshot.scanID == fixture.scanID, before.generation == fixture.generation,
               before.snapshot.completedAt == fixture.completedAt,
               try await store.indexedChildren(of: fixture.root.appendingPathComponent("Documents/deep"))?.count == 2305 else { throw CocoaError(.fileReadCorruptFile) }
+        print("REPLAY baseline: root=\(fixture.root.path), checkpoint=\(String(describing: before.checkpoint)), newFileExists=\(FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent("added-between-versions.bin").path))")
         // Check the updater's durable data independently of mounted-volume UI
         // discovery: the disposable subdirectory is not a real mounted disk.
         // Actual AppModel restoration/navigation is covered by the installed
         // WindowGroup performance/interaction check after discovery has settled.
         let state = try await withThrowingTaskGroup(of: TreeIndexState.self) { group in
             group.addTask {
-                for await event in PersistentScanSynchronizer.synchronize(root: fixture.root, volumeID: fixture.volumeID) {
+                for await event in PersistentScanSynchronizer.synchronize(root: fixture.root, volumeID: fixture.volumeID, observeChanges: { batch in
+                    print("REPLAY batch source=\(batch.source): \(batch.changes.prefix(8).map { "\($0.id):\($0.flags):\($0.path)" })")
+                }) {
                     switch event {
-                    case .updated(let state, settled: true):
-                        if state.snapshot.progress.filesScanned == 2306 { return state }
+                    case .updated(let state, let settled):
+                        print("REPLAY state: files=\(state.snapshot.progress.filesScanned), settled=\(settled), pending=\(state.pending.count), issues=\(state.snapshot.issues.prefix(3).map(\.message))")
+                        if settled && state.snapshot.progress.filesScanned == 2306 { return state }
                     case .status(.requiresScan, let message):
                         throw NSError(domain: "StorageScope.IndexUpgrade", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+                    case .status(_, let message): print("REPLAY status: \(message)")
                     default: break
                     }
                 }

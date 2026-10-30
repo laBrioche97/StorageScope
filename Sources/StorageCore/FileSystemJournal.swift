@@ -89,7 +89,10 @@ public final class FileSystemJournal: @unchecked Sendable {
                 var context = FSEventStreamContext(version: 0, info: callback.toOpaque(), retain: nil, release: { pointer in
                     if let pointer { Unmanaged<JournalCallback>.fromOpaque(pointer).release() }
                 }, copyDescription: nil)
-                let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagWatchRoot | kFSEventStreamCreateFlagNoDefer)
+                // Persistent journal chunks can straddle the saved cursor. FullHistory
+                // includes that overlap after a process restart; replacements below
+                // re-read the actual directory and are deliberately idempotent.
+                let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagWatchRoot | kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagFullHistory)
                 guard let stream = FSEventStreamCreateRelativeToDevice(nil, { _, context, count, paths, flags, ids in
                     guard let context else { return }
                     let callback = Unmanaged<JournalCallback>.fromOpaque(context).takeUnretainedValue()
@@ -137,7 +140,7 @@ public enum TreeSynchronizationEvent: Sendable {
 }
 
 public enum PersistentScanSynchronizer {
-    public static func synchronize(root: URL, volumeID: String) -> AsyncStream<TreeSynchronizationEvent> {
+    public static func synchronize(root: URL, volumeID: String, observeChanges: (@Sendable (JournalBatch) -> Void)? = nil) -> AsyncStream<TreeSynchronizationEvent> {
         AsyncStream(bufferingPolicy: .bufferingNewest(8)) { continuation in
             let task = Task.detached(priority: .utility) {
                 let journal = FileSystemJournal()
@@ -156,6 +159,7 @@ public enum PersistentScanSynchronizer {
                     var caughtUp = Set<Int>()
                     for await batch in journal.events(checkpoint: checkpoint, catchUp: current) {
                         try Task.checkCancellation()
+                        observeChanges?(batch)
                         let invalid = UInt32(kFSEventStreamEventFlagUserDropped | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagEventIdsWrapped | kFSEventStreamEventFlagRootChanged | kFSEventStreamEventFlagUnmount)
                         guard !batch.changes.contains(where: { $0.flags & invalid != 0 }) else {
                             continuation.yield(.status(.requiresScan, "Le journal ne permet plus de confirmer tous les changements. Relancez une analyse complète.")); return
