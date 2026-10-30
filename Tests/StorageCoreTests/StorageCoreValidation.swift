@@ -140,6 +140,18 @@ func testVolumeCacheIsolation() async throws {
     let cacheFiles = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
     try expect(cacheFiles.count == 2,
         "Deux volumes doivent produire deux fichiers de cache distincts")
+    let durable = directory.appendingPathComponent("Application Support/Scans", isDirectory: true)
+    let upgraded = ScanCache(baseURL: durable, legacyBaseURL: directory)
+    let migrated = try await upgraded.load(volumeID: "volume-first")
+    try expect(migrated?.scanID == first.scanID && migrated?.completedAt == first.completedAt,
+        "La migration du résumé préserve l’analyse et sa date")
+    for file in cacheFiles { try FileManager.default.removeItem(at: file) }
+    let reopened = ScanCache(baseURL: durable)
+    let afterCachePurge = try await reopened.load(volumeID: "volume-first")
+    try expect(afterCachePurge?.scanID == first.scanID,
+        "Une purge des anciens caches après mise à jour ne doit pas effacer l’analyse durable")
+    let missing = try await reopened.load(volumeID: "unrelated-volume")
+    try expect(missing == nil, "La migration ne doit pas mélanger les stockages")
 }
 
 func testSelectionNormalization() throws {

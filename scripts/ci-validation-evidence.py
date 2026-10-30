@@ -43,10 +43,11 @@ if args.mode == 'create':
         update = json.loads((root / 'storagescope-update-validation/results.json').read_text())
         assert update['valid']['installedVersion'] == args.version
         assert update['valid']['realSparkleReplacement'] and update['valid']['newVersionStarts']
+        assert all(update['valid'][key] is True for key in ['completeIndexPreserved', 'incrementalChangesOnly', 'noAutomaticFullRescan'])
         for case in ['unsigned', 'invalid-signature', 'altered', 'interrupted', 'cancelled', 'read-only']:
             assert update[case]['rejected'] and update[case]['previousVersionPreserved']
         installed[runner] = {'os': proof['os'], 'architecture': proof['architecture'],
-            'packageSHA256': digest, 'trashVerified': True, 'updateVerified': True}
+            'packageSHA256': digest, 'trashVerified': True, 'updateVerified': True, 'indexUpgradeVerified': True}
     scan = json.loads((args.root / 'macos-native-interface-xcode-27/storagescope-scan-comparison/results.json').read_text())
     assert scan['identicalCoverageAndTotals'] and scan['singleFileReplayExact']
     assert scan['candidateToReferenceRatio'] <= scan['fullTreePersistenceBudgetRatio']
@@ -64,5 +65,6 @@ assert record['scanCoverageVerified'] is True and set(record['installed']) == se
 for proof in record['installed'].values():
     assert proof['architecture'] == 'arm64' and proof['packageSHA256'] == digest
     assert proof['trashVerified'] is True and proof['updateVerified'] is True
+    assert proof['indexUpgradeVerified'] is True
 print(json.dumps({'version': args.version, 'headSHA': args.head, 'allRequiredChecksVerified': True,
     'packageSHA256': digest, 'installedRunners': runners}))

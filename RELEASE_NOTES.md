@@ -1,8 +1,9 @@
-# StorageScope 3.7.1
+# StorageScope 3.7.2
 
-- Mac : les données tierces choisies explicitement dans Application Support, comme TabNine, disposent d’un parcours de mise à la corbeille avec avertissement sur les réglages et données locales. Elles restent exclues du nettoyage automatique. Les emplacements système, bibliothèques sensibles, dossiers cloud, jeux gérés et liens conservent leurs protections.
-- Corbeille : les entrées restent visibles lorsque leur taille ne peut pas être entièrement mesurée. Les accès refusés sont distingués d’une corbeille vide, avec un accès aux réglages de confidentialité et une actualisation au retour.
-- Affichage du contenu de la corbeille, tailles partielles explicites et correction du bouton de vidage : une seule confirmation, limitée aux éléments inventoriés et vérifiés. Un inventaire partiel ne donne jamais un faux bilan « Corbeille vidée ».
-- Vérification des identités avant chaque opération, historique local et protections de l’index persistant conservés.
+- Mac : l’index complet et le résumé restent dans Application Support, indépendamment de la version installée. Les anciens résumés en cache sont repris automatiquement lorsqu’ils existent.
+- La restauration précède toute première analyse automatique. Une taille inconnue dans un dossier ne relance plus une analyse complète lorsqu’une analyse enregistrée existe. Un problème de lecture est expliqué et journalisé, sans effacement ni reconstruction silencieuse de l’index.
+- Les changements connus du disque sont repris en arrière-plan depuis le journal macOS. La date et l’identité de l’analyse complète restent conservées lors d’une mise à jour. Si le journal est perdu, les anciens résultats restent disponibles et une nouvelle analyse est proposée explicitement.
+- Mac et Windows : bannière visible dès la détection d’une nouvelle version, bouton « Mettre à jour et redémarrer », et accès permanent avec le numéro de version même après « Plus tard ». Les offres conservées hors ligne et le report pendant une analyse sont expliqués dans l’interface.
+- Validation du remplacement réel de la version publiée 3.7.1 avec une arborescence de 2 305 fichiers, conservation de l’analyse et reprise des changements entre les versions. Les contrôles de signature, d’intégrité, d’annulation et de conservation de l’ancienne application restent actifs.
 
 Apple Silicon, macOS 14 minimum. Le paquet Mac reste une version de test sans Developer ID ni notarisation ; Windows reste sans Authenticode. Les mises à jour sont authentifiées et vérifiées. Aucun paquet Intel n’est publié.

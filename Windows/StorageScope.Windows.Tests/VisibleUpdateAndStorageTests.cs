@@ -85,6 +85,31 @@ internal static class VisibleUpdateAndStorageTests
         var tabs = (TabControl)window.FindName("MainTabs"); var chooser = (Border)window.FindName("StorageChooser");
         window.Show(); tabs.SelectedItem = window.FindName("ExplorerTab");
         try {
+            test("launch-time signed offer displays banner without a manual check; offline offer stays visible", () => {
+                using var key = RSA.Create(3072);
+                var manifest = new UpdateManifest(2, "9.9.9", 19041, "Nouvelle version de démonstration", "https://github.com/laBrioche97/StorageScope/releases/download/v9.9.9/StorageScope-Windows-Setup-DEVELOPMENT.exe", new string('a', 64), 8, "universal");
+                var payload = JsonSerializer.SerializeToUtf8Bytes(manifest);
+                var signature = key.SignData(payload, HashAlgorithmName.SHA256, RSASignaturePadding.Pss);
+                var release = JsonSerializer.SerializeToUtf8Bytes(new { draft = false, prerelease = false, tag_name = "v9.9.9", assets = new[] {
+                    new { name = "windows-update.json", browser_download_url = "https://github.com/laBrioche97/StorageScope/releases/download/v9.9.9/windows-update.json" },
+                    new { name = "windows-update.json.sig", browser_download_url = "https://github.com/laBrioche97/StorageScope/releases/download/v9.9.9/windows-update.json.sig" } } });
+                var offline = false;
+                using var client = new HttpClient(new Handler(request => {
+                    if (offline) throw new HttpRequestException("fixture offline");
+                    return new(HttpStatusCode.OK) { Content = new ByteArrayContent(request.RequestUri!.Host == "api.github.com" ? release : request.RequestUri.AbsolutePath.EndsWith(".sig") ? signature : payload) };
+                }));
+                var service = new UpdateService(client, Path.Combine(root, "ui-offer", "state"), key.ExportSubjectPublicKeyInfoPem());
+                var field = typeof(MainWindow).GetField("_updates", flags)!; var original = field.GetValue(window);
+                try {
+                    field.SetValue(window, service);
+                    Pump(Invoke("CheckForUpdatesAsync", false));
+                    Require(((Border)window.FindName("UpdateBanner")).Visibility == Visibility.Visible);
+                    Require(((Button)window.FindName("UpdateStatusButton")).Content.ToString()!.Contains("9.9.9"));
+                    offline = true; Pump(Invoke("CheckForUpdatesAsync", false));
+                    Require(((Border)window.FindName("UpdateBanner")).Visibility == Visibility.Visible);
+                    Require(((TextBlock)window.FindName("UpdateAvailabilityText")).Text.Contains("dernière vérification"));
+                } finally { field.SetValue(window, original); }
+            });
             test("multi-storage entry presents accessible cards with unknown capacity explicitly", () => {
                 Pump(Invoke("EnterExplorerAsync")); Require(chooser.Visibility == Visibility.Visible && second.CapacityLabel.Contains("indisponible"));
                 Require(((ItemsControl)window.FindName("StorageChoices")).Items.Count == 2);
@@ -126,6 +151,13 @@ internal static class VisibleUpdateAndStorageTests
                 typeof(MainWindow).GetMethod("SetScanning", flags)!.Invoke(window, [true]);
                 var icon = (Button)window.FindName("UpdateStatusButton"); Require(!icon.IsEnabled && AutomationProperties.GetName(icon).Contains("après l’analyse"));
                 typeof(MainWindow).GetMethod("SetScanning", flags)!.Invoke(window, [false]); Require(icon.IsEnabled && AutomationProperties.GetName(icon).Contains("9.9.9"));
+                Require(icon.Content.ToString()!.Contains("Mise à jour 9.9.9"));
+                var banner = (Border)window.FindName("UpdateBanner");
+                banner.Visibility = Visibility.Visible;
+                ((TextBlock)window.FindName("UpdateText")).Text = "StorageScope 9.9.9 est disponible.";
+                Capture(window, destination, "windows-update-banner.png");
+                typeof(MainWindow).GetMethod("DismissUpdate_Click", flags)!.Invoke(window, [window, new RoutedEventArgs()]);
+                Require(banner.Visibility == Visibility.Collapsed && icon.Content.ToString()!.Contains("9.9.9"));
             });
             test("offline Epic guide shows both real-image presentations without launching or deleting", () => {
                 var guide = new EpicGuideWindow("Jeu de démonstration") { ShowInTaskbar = false, ShowActivated = false, Left = -20000, Top = -20000, Width = 740, Height = 560 };

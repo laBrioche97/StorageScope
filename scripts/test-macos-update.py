@@ -17,6 +17,7 @@ import socket
 import threading
 import time
 import urllib.request
+import urllib.parse
 
 assert os.environ.get('GITHUB_ACTIONS') == 'true'
 root = Path(os.environ['RUNNER_TEMP']) / 'storagescope-update-validation'
@@ -32,6 +33,7 @@ previous_build = str(int(build) - 1)
 # rather than only changing the candidate's version metadata.
 previous_app = root / 'published-previous' / 'StorageScope.app'
 previous_release = {
+    '3.7.2': ('3.7.1', 'StorageScope-arm64.zip', '447408c769d5eb36f9147b158abb523abc6d8250e3370e392e3295c40f295637'),
     '3.7.1': ('3.7.0', 'StorageScope-arm64.zip', '8554d83ba42f7f046388dff332396beda53727fb789ceaeec0bf3dc1f69304e0'),
     '3.7.0': ('3.6.1', 'StorageScope-arm64.zip', '80a9a9d7db76b317c33ddb508a145ccc966eb8cf4dbb38665761231c6859a7cf'),
     '3.6.1': ('3.6.0', 'StorageScope-arm64.zip', '3b69da0bbe90698f54c98d5e4f92f2d2b9c0643bf55c39370278fce160aff693'),
@@ -130,6 +132,14 @@ def launch_scenario(name, should_succeed):
     events = folder / 'events.log'
     environment = dict(os.environ, STORAGESCOPE_ISOLATED_VALIDATION='1', STORAGESCOPE_UPDATE_VALIDATION_RESULT=str(events))
     if name == 'cancelled': environment['STORAGESCOPE_UPDATE_VALIDATION_CANCEL'] = '1'
+    index_fixture = root / 'index-upgrade-fixture.json'
+    if should_succeed:
+        environment['STORAGESCOPE_INDEX_UPGRADE_FIXTURE'] = str(index_fixture)
+        subprocess.run(['dist/StorageScope.app/Contents/MacOS/StorageScope', '--prepare-index-upgrade'],
+            env=environment, check=True, timeout=45)
+        fixture = json.loads(index_fixture.read_text())
+        fixture_root = Path(urllib.parse.unquote(urllib.parse.urlparse(fixture['root']).path))
+        (fixture_root / 'added-between-versions.bin').write_bytes(b'Incremental change while the app is closed')
     output = (folder / 'process.log').open('w')
     process = subprocess.Popen([str(app / 'Contents/MacOS/StorageScope')], env=environment, stdout=output, stderr=output)
     try:
@@ -141,8 +151,14 @@ def launch_scenario(name, should_succeed):
                 process.wait(timeout=30)
                 subprocess.run([str(app / 'Contents/MacOS/StorageScope'), '--verify-installation'], check=True, timeout=35, stdout=output, stderr=output)
                 assert 'accepted' in content and 'ready' in content
+                subprocess.run([str(app / 'Contents/MacOS/StorageScope'), '--verify-index-upgrade'],
+                    env=environment, check=True, timeout=40, stdout=output, stderr=output)
+                index_proof = json.loads((root / 'index-upgrade-result.json').read_text())
+                assert all(index_proof[key] for key in ['completeTreePreserved', 'originalScanIDPreserved',
+                    'originalScanDatePreserved', 'incrementalChangesApplied', 'noAutomaticFullRescan'])
                 return {'installedVersion':version, 'realSparkleReplacement':True, 'newVersionStarts':True,
-                    'previousPublishedExecutable': previous_version if from_published else None}
+                    'previousPublishedExecutable': previous_version if from_published else None,
+                    'completeIndexPreserved':True, 'incrementalChangesOnly':True, 'noAutomaticFullRescan':True}
             if not should_succeed and ('failed:' in content or name == 'cancelled' and 'cancelled' in content):
                 assert current == previous_build, 'Failed verification must leave the old application in place'
                 return {'rejected':True, 'previousVersionPreserved':True}

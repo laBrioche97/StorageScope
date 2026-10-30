@@ -189,6 +189,7 @@ jobs:
             ${{ runner.temp }}/storagescope-packaged-ui/*.png
             ${{ runner.temp }}/storagescope-packaged-ui/*.json
             ${{ runner.temp }}/storagescope-update-validation/results.json
+            ${{ runner.temp }}/storagescope-update-validation/index-upgrade-result.json
             ${{ runner.temp }}/storagescope-update-validation/*/events.log
             ${{ runner.temp }}/storagescope-update-validation/*/process.log
           if-no-files-found: warn

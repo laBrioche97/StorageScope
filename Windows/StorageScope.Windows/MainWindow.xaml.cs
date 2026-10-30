@@ -610,7 +610,7 @@ public partial class MainWindow : Window
             {
                 UpdateText.Text = $"StorageScope {_availableUpdate.Version} est disponible.\n{_availableUpdate.Notes}" + (string.IsNullOrWhiteSpace(UpdateService.ExpectedPublisher) && string.IsNullOrWhiteSpace(_availableUpdate.AuthenticodePublisher) ? "\nPaquet vérifié par la clé de mise à jour StorageScope ; sans signature Authenticode Windows. Windows peut demander une confirmation." : "");
                 InstallUpdateButton.Content = "Mettre à jour et redémarrer";
-                UpdateBanner.Visibility = manual ? Visibility.Visible : Visibility.Collapsed;
+                UpdateBanner.Visibility = Visibility.Visible;
             }
             else if (_updates.ManualDownloadUrl is not null)
             {
@@ -662,8 +662,9 @@ public partial class MainWindow : Window
             : _updateError ?? (_availableUpdate is not null ? $"Mettre à jour vers {_availableUpdate.Version} et redémarrer"
                 + (_updates.UsingCachedOffer ? " · offre de la dernière vérification, connexion requise" : "") : _updates.Status);
         if (_availableUpdate is not null && (_busy || _scanning) && !_installingUpdate) text += " · Disponible après l’analyse ou l’opération en cours.";
-        UpdateStatusButton.Content = _installingUpdate || _checkingUpdate ? "↻" : _availableUpdate is not null ? "⬆" : _updates.IsOffline || _updateError is not null ? "☁" : "✓";
+        UpdateStatusButton.Content = _installingUpdate || _checkingUpdate ? "↻" : _availableUpdate is not null ? $"⬆ Mise à jour {_availableUpdate.Version}" : _updates.IsOffline || _updateError is not null ? "☁" : "✓";
         UpdateStatusButton.ToolTip = text;
+        UpdateAvailabilityText.Text = text;
         System.Windows.Automation.AutomationProperties.SetName(UpdateStatusButton, text);
         UpdateStatusButton.IsEnabled = !_checkingUpdate && !_installingUpdate && !(_availableUpdate is not null && (_busy || _scanning));
         InstallUpdateButton.IsEnabled = !_busy && !_scanning && !_installingUpdate;

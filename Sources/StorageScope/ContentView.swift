@@ -50,7 +50,11 @@ struct ContentView: View {
                 Button("Afficher ou masquer la navigation", systemImage: "sidebar.left") { sidebarVisible.toggle() }.labelStyle(.iconOnly)
                 BriocheLogo().frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 9)).accessibilityHidden(true)
                 Text(AppIdentity.title).font(.system(.title3, design: .rounded, weight: .bold)).lineLimit(1)
-                Button { updates.activate() } label: { Image(systemName: updates.symbol) }
+                Button { updates.activate() } label: {
+                    if let version = updates.availableVersion {
+                        Label("Mise à jour \(version)", systemImage: updates.symbol).fontWeight(.semibold)
+                    } else { Image(systemName: updates.symbol) }
+                }
                     .help(updates.status).accessibilityLabel(updates.status)
                     .disabled(updates.checking || updates.installing || (updates.availableVersion != nil && model.operationsAreBusy))
                 if updates.installing {
@@ -63,6 +67,23 @@ struct ContentView: View {
                 }.labelStyle(.titleAndIcon).controlSize(.small)
                     .help("Corbeille du compte courant sur les stockages locaux · voir la taille et vider")
             }.padding(.horizontal, 16).padding(.vertical, 8)
+            if updates.showsOffer, let version = updates.availableVersion {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("StorageScope \(version) est disponible", systemImage: "arrow.down.circle.fill")
+                        .font(.headline).foregroundStyle(AppTheme.accent)
+                    Text(updates.offerDetail).font(.callout).fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Button("Mettre à jour et redémarrer") { updates.activate() }
+                            .buttonStyle(.borderedProminent).disabled(!updates.canInstallOffer)
+                            .accessibilityIdentifier("install-available-update")
+                        Button("Plus tard") { updates.dismissOffer() }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                .background(AppTheme.accent.opacity(colorScheme == .dark ? 0.18 : 0.08))
+                .overlay(alignment: .leading) { Rectangle().fill(AppTheme.accent).frame(width: 4) }
+                .accessibilityElement(children: .contain).accessibilityIdentifier("available-update-banner")
+            }
             HStack(spacing: 0) {
                 if sidebarVisible && !compactWindow { sidebarNavigation; Divider() }
                 sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity)

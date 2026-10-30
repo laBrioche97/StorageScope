@@ -10,9 +10,10 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     @Published private(set) var checking = false
     @Published private(set) var installing = false
     @Published private(set) var availableVersion: String?
-    @Published private(set) var status = "Mises à jour indisponibles dans cette distribution non signée."
+    @Published private(set) var status = "Mises à jour non configurées dans cette distribution."
     @Published private(set) var progress: Double = 0
     @Published private(set) var canCancel = false
+    @Published private(set) var dismissedVersion: String?
     private var updater: SPUUpdater?
     private var postponedInstallation: (() -> Void)?
     private var cancellation: (() -> Void)?
@@ -24,7 +25,14 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     private var hasChecked = false
     private var startupProbe: Task<Void, Never>?
     private(set) var checksStarted = 0
-    var isBusy = false
+    @Published private(set) var isBusy = false
+    var showsOffer: Bool { availableVersion != nil && availableVersion != dismissedVersion && !installing }
+    var canInstallOffer: Bool { isConfigured && availableVersion != nil && !checking && !installing && !isBusy }
+    func dismissOffer() { dismissedVersion = availableVersion }
+    var offerDetail: String {
+        if isBusy { return "Disponible après l’analyse ou l’opération en cours. Votre analyse enregistrée sera conservée." }
+        return status + " Votre analyse enregistrée sera conservée."
+    }
     var symbol: String {
         if checking || installing { return "arrow.triangle.2.circlepath" }
         if availableVersion != nil { return "arrow.down.circle.fill" }
@@ -84,15 +92,22 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     func activityChanged(_ busy: Bool) {
         isBusy = busy
         if busy, availableVersion != nil, !installing { status = "Mise à jour disponible après l’analyse ou l’opération en cours." }
+        if !busy, let availableVersion, !checking, !installing {
+            status = offline ? "Version \(availableVersion) · offre conservée, à revalider en ligne." : "Mettre à jour vers \(availableVersion) et redémarrer."
+        }
         if !busy, let resume = postponedInstallation { postponedInstallation = nil; waitingForWork = false; resume() }
     }
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         guard !item.isInformationOnlyUpdate else { availableVersion = nil; status = "La nouvelle version ne dispose pas d’un paquet compatible installable automatiquement."; return }
-        availableVersion = item.displayVersionString
+        presentOffer(version: item.displayVersionString)
+    }
+    func presentOffer(version: String) {
+        if availableVersion != version { dismissedVersion = nil }
+        availableVersion = version
         hasChecked = true; detectionFailed = false
-        UserDefaults.standard.set(item.displayVersionString, forKey: "lastUpdateOffer")
+        UserDefaults.standard.set(version, forKey: "lastUpdateOffer")
         UserDefaults.standard.set(Date(), forKey: "lastUpdateOfferDate")
-        status = "Mettre à jour vers \(item.displayVersionString) et redémarrer"
+        status = "Mettre à jour vers \(version) et redémarrer"
     }
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
         availableVersion = nil; UserDefaults.standard.removeObject(forKey: "lastUpdateOffer")
@@ -137,7 +152,7 @@ final class SoftwareUpdates: NSObject, ObservableObject, SPUUpdaterDelegate, SPU
     func showUpdateReleaseNotes(with downloadData: SPUDownloadData) { }
     func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) { }
     func showUpdateNotFoundWithError(_ error: Error, acknowledgement: @escaping () -> Void) { checking = false; installRequested = false; acknowledgement() }
-    func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) { PackagedValidation.recordUpdate("failed:" + String(describing: error)); LocalDiagnostics.shared.record(action: "installation de mise à jour", error: error); installing = false; checking = false; installRequested = false; status = "Mise Ã  jour interrompue : \(error.localizedDescription)"; acknowledgement() }
+    func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) { PackagedValidation.recordUpdate("failed:" + String(describing: error)); LocalDiagnostics.shared.record(action: "installation de mise à jour", error: error); installing = false; checking = false; installRequested = false; status = "Mise à jour interrompue : \(error.localizedDescription)"; acknowledgement() }
     func showDownloadInitiated(cancellation: @escaping () -> Void) { PackagedValidation.recordUpdate("downloading"); self.cancellation = cancellation; canCancel = true; expected = 0; received = 0; status = "Téléchargement de la mise à jour…" }
     func showDownloadDidReceiveExpectedContentLength(_ expectedContentLength: UInt64) { expected = expectedContentLength }
     func showDownloadDidReceiveData(ofLength length: UInt64) {

@@ -3,29 +3,36 @@ import Foundation
 public actor ScanCache {
     private let baseURL: URL
     private let fixedFileURL: URL?
+    private let legacyBaseURL: URL?
 
     public init(fileURL: URL? = nil) {
         if let fileURL {
             self.fixedFileURL = fileURL
             self.baseURL = fileURL.deletingLastPathComponent()
+            self.legacyBaseURL = nil
         } else {
-            let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            // Scan results are user data, not purgeable caches. Their location
+            // deliberately contains neither the application version nor bundle path.
+            let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
             self.baseURL = base.appendingPathComponent("StorageScope/Scans", isDirectory: true)
             self.fixedFileURL = nil
+            self.legacyBaseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("StorageScope/Scans", isDirectory: true)
         }
     }
 
     /// Injectable directory used by tests and by hosts that manage their own cache root.
     /// Files remain separated by the encoded volume identifier exactly like the default cache.
-    public init(baseURL: URL) {
+    public init(baseURL: URL, legacyBaseURL: URL? = nil) {
         self.baseURL = baseURL
         self.fixedFileURL = nil
+        self.legacyBaseURL = legacyBaseURL
     }
 
     public func save(_ snapshot: ScanSnapshot) throws {
         let fileURL = fileURL(for: snapshot.volumeID)
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // Keep the last scan useful but bounded: it is a stale overview, not a permanent database.
+        // The durable overview is bounded; the separate SQLite tree is complete.
         let cachedPaths = Set(snapshot.topDirectories.prefix(500).map { $0.url.standardizedFileURL.path } + [snapshot.root.standardizedFileURL.path])
         let compact = ScanSnapshot(
             root: snapshot.root,
@@ -43,6 +50,8 @@ public actor ScanCache {
         )
         let data = try JSONEncoder().encode(compact)
         try data.write(to: fileURL, options: .atomic)
+        if fixedFileURL == nil { try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: baseURL.path) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
     public func load() throws -> ScanSnapshot? {
@@ -55,6 +64,18 @@ public actor ScanCache {
         if let fixedFileURL { return try decode(at: fixedFileURL) }
         if let snapshot = try decode(at: fileURL(for: volumeID)), snapshot.volumeID == volumeID {
             return snapshot
+        }
+        if let legacyBaseURL {
+            // Decode synchronously within this actor: migration never deletes the
+            // old file, and only a matching volume can populate its durable record.
+            let encoded = fileURL(for: volumeID).lastPathComponent
+            let paths = [legacyBaseURL.appendingPathComponent(encoded), legacyBaseURL.deletingLastPathComponent().appendingPathComponent("last-scan.json")]
+            for path in paths {
+                if let snapshot = try decode(at: path), snapshot.volumeID == volumeID || snapshot.root.standardizedFileURL.path == volumeID {
+                    try save(snapshot)
+                    return snapshot
+                }
+            }
         }
         let legacy = baseURL.deletingLastPathComponent().appendingPathComponent("last-scan.json")
         guard let snapshot = try decode(at: legacy), snapshot.volumeID == volumeID || snapshot.root.standardizedFileURL.path == volumeID else { return nil }

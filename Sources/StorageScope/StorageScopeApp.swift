@@ -16,7 +16,10 @@ struct StorageScopeApp: App {
                 .onChange(of: updates.installing) { _, busy in model.updateIsWorking = busy }
                 .task {
                     PackagedValidation.recordUpdate("application-started-v" + AppIdentity.version)
-                    if CommandLine.arguments.contains("--verify-explorer-trash") {
+                    if CommandLine.arguments.contains("--prepare-index-upgrade") || CommandLine.arguments.contains("--verify-index-upgrade") {
+                        do { try await IndexUpgradeValidation.run(model: model, prepare: CommandLine.arguments.contains("--prepare-index-upgrade")); exit(0) }
+                        catch { print("Index upgrade validation failed: \(error)"); exit(1) }
+                    } else if CommandLine.arguments.contains("--verify-explorer-trash") {
                         do { try await ExplorerTrashValidation.run(model: model); exit(0) }
                         catch { print("Explorer trash validation failed: \(error)"); exit(1) }
                     } else if CommandLine.arguments.contains("--verify-application-removal") {

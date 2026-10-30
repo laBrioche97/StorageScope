@@ -33,7 +33,8 @@ class EvidenceTests(unittest.TestCase):
                 'realExplorerConfirmation', 'ordinaryCleanupRemainsBlocked', 'actualSystemRecycle', 'unreadableTrashEntryRetained',
                 'unknownSizeNotZero', 'onlyDisposableFixtureEmptied', 'replacedFolderPreserved']}})
             self.write(base + 'storagescope-update-validation/results.json', {'valid': {'installedVersion': '3.7.1',
-                'realSparkleReplacement': True, 'newVersionStarts': True}, **{key: {'rejected': True, 'previousVersionPreserved': True}
+                'realSparkleReplacement': True, 'newVersionStarts': True, 'completeIndexPreserved': True,
+                'incrementalChangesOnly': True, 'noAutomaticFullRescan': True}, **{key: {'rejected': True, 'previousVersionPreserved': True}
                 for key in ['unsigned', 'invalid-signature', 'altered', 'interrupted', 'cancelled', 'read-only']}})
 
     def write(self, name, value):
@@ -80,6 +81,16 @@ class EvidenceTests(unittest.TestCase):
         record['installed']['macos-26']['trashVerified'] = False
         self.write('ci-validation.json', record)
         self.assertNotEqual(self.run_check('verify'), 0)
+
+
+    def test_lost_index_or_full_rescan_during_upgrade_rejected(self):
+        name = 'macos-package-proof-macos-26/storagescope-update-validation/results.json'
+        original = json.loads((self.root / name).read_text())
+        for key in ['completeIndexPreserved', 'incrementalChangesOnly', 'noAutomaticFullRescan']:
+            record = copy.deepcopy(original)
+            record['valid'][key] = False
+            self.write(name, record)
+            self.assertNotEqual(self.run_check('create'), 0)
 
 
 if __name__ == '__main__':

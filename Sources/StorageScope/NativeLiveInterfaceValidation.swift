@@ -34,6 +34,24 @@ enum NativeLiveInterfaceValidation {
         }
         try await CategoryLayoutValidation.run(model: model, window: window, destination: destination)
         try await ExplorerPerformanceValidation.run(model: model, window: window, destination: destination)
+        let previousOffer = UserDefaults.standard.object(forKey: "lastUpdateOffer")
+        let previousOfferDate = UserDefaults.standard.object(forKey: "lastUpdateOfferDate")
+        defer { UserDefaults.standard.set(previousOffer, forKey: "lastUpdateOffer"); UserDefaults.standard.set(previousOfferDate, forKey: "lastUpdateOfferDate") }
+        updates.presentOffer(version: "9.9.9")
+        guard updates.showsOffer else { throw CocoaError(.fileReadUnknown) }
+        for dark in [false, true] {
+            window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            window.setContentSize(NSSize(width: 740, height: 560))
+            try await Task.sleep(for: .milliseconds(200))
+            guard let view = window.contentView?.superview,
+                  let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.fileWriteUnknown) }
+            view.layoutSubtreeIfNeeded(); view.cacheDisplay(in: view.bounds, to: bitmap)
+            try bitmap.representation(using: .png, properties: [:])?.write(to: destination.appendingPathComponent("macos-update-banner-\(dark ? "dark" : "light").png"))
+        }
+        updates.activityChanged(true)
+        guard updates.showsOffer, !updates.canInstallOffer else { throw CocoaError(.fileReadUnknown) }
+        updates.activityChanged(false); updates.dismissOffer()
+        guard !updates.showsOffer, updates.availableVersion != nil else { throw CocoaError(.fileReadUnknown) }
         print("PASS live installed WindowGroup, native toolbar, application inventory and keyboard focus")
     }
 }

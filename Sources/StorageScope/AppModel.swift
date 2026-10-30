@@ -1043,21 +1043,60 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @Published private(set) var isRestoringIndex = false
+    private var restoredIndexVolumeID: String?
+    private var indexRestoreFailed = false
+    private var indexRestoreGeneration = UUID()
+
     func restoreLastScan() async {
         guard !isPreviewMode, let volume = selectedVolume else { return }
         let generation = scanGeneration
-        let restored = await Task.detached(priority: .userInitiated) { () -> ScanSnapshot? in
-            if let store = try? DirectoryIndexStore(volumeID: volume.id, root: volume.url), let state = try? await store.treeState() { return state.snapshot }
-            return nil
+        let restoreGeneration = UUID(); indexRestoreGeneration = restoreGeneration
+        isRestoringIndex = true
+        defer { if indexRestoreGeneration == restoreGeneration { isRestoringIndex = false } }
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<ScanSnapshot?, Error> in
+            do {
+                let store = try DirectoryIndexStore(volumeID: volume.id, root: volume.url)
+                return .success(try await store.treeState()?.snapshot)
+            } catch { return .failure(error) }
         }.value
-        var legacy = restored == nil ? (try? await cache.load(volumeID: volume.id)) : nil
+        let restored: ScanSnapshot?
+        var restorationError: Error?
+        switch result {
+        case .success(let value): restored = value
+        case .failure(let error): restored = nil; restorationError = error
+        }
+        var legacy: ScanSnapshot?
+        if restored == nil {
+            do { legacy = try await cache.load(volumeID: volume.id) }
+            catch { restorationError = restorationError ?? error }
+        }
         if legacy == nil, restored == nil, let oldID = volume.legacyCacheID { legacy = try? await cache.load(volumeID: oldID) }
         if let old = legacy, old.volumeID != volume.id {
             legacy = ScanSnapshot(root: old.root, progress: old.progress, topFiles: old.topFiles, topDirectories: old.topDirectories, directoryContents: old.directoryContents, issues: old.issues, cleanupReport: old.cleanupReport, completedAt: old.completedAt, scanID: old.scanID, volumeID: volume.id, indexVersion: old.indexVersion, categoryReport: old.categoryReport)
         }
-        guard !Task.isCancelled, generation == scanGeneration, selectedVolumeID == volume.id, !isScanning else { return }
+        guard !Task.isCancelled, generation == scanGeneration, indexRestoreGeneration == restoreGeneration, selectedVolumeID == volume.id, !isScanning else { return }
+        restoredIndexVolumeID = volume.id
+        indexRestoreFailed = restorationError != nil
         if snapshot == nil { snapshot = restored ?? (legacy?.root.standardizedFileURL.path == volume.url.standardizedFileURL.path ? legacy : nil) }
+        if let restorationError {
+            LocalDiagnostics.shared.record(action: "restauration de l’index conservé", error: restorationError)
+            indexFreshness = .requiresScan; scanNeedsRefresh = true
+            indexStatusMessage = "L’analyse enregistrée est conservée mais ne peut pas être lue. Vérifiez les accès ; aucune nouvelle analyse complète n’a été lancée."
+            return
+        }
         resumeIndexSynchronization()
+    }
+
+    private func analyzeUnindexedVolumeIfNeeded(_ volumeID: String) async {
+        // Missing sizes in one folder never invalidate a completed disk scan.
+        // Finish restoration before considering the very first automatic scan.
+        if restoredIndexVolumeID != volumeID || isRestoringIndex { await restoreLastScan() }
+        guard selectedVolumeID == volumeID, restoredIndexVolumeID == volumeID,
+              !isRestoringIndex, !indexRestoreFailed, snapshot?.completedAt == nil,
+              !isScanning, !operationsAreBusy, !autoScanAttempts.contains(volumeID) else { return }
+        autoScanAttempts.insert(volumeID)
+        startScan()
     }
 
     func open(_ item: FileSystemItem) { NSWorkspace.shared.open(item.url) }
@@ -1182,7 +1221,7 @@ final class AppModel: ObservableObject {
                             explorerIssues = issues
                             if cached?.items != view.items || cached?.layout != layout { publishExplorerView(view, directory: directory, back: back, animate: cached == nil, recordHistory: recordHistory) }
                             else { bubbleFrame = frame }
-                            if frame.totalBytes == nil, !isScanning, !operationsAreBusy, !autoScanAttempts.contains(volume.id) { autoScanAttempts.insert(volume.id); startScan() }
+                            if frame.totalBytes == nil { await analyzeUnindexedVolumeIfNeeded(volume.id) }
                         } catch { if isCurrent() { bubbleMessage = error.localizedDescription } }
                     case .cancelled: return
                     }
@@ -1513,9 +1552,7 @@ extension AppModel {
                 bubbleFrame = frame
                 if frame.totalBytes == nil {
                     bubbleMessage = isScanning ? "Analyse du disque… Les tailles se précisent en arrière-plan." : "Tailles des dossiers inconnues. Analysez le disque pour compléter le graphique."
-                    if !isScanning, !operationsAreBusy, !autoScanAttempts.contains(volumeID) {
-                        autoScanAttempts.insert(volumeID); startScan()
-                    }
+                    await analyzeUnindexedVolumeIfNeeded(volumeID)
                 } else { bubbleMessage = (frame.isPartial ? "Analyse partielle" : "Tailles mesurées") + " · Dossiers et fichiers de ce niveau" }
             } catch is CancellationError { }
             catch { LocalDiagnostics.shared.record(action: "graphique de l’explorateur", error: error); if bubbleGeneration == generation { bubbleFrame = nil; bubbleMessage = "Graphique indisponible. La liste reste accessible." } }
