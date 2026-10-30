@@ -49,6 +49,22 @@ jobs:
       - name: Build all targets with warnings as errors
         run: swift build --disable-sandbox -Xswiftc -warnings-as-errors
 
+      - name: Verify persisted index across separate processes
+        env:
+          STORAGESCOPE_INDEX_UPGRADE_FIXTURE: ${{ runner.temp }}/index-restart/fixture.json
+        run: |
+          mkdir -p "$RUNNER_TEMP/index-restart"
+          BINARY="$(swift build --show-bin-path)/StorageScope"
+          "$BINARY" --prepare-index-upgrade
+          python3 - <<'PY'
+          import json, os, urllib.parse
+          from pathlib import Path
+          fixture = json.loads(Path(os.environ['STORAGESCOPE_INDEX_UPGRADE_FIXTURE']).read_text())
+          root = Path(urllib.parse.unquote(urllib.parse.urlparse(fixture['root']).path))
+          (root / 'added-between-versions.bin').write_bytes(b'Change between processes')
+          PY
+          "$BINARY" --verify-index-upgrade
+
       - name: Run StorageCore validations
         run: |
           TEST_BINARY="$(swift build --disable-sandbox --product StorageCoreTests --show-bin-path)/StorageCoreTests"

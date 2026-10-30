@@ -48,7 +48,8 @@ public struct JournalCheckpoint: Codable, Equatable, Sendable {
 
     public func matches(_ current: JournalCheckpoint) -> Bool {
         rootFingerprint == current.rootFingerprint && sources.count == current.sources.count && zip(sources, current.sources).allSatisfy {
-            $0.uuid == $1.uuid && $0.mountPath == $1.mountPath && $0.watchPath == $1.watchPath
+            $0.uuid == $1.uuid && $0.mountPath == $1.mountPath && $0.watchPath == $1.watchPath &&
+            $0.cursor != UInt64.max && $1.cursor != UInt64.max && $0.cursor <= $1.cursor
         }
     }
 }
