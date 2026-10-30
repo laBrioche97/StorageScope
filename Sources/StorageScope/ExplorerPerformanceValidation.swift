@@ -90,6 +90,19 @@ import StorageCore
         guard model.currentDirectory == second, model.explorerItems.count == 1001 else {
             throw validationFailure("Actualisation du cache : attendu=1001, éléments=\(model.explorerItems.count), affiché=\(model.currentDirectory?.path ?? "aucun")")
         }
+        let originalScanID = model.snapshot?.scanID
+        let originalCompletedAt = model.snapshot?.completedAt
+        let fresh = root.appendingPathComponent("just-created", isDirectory: true)
+        let unmeasured = fresh.appendingPathComponent("unmeasured-child", isDirectory: true)
+        try FileManager.default.createDirectory(at: unmeasured, withIntermediateDirectories: true)
+        try Data([2]).write(to: unmeasured.appendingPathComponent("new.bin"))
+        model.loadExplorerDirectory(fresh)
+        let freshDeadline = Date().addingTimeInterval(12)
+        while Date() < freshDeadline && (model.explorerIsLoading || model.currentDirectory != fresh) { try await Task.sleep(for: .milliseconds(5)) }
+        guard !model.isScanning, model.snapshot?.scanID == originalScanID,
+              model.snapshot?.completedAt == originalCompletedAt else {
+            throw validationFailure("Un dossier sans taille ne doit pas relancer l’analyse complète enregistrée.")
+        }
         print("PASS 1000-item cached navigation, actual native rows and external-change revalidation")
     }
     private static func validationFailure(_ message: String) -> NSError {

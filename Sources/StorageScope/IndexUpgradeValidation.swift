@@ -42,29 +42,33 @@ import StorageCore
               before.snapshot.scanID == fixture.scanID, before.generation == fixture.generation,
               before.snapshot.completedAt == fixture.completedAt,
               try await store.indexedChildren(of: fixture.root.appendingPathComponent("Documents/deep"))?.count == 2305 else { throw CocoaError(.fileReadCorruptFile) }
-        model.volumes = [StorageVolume(id: fixture.volumeID, url: fixture.root, name: "Upgrade fixture", capacity: 100000, available: 50000, isLocal: true, isInternal: true)]
-        model.selectedVolumeID = fixture.volumeID; model.snapshot = nil
-        await model.restoreLastScan()
-        guard model.snapshot?.scanID == fixture.scanID, !model.isScanning else { throw CocoaError(.fileReadCorruptFile) }
-        model.sidebar = .explorer
-        model.loadExplorerDirectory(fixture.root.appendingPathComponent("Documents/deep"))
-        let deadline = Date().addingTimeInterval(25)
-        while Date() < deadline && (model.indexFreshness != .current || model.snapshot?.progress.filesScanned != 2306 || model.explorerIsLoading) {
-            try await Task.sleep(for: .milliseconds(25))
+        // Check the updater's durable data independently of mounted-volume UI
+        // discovery: the disposable subdirectory is not a real mounted disk.
+        // Actual AppModel restoration/navigation is covered by the installed
+        // WindowGroup performance/interaction check after discovery has settled.
+        let state = try await withThrowingTaskGroup(of: TreeIndexState.self) { group in
+            group.addTask {
+                for await event in PersistentScanSynchronizer.synchronize(root: fixture.root, volumeID: fixture.volumeID) {
+                    switch event {
+                    case .updated(let state, settled: true):
+                        if state.snapshot.progress.filesScanned == 2306 { return state }
+                    case .status(.requiresScan, let message):
+                        throw NSError(domain: "StorageScope.IndexUpgrade", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+                    default: break
+                    }
+                }
+                throw CocoaError(.fileReadUnknown)
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(25))
+                throw NSError(domain: "StorageScope.IndexUpgrade", code: 2, userInfo: [NSLocalizedDescriptionKey: "Le journal n’a pas repris le fichier ajouté entre versions."])
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
         }
-        guard !model.isScanning, model.snapshot?.scanID == fixture.scanID,
-              model.snapshot?.completedAt == fixture.completedAt,
-              model.indexFreshness == .current, model.snapshot?.progress.filesScanned == 2306,
+        guard state.snapshot.scanID == fixture.scanID, state.generation == fixture.generation,
+              state.snapshot.completedAt == fixture.completedAt,
               try await store.indexedChildren(of: fixture.root)?.contains(where: { $0.name == "added-between-versions.bin" }) == true else { throw CocoaError(.fileReadCorruptFile) }
-        // A folder created after the baseline has no measured summary. Opening it
-        // must not turn a preserved disk index into a new full scan.
-        let fresh = fixture.root.appendingPathComponent("just-created", isDirectory: true)
-        let unmeasured = fresh.appendingPathComponent("unmeasured-child", isDirectory: true)
-        try FileManager.default.createDirectory(at: unmeasured, withIntermediateDirectories: true)
-        try Data([2]).write(to: unmeasured.appendingPathComponent("new.bin"))
-        model.loadExplorerDirectory(fresh)
-        try await Task.sleep(for: .milliseconds(500))
-        guard !model.isScanning, model.snapshot?.scanID == fixture.scanID else { throw CocoaError(.fileReadCorruptFile) }
         let report: [String: Any] = ["version": AppIdentity.version, "completeTreePreserved": true,
             "originalScanIDPreserved": true, "originalScanDatePreserved": true,
             "incrementalChangesApplied": true, "noAutomaticFullRescan": true, "filesBeyondOverviewLimit": 2305]
