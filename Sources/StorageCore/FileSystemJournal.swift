@@ -49,7 +49,7 @@ public struct JournalCheckpoint: Codable, Equatable, Sendable {
     public func matches(_ current: JournalCheckpoint) -> Bool {
         rootFingerprint == current.rootFingerprint && sources.count == current.sources.count && zip(sources, current.sources).allSatisfy {
             $0.uuid == $1.uuid && $0.mountPath == $1.mountPath && $0.watchPath == $1.watchPath &&
-            $0.cursor != UInt64.max && $1.cursor != UInt64.max && $0.cursor <= $1.cursor
+            $0.cursor != UInt64.max && $1.cursor != UInt64.max
         }
     }
 }
@@ -158,6 +158,8 @@ public enum PersistentScanSynchronizer {
                     continuation.yield(.status(.checking, "Vérification des changements depuis la dernière utilisation…"))
                     continuation.yield(.updated(state, settled: false))
                     var caughtUp = Set<Int>()
+                    var replayCompleted = false
+                    var queuedPaths: [TreeReplacement] = []
                     for await batch in journal.events(checkpoint: checkpoint, catchUp: current) {
                         try Task.checkCancellation()
                         observeChanges?(batch)
@@ -177,9 +179,17 @@ public enum PersistentScanSynchronizer {
                                 return TreeReplacement(directory: url, recursive: true)
                             }
                         }
-                        paths = coalesce(paths)
-                        if !paths.isEmpty { continuation.yield(.status(.updating, "Actualisation de \(paths.count) dossier(s)…")) }
+                        // Historical delivery commonly uses 32-event chunks. Reading
+                        // a large parent and rebuilding the whole snapshot for each
+                        // chunk turns one catch-up into thousands of repeated scans.
+                        // Coalesce before touching disk; bound distinct dirty folders
+                        // and keep the old cursor until their transaction commits.
+                        queuedPaths = coalesce(queuedPaths + paths)
                         if let last = batch.changes.map(\.id).max() { checkpoint.sources[batch.source].cursor = max(checkpoint.sources[batch.source].cursor, last) }
+                        if !replayCompleted && caughtUp.count < checkpoint.sources.count && queuedPaths.count < 4096 { continue }
+                        replayCompleted = caughtUp.count == checkpoint.sources.count
+                        paths = queuedPaths; queuedPaths = []
+                        if !paths.isEmpty { continuation.yield(.status(.updating, "Actualisation de \(paths.count) dossier(s)…")) }
                         if paths.isEmpty && !historyDone { continue }
                         let staged = UUID()
                         try await store.beginTreeGeneration(staged)

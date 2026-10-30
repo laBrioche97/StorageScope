@@ -107,7 +107,7 @@ func testJournalPlanningAndIdentity() throws {
     let reassigned = JournalSource(device: 99, uuid: source.uuid, mountPath: source.mountPath, watchPath: source.watchPath, cursor: 51)
     try expect(checkpoint.matches(JournalCheckpoint(rootFingerprint: checkpoint.rootFingerprint, sources: [reassigned])), "Un nouveau dev_t n’invalide pas le journal du même volume")
     let rewound = JournalSource(device: 99, uuid: source.uuid, mountPath: source.mountPath, watchPath: source.watchPath, cursor: 49)
-    try expect(!checkpoint.matches(JournalCheckpoint(rootFingerprint: checkpoint.rootFingerprint, sources: [rewound])), "Un journal revenu en arrière ne peut pas confirmer que l’index est à jour")
+    try expect(checkpoint.matches(JournalCheckpoint(rootFingerprint: checkpoint.rootFingerprint, sources: [rewound])), "Le repère temporel conservateur n’est pas le dernier événement du journal ; une valeur plus basse ne prouve pas sa perte")
     let sentinel = JournalSource(device: 99, uuid: source.uuid, mountPath: source.mountPath, watchPath: source.watchPath, cursor: UInt64.max)
     try expect(!checkpoint.matches(JournalCheckpoint(rootFingerprint: checkpoint.rootFingerprint, sources: [sentinel])), "La sentinelle depuis maintenant ne constitue pas un curseur persistant")
     try expect(JournalCheckpoint.stableFingerprint(volumeUUID: "persistent-volume") == "persistent-volume", "L’empreinte des données ne doit pas contenir de numéro de disque temporaire")
