@@ -24,7 +24,7 @@ class EvidenceTests(unittest.TestCase):
         self.write('macos-native-interface-xcode-27/storagescope-scan-comparison/results.json', {
             'identicalCoverageAndTotals': True, 'singleFileReplayExact': True,
             'candidateToReferenceRatio': 1.1, 'fullTreePersistenceBudgetRatio': 1.25})
-        for runner in ['macos-14', 'macos-26', 'xcode-27']:
+        for runner in ['macos-15', 'macos-26', 'xcode-27']:
             base = 'macos-package-proof-' + runner + '/'
             self.write(base + 'storagescope-package-validation.json', {'version': '3.7.1', 'packageSha256': self.digest,
                 'offlineInstalledStartup': True, 'replacementPreservesData': True, 'userOwnedApplicationTrashed': True,
@@ -66,7 +66,7 @@ class EvidenceTests(unittest.TestCase):
     def test_mismatched_installed_candidate_and_missing_native_proof_rejected(self):
         self.write('macos-package-proof-macos-26/storagescope-package-validation.json', {'version': '3.7.1', 'packageSha256': 'wrong'})
         self.assertNotEqual(self.run_check('create'), 0)
-        (self.root / 'macos-package-proof-macos-14/storagescope-explorer-trash-validation.json').unlink()
+        (self.root / 'macos-package-proof-macos-15/storagescope-explorer-trash-validation.json').unlink()
         self.assertNotEqual(self.run_check('create'), 0)
 
     def test_tampered_dependency_or_native_result_in_downloaded_evidence_rejected(self):

@@ -24,10 +24,14 @@ import StorageCore
         let previousVolumes = model.volumes, previousID = model.selectedVolumeID, previousSnapshot = model.snapshot
         defer { model.volumes = previousVolumes; model.selectedVolumeID = previousID; model.snapshot = previousSnapshot; model.sidebar = .applications }
         var complete = false
+        var scanDescription = "Aucun résultat complet reçu"
         for await event in StorageScanner().scan(root: root, volumeID: volume.id) {
-            if case .completed(let result) = event { complete = result.progress.filesScanned == 2000 && result.indexVersion == DirectoryIndexStore.schemaVersion }
+            if case .completed(let result) = event {
+                complete = result.progress.filesScanned == 2000 && result.indexVersion == DirectoryIndexStore.schemaVersion
+                scanDescription = "fichiers=\(result.progress.filesScanned), versionIndex=\(result.indexVersion.map(String.init) ?? "aucune"), erreurs=\(result.issues.prefix(3).map(\.message).joined(separator: "; "))"
+            }
         }
-        guard complete else { throw CocoaError(.fileReadUnknown) }
+        guard complete else { throw validationFailure("Analyse du jeu de référence : " + scanDescription) }
         model.volumes = [volume]; model.selectedVolumeID = volume.id
         model.snapshot = nil; model.currentDirectory = first
         await model.restoreLastScan()
@@ -37,8 +41,10 @@ import StorageCore
         for folder in [first, second] {
             model.loadExplorerDirectory(folder)
             let deadline = Date().addingTimeInterval(12)
-            while model.explorerIsLoading && Date() < deadline { try await Task.sleep(for: .milliseconds(5)) }
-            guard model.currentDirectory == folder, model.explorerItems.count == 1000, !model.explorerIsLoading else { throw CocoaError(.fileReadUnknown) }
+            while Date() < deadline && (model.explorerIsLoading || model.currentDirectory != folder || model.explorerItems.count != 1000) { try await Task.sleep(for: .milliseconds(5)) }
+            guard model.currentDirectory == folder, model.explorerItems.count == 1000, !model.explorerIsLoading else {
+                throw validationFailure("Lecture initiale : attendu=\(folder.path), affiché=\(model.currentDirectory?.path ?? "aucun"), éléments=\(model.explorerItems.count), lecture=\(model.explorerIsLoading), erreurs=\(model.explorerIssues.prefix(3).map(\.message).joined(separator: "; "))")
+            }
         }
         var publication: [Double] = [], rendered: [Double] = []
         let profiling = ProcessInfo.processInfo.environment["STORAGESCOPE_PROFILE_EXPLORER"] == "1"
@@ -77,9 +83,17 @@ import StorageCore
         try Data([2]).write(to: second.appendingPathComponent("B-new-file.bin"))
         model.loadExplorerDirectory(second)
         let deadline = Date().addingTimeInterval(12)
-        while model.explorerIsLoading && Date() < deadline { try await Task.sleep(for: .milliseconds(5)) }
-        guard model.explorerItems.count == 1001 else { throw CocoaError(.fileReadUnknown) }
+        // Cached publication is deliberately immediate. Wait for the observable
+        // background revalidation result, not its loading indicator, which can
+        // already be false while cached contents are displayed.
+        while Date() < deadline && (model.explorerIsLoading || model.currentDirectory != second || model.explorerItems.count != 1001) { try await Task.sleep(for: .milliseconds(5)) }
+        guard model.currentDirectory == second, model.explorerItems.count == 1001 else {
+            throw validationFailure("Actualisation du cache : attendu=1001, éléments=\(model.explorerItems.count), affiché=\(model.currentDirectory?.path ?? "aucun")")
+        }
         print("PASS 1000-item cached navigation, actual native rows and external-change revalidation")
+    }
+    private static func validationFailure(_ message: String) -> NSError {
+        NSError(domain: "StorageScope.NavigationValidation", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
     private static func milliseconds(_ duration: Duration) -> Double { Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15 }
     private static func findFileTable(_ view: NSView?) -> NSTableView? {

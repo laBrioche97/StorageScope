@@ -306,3 +306,6 @@ La corbeille conserve les entrées dont la taille n’est que partielle ou indis
 
 
 La publication exige aussi le bilan `desktop-validation-evidence`, produit uniquement après la réussite des compilations, tests Windows, validations Swift et trois essais du paquet Mac installé. Ce bilan lie le commit, la version, les résultats et l’empreinte exacte du paquet. La publication revérifie cette preuve téléchargée depuis le même run GitHub ; une preuve manquante, un résultat incomplet ou un paquet différent bloque la livraison, même lorsque les statuts REST des workflows sont en retard.
+
+
+Les exécuteurs GitHub macOS 14 sont retirés le 2 novembre 2026, avec des interruptions planifiées pendant leur fin de vie. La validation automatique utilise désormais macOS 15, 26 et 27 sur Apple Silicon. Le minimum du paquet, la cible de compilation et le contrôle de disponibilité des API restent macOS 14 ; aucune validation native du paquet courant sur macOS 14 n’est annoncée lorsqu’un tel exécuteur n’est pas disponible.
