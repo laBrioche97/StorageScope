@@ -59,7 +59,6 @@ import StorageCore
                     case .status(.requiresScan, let message):
                         throw NSError(domain: "StorageScope.IndexUpgrade", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
                     case .status(_, let message): print("REPLAY status: \(message)")
-                    default: break
                     }
                 }
                 throw CocoaError(.fileReadUnknown)
